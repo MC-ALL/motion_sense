@@ -118,7 +118,9 @@ sh gateway/deployment/container/stop_local_stack.sh
 - In local stack mode, `start_local_stack.sh` resolves backend and broker container IPs and injects them into `edge_processor` via environment variables, because container-name DNS resolution is not available by default in this setup.
 - In local stack mode, `start_local_stack.sh` also injects MQTT credentials from `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`.
 - Generated config files appear under the mounted `runtime/config/...` directories after first start.
+- `influxdb` also generates `runtime/config/influxdb/admin_token.txt` on first start; `edge_processor` reads this token from the shared runtime mount for authenticated query/write access.
 - Verified locally on this machine: MQTT telemetry can flow `mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> backend/api_service`.
+- Verified locally on this machine: `edge_processor` can append cached events into InfluxDB, read pending events back, and remove them from replay results after writing `edge_delivery_log`.
 - Known remaining risk: bind-mounted `acl.conf` keeps host ownership and mode in Apple `container`, so Mosquitto 2.1.2 logs a warning. It still works now, but Linux deployment must add an explicit permission-initialization step before production rollout.
 - Verified locally on this machine:
   - `dockerproxy.net/library/python:3.13-slim` builds successfully with `container build`

@@ -16,7 +16,7 @@ LOGGER = logging.getLogger(__name__)
 
 async def mqtt_ingest_loop(
     settings: RuntimeSettings,
-    ingest_queue,
+    event_buffer,
     runtime_config_manager,
 ) -> None:
     while True:
@@ -55,8 +55,9 @@ async def mqtt_ingest_loop(
                         continue
 
                     LOGGER.info("received mqtt event", extra={"kind": parsed.action, "topic": topic})
-                    await ingest_queue.put(
-                        IngestItem(kind=parsed.action, topic=topic, payload=payload)
+                    await event_buffer.append(
+                        IngestItem(kind=parsed.action, topic=topic, payload=payload),
+                        parsed,
                     )
         except Exception:
             LOGGER.exception("mqtt ingest loop failed; retrying")

@@ -52,6 +52,7 @@ container run \
 
 backend_ip="$(container inspect backend | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
 mqtt_ip="$(container inspect mosquitto | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
+influxdb_ip="$(container inspect influxdb | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
 
 container run \
   --name edge_processor \
@@ -60,6 +61,7 @@ container run \
   --network "${network_name}" \
   -p 18080:8080 \
   --env "EDGE_PROCESSOR_BACKEND_BASE_URL=http://${backend_ip}:8000/api/v1" \
+  --env "EDGE_PROCESSOR_INFLUXDB_BASE_URL=http://${influxdb_ip}:8181" \
   --env "EDGE_PROCESSOR_MQTT_HOST=${mqtt_ip}" \
   --env "EDGE_PROCESSOR_MQTT_USERNAME=${mosquitto_user}" \
   --env "EDGE_PROCESSOR_MQTT_PASSWORD=${mosquitto_password}" \

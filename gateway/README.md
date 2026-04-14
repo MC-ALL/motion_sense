@@ -33,3 +33,22 @@ Compose expects these host-mounted runtime directories under `deployment/compose
 - `certs/`
 
 Runtime data is stored in named Docker volumes for Mosquitto and InfluxDB.
+
+## Current Status
+
+- `edge_processor` now persists incoming MQTT events into local InfluxDB before upload.
+- Backend replay reads undelivered events from InfluxDB and marks them delivered after successful HTTP batch upload.
+- `rules.yaml` rewrite and reload polling are implemented for gateway config updates.
+
+Current gaps:
+
+- P1 threshold evaluation is still pending.
+- `DEVICE_OFFLINE` detection is scaffolded but not yet publishing alerts.
+
+## Runtime Rules
+
+- `/runtime/config/edge_processor/app_settings.yaml`, `rules.yaml`, and `logging.yaml` are generated on first start.
+- `/runtime/config/influxdb/admin_token.txt` is generated on first InfluxDB start and reused by `edge_processor`.
+- Editing `rules.yaml` is hot-reloadable.
+- Editing `app_settings.yaml` requires restarting `edge_processor`.
+- Changing InfluxDB retention or storage settings requires restarting `influxdb`.

@@ -11,6 +11,12 @@ backend:
   ingest_path: /ingest/batch
   request_timeout_s: 5.0
   health_path: /healthz
+influxdb:
+  base_url: http://influxdb:8181
+  database_name: gym_local
+  auth_token: null
+  request_timeout_s: 5.0
+  replay_batch_size: 500
 mqtt:
   host: mosquitto
   port: 1883

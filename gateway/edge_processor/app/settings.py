@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 
 DEFAULT_CONFIG_PATH = Path("/runtime/config/edge_processor/app_settings.yaml")
+DEFAULT_INFLUXDB_TOKEN_PATH = Path("/runtime/config/influxdb/admin_token.txt")
 
 
 class HttpBackendSettings(BaseModel):
@@ -40,6 +41,14 @@ class MqttSettings(BaseModel):
     )
 
 
+class InfluxdbSettings(BaseModel):
+    base_url: str = "http://influxdb:8181"
+    database_name: str = "gym_local"
+    auth_token: str | None = None
+    request_timeout_s: float = 5.0
+    replay_batch_size: int = 500
+
+
 class RuntimeSettings(BaseModel):
     app_name: str = "motion-sense-edge-processor"
     gateway_id: str = "gw-001"
@@ -49,8 +58,8 @@ class RuntimeSettings(BaseModel):
     batch_interval_s: int = 10
     health_interval_s: int = 15
     rules_reload_interval_s: int = 5
-    ingest_queue_maxsize: int = 10000
     backend: HttpBackendSettings = Field(default_factory=HttpBackendSettings)
+    influxdb: InfluxdbSettings = Field(default_factory=InfluxdbSettings)
     mqtt: MqttSettings = Field(default_factory=MqttSettings)
 
 
@@ -70,6 +79,7 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSetti
 
 def _apply_env_overrides(raw: dict[str, Any]) -> None:
     backend = raw.setdefault("backend", {})
+    influxdb = raw.setdefault("influxdb", {})
     mqtt = raw.setdefault("mqtt", {})
 
     if value := os.environ.get("EDGE_PROCESSOR_GATEWAY_ID"):
@@ -82,6 +92,14 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         backend["base_url"] = value
     if value := os.environ.get("EDGE_PROCESSOR_BACKEND_INGEST_PATH"):
         backend["ingest_path"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_BASE_URL"):
+        influxdb["base_url"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_DATABASE_NAME"):
+        influxdb["database_name"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_AUTH_TOKEN"):
+        influxdb["auth_token"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_REPLAY_BATCH_SIZE"):
+        influxdb["replay_batch_size"] = int(value)
     if value := os.environ.get("EDGE_PROCESSOR_MQTT_HOST"):
         mqtt["host"] = value
     if value := os.environ.get("EDGE_PROCESSOR_MQTT_PORT"):
@@ -90,3 +108,6 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         mqtt["username"] = value
     if value := os.environ.get("EDGE_PROCESSOR_MQTT_PASSWORD"):
         mqtt["password"] = value
+
+    if not influxdb.get("auth_token") and DEFAULT_INFLUXDB_TOKEN_PATH.exists():
+        influxdb["auth_token"] = DEFAULT_INFLUXDB_TOKEN_PATH.read_text(encoding="utf-8").strip()

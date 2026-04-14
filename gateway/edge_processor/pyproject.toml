@@ -7,7 +7,7 @@ name = "motion-sense-gateway-edge-processor"
 version = "0.1.0"
 description = "Async edge processor for the motion_sense gateway stack"
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13,<3.15"
 dependencies = [
   "aiomqtt==2.4.0",
   "fastapi==0.115.12",
