@@ -6,12 +6,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
+    ai,
     alerts,
     bindings,
     devices,
     gateway_commands,
     health,
     ingest,
+    ota,
     system_health,
     telemetry,
     websocket,
@@ -62,11 +64,13 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(ingest.router)
     app.include_router(devices.router)
+    app.include_router(ota.router)
     app.include_router(alerts.router)
     app.include_router(telemetry.router)
     app.include_router(bindings.router)
     app.include_router(gateway_commands.router)
     app.include_router(system_health.router)
+    app.include_router(ai.router)
     app.include_router(websocket.router)
     return app
 

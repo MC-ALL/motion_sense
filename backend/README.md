@@ -8,9 +8,15 @@
 - `GET /api/v1/devices`
 - `GET /api/v1/devices/{id}`
 - `POST /api/v1/devices/{id}/config`
+- `POST /api/v1/devices/{id}/ota`（预留，当前返回 `501`）
+- `GET /api/v1/ota/tasks`（预留，当前返回 `501`）
+- `GET /api/v1/ota/tasks/{task_id}`（预留，当前返回 `501`）
 - `GET /api/v1/gateway/{gateway_id}/commands/pending`
 - `GET /api/v1/gateway/commands/{command_id}`
 - `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
+- `POST /api/v1/ai/analyze`（预留，当前返回 `501`）
+- `GET /api/v1/ai/reports`（预留，当前返回 `501`）
+- `GET /api/v1/ai/reports/{id}`（预留，当前返回 `501`）
 - `GET /api/v1/system/health`
 - `GET /api/v1/system/health/{gateway_id}`
 - `POST /api/v1/system/health/report`
@@ -38,7 +44,9 @@
 6. `bindings.router`：手环绑定历史
 7. `gateway_commands.router`：配置命令轮询与结果回报
 8. `system_health.router`：网关基础设施健康上报与查询
-9. `websocket.router`：实时推送 `GET /api/ws`
+9. `ota.router`：OTA 预留接口
+10. `ai.router`：AI 预留接口
+11. `websocket.router`：实时推送 `GET /api/ws`
 
 主数据流如下：
 
@@ -96,7 +104,8 @@ container build \
 
 - `redis` 仅验证了单后台实例广播，多实例自动化覆盖尚缺
 - 鉴权、JWT 黑名单与 AI 报告流程仍待实现
-- 设备配置下发尚无设备侧二次 ack / 回执追踪与失败重试
+- 设备侧当前未预留 ACK 机制，配置命令成功只代表网关已本地执行或已转发 MQTT
+- 配置命令失败重试、AI 实际集成、OTA 实际编排仍待实现
 
 ## 单元测试
 
