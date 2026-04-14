@@ -1,41 +1,42 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repository is currently documentation-first. All content lives under `docs/`:
-- `docs/00-系统总览.md`: system architecture and cross-module topology.
-- `docs/01-06-*.md`: subsystem specs (wristband, equipment, environment, gateway, backend, web).
-- `docs/07-通讯接口定义.md`: source of truth for BLE/MQTT/REST/WebSocket contracts.
-- `docs/08-开发排期.md`: delivery plan, milestones, and test targets.
+This repository now contains both specs and Sprint 1 implementation work.
+- `docs/`: architecture, subsystem specs, API/topic contracts, and schedule.
+- `gateway/`: `04-网关端` code and deployment assets. Main service code is in `gateway/edge_processor/app/`; Dockerfiles and runtime helpers live under `gateway/deployment/`.
+- `backend/`: `05-后台端` code and deployment assets. Main service code is in `backend/api_service/app/`; Compose and image definitions live under `backend/deployment/`.
 
-When adding new docs, keep numeric prefixes (`09-*.md`, `10-*.md`) to preserve reading order.
+Keep docs synchronized with implementation, especially `docs/04-网关端.md`, `docs/05-后台端.md`, and `docs/07-通讯接口定义.md`.
 
 ## Build, Test, and Development Commands
-There is no runnable app in this repository yet; contribution work is doc validation and interface consistency.
-
-- `rg --files docs`: list tracked documentation files.
-- `rg -n "TODO|FIXME|待补充" docs`: find unresolved items.
-- `rg -n "gym/\\+|/api/v1|UUID|topic" docs/07-通讯接口定义.md`: verify interface definitions before editing subsystem docs.
-- `npx markdownlint-cli docs/**/*.md` (if available): check Markdown style.
-
-If implementation repos are introduced later, align runtime commands with specs in `docs/04-06`.
+- `container build --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim -t motion-sense-edge-processor-local -f gateway/deployment/edge_processor/Dockerfile .`: build gateway image for local macOS testing.
+- `container build --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim -t motion-sense-backend-api-local -f backend/deployment/api_service/Dockerfile .`: build backend image.
+- `container run --remove ... pytest tests/unit -q`: run unit tests inside the built images for `gateway/edge_processor` or `backend/api_service`.
+- `sh gateway/deployment/container/start_local_stack.sh`: start the local Apple `container` stack for gateway-to-backend testing.
+- `rg -n "TODO|FIXME|待补充" docs gateway backend`: find unfinished work.
 
 ## Coding Style & Naming Conventions
-- Use clear, concise technical language; keep headings and tables consistent with existing docs.
-- Keep protocol fields in `snake_case` (e.g., `heart_rate`, `current_equipment_id`).
-- Keep API paths and MQTT topics exactly as specified in `docs/07-通讯接口定义.md`.
-- Prefer fenced code blocks with language tags (`yaml`, `sql`, `json`, `bash`).
+- Prefer async Python architecture and keep runtime code explicit and operationally simple.
+- Use `snake_case` for Python modules, config keys, payload fields, and internal identifiers.
+- Keep deployment artifacts under module-specific `deployment/` directories; do not add loose root-level scripts.
+- Runtime-generated files must come from `default_*` templates on first start. Never commit secrets, certs, passwd files, or generated tokens.
+- Keep API paths and MQTT topics aligned with `docs/07-通讯接口定义.md`.
 
 ## Testing Guidelines
-- Treat interface consistency as the primary test: any contract change in subsystem docs must be synchronized in `docs/07-通讯接口定义.md`.
-- Verify examples remain executable or syntactically valid (SQL, YAML, JSON).
-- Preserve performance/quality targets documented in `docs/08-开发排期.md` (for example backend unit-test coverage target `>= 70%`, Playwright E2E flow coverage).
+- Run unit tests for any touched Python service.
+- For gateway changes, prefer verifying the local chain `mosquitto -> edge_processor -> backend`.
+- For backend changes, verify both persistence behavior and WebSocket/realtime behavior when relevant.
+- If contracts change, update the matching docs in `docs/04-05-07`.
 
 ## Commit & Pull Request Guidelines
-Git history is not present in this workspace, so no project-specific commit pattern can be inferred. Use:
-- Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`), scoped when useful (e.g., `docs(api): ...`).
+Current history uses Conventional Commits with scopes, for example:
+- `feat(gateway): add influxdb replay buffer`
+- `fix(gateway): fallback when delivery log is absent`
+- `feat(backend): add redis realtime broadcast path`
+- `chore(local): wire apple container stack to backend api`
 
 PRs should include:
 - What changed and why.
-- Affected files (for example `docs/07-通讯接口定义.md` and dependent subsystem docs).
-- Backward-compatibility impact (topic/path/payload changes).
-- Screenshots only when updating UI mockups/diagrams.
+- Affected modules and docs.
+- Contract or deployment impact.
+- Local verification performed (`pytest`, Apple `container` replay check, compose path, etc.).
