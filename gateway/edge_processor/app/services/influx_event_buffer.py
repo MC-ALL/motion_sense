@@ -75,11 +75,7 @@ class InfluxEventBuffer:
 
     async def list_pending(self, limit: int) -> list[BufferedEvent]:
         response = await self._query_sql(_pending_query(limit, with_delivery_log=True))
-        if (
-            response.status_code >= 500
-            and "edge_delivery_log" in response.text
-            and "not found" in response.text
-        ):
+        if response.status_code >= 500:
             response = await self._query_sql(_pending_query(limit, with_delivery_log=False))
 
         response.raise_for_status()
