@@ -27,15 +27,27 @@ class DatabaseSettings(BaseModel):
         )
 
 
+class RedisSettings(BaseModel):
+    host: str = "redis"
+    port: int = 6379
+    db: int = 0
+    channel: str = "motion_sense:realtime_events"
+
+    def url(self) -> str:
+        return f"redis://{self.host}:{self.port}/{self.db}"
+
+
 class RuntimeSettings(BaseModel):
     app_name: str = "motion-sense-backend-api-service"
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: str = "INFO"
     storage_backend: str = "memory"
+    realtime_backend: str = "local"
     ws_heartbeat_timeout_s: int = 45
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    redis: RedisSettings = Field(default_factory=RedisSettings)
 
 
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSettings:
@@ -54,6 +66,7 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSetti
 
 def _apply_env_overrides(raw: dict[str, Any]) -> None:
     database = raw.setdefault("database", {})
+    redis = raw.setdefault("redis", {})
 
     if value := os.environ.get("BACKEND_API_HOST"):
         raw["host"] = value
@@ -63,6 +76,8 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         raw["log_level"] = value
     if value := os.environ.get("BACKEND_STORAGE_BACKEND"):
         raw["storage_backend"] = value
+    if value := os.environ.get("BACKEND_REALTIME_BACKEND"):
+        raw["realtime_backend"] = value
     if value := os.environ.get("BACKEND_DATABASE_HOST"):
         database["host"] = value
     if value := os.environ.get("BACKEND_DATABASE_PORT"):
@@ -77,3 +92,11 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         database["min_pool_size"] = int(value)
     if value := os.environ.get("BACKEND_DATABASE_MAX_POOL_SIZE"):
         database["max_pool_size"] = int(value)
+    if value := os.environ.get("BACKEND_REDIS_HOST"):
+        redis["host"] = value
+    if value := os.environ.get("BACKEND_REDIS_PORT"):
+        redis["port"] = int(value)
+    if value := os.environ.get("BACKEND_REDIS_DB"):
+        redis["db"] = int(value)
+    if value := os.environ.get("BACKEND_REDIS_CHANNEL"):
+        redis["channel"] = value

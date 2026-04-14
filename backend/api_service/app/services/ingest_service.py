@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from app.models.ingest import IngestBatch
+from app.services.realtime_service import RealtimeService
 from app.services.topic_parser import parse_topic
-from app.services.websocket_manager import WebSocketManager
 from app.storage.memory_store import coerce_online, payload_triggered_at, payload_ts
 from app.storage.store import Store
 
 
 class IngestService:
-    def __init__(self, store: Store, websocket_manager: WebSocketManager) -> None:
+    def __init__(self, store: Store, realtime_service: RealtimeService) -> None:
         self._store = store
-        self._websocket_manager = websocket_manager
+        self._realtime_service = realtime_service
 
     async def ingest_batch(self, batch: IngestBatch) -> int:
         for item in batch.items:
@@ -28,7 +28,7 @@ class IngestService:
                     triggered_at=payload_triggered_at(item.payload),
                     payload=item.payload,
                 )
-                await self._websocket_manager.broadcast({"type": "alert", "data": alert.model_dump()})
+                await self._realtime_service.publish({"type": "alert", "data": alert.model_dump()})
                 continue
 
             if item.kind in {"telemetry", "status", "binding"}:
@@ -62,7 +62,7 @@ class IngestService:
                 )
 
                 if item.kind == "telemetry":
-                    await self._websocket_manager.broadcast(
+                    await self._realtime_service.publish(
                         {
                             "type": "telemetry",
                             "data": {
@@ -73,7 +73,7 @@ class IngestService:
                         }
                     )
                 elif item.kind == "status":
-                    await self._websocket_manager.broadcast(
+                    await self._realtime_service.publish(
                         {
                             "type": "device_status",
                             "data": {

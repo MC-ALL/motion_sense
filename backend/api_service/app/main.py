@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import alerts, bindings, devices, health, ingest, telemetry, websocket
 from app.services.ingest_service import IngestService
+from app.services.realtime_service import RealtimeService
 from app.services.websocket_manager import WebSocketManager
 from app.settings import RuntimeSettings, load_settings
 from app.storage import create_store
@@ -19,11 +20,15 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         event_store = create_store(runtime_settings)
         websocket_manager = WebSocketManager()
+        realtime_service = RealtimeService(runtime_settings, websocket_manager)
         app.state.event_store = event_store
         app.state.websocket_manager = websocket_manager
-        app.state.ingest_service = IngestService(event_store, websocket_manager)
+        app.state.realtime_service = realtime_service
+        app.state.ingest_service = IngestService(event_store, realtime_service)
         await event_store.initialize()
+        await realtime_service.start()
         yield
+        await realtime_service.stop()
         await event_store.close()
 
     app = FastAPI(title=runtime_settings.app_name, lifespan=lifespan)
