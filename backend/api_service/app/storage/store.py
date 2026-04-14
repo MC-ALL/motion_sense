@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from app.models.ingest import AlertRecord, DeviceSummary
+from app.models.ingest import AlertRecord, BindingEventRecord, DeviceSummary, TelemetryRecord
 
 
 class Store(Protocol):
@@ -85,3 +85,24 @@ class Store(Protocol):
         *,
         alert_id: int,
     ) -> AlertRecord | None: ...
+
+    async def list_telemetry(
+        self,
+        *,
+        device_type: str,
+        device_id: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[TelemetryRecord]: ...
+
+    async def list_binding_events(
+        self,
+        *,
+        wristband_id: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[BindingEventRecord]: ...

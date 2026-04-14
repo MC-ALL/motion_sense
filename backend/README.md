@@ -4,7 +4,14 @@ Current backend work lives under `backend/api_service/` and focuses on the Sprin
 
 - `POST /api/v1/ingest/batch`
 - `GET /api/v1/devices`
+- `GET /api/v1/devices/{id}`
 - `GET /api/v1/alerts`
+- `GET /api/v1/alerts/{id}`
+- `PATCH /api/v1/alerts/{id}/ack`
+- `GET /api/v1/telemetry/wristband/{id}`
+- `GET /api/v1/telemetry/equipment/{id}`
+- `GET /api/v1/telemetry/env/{id}`
+- `GET /api/v1/wristband/{id}/bindings`
 - `GET /healthz`
 - `GET /api/ws`
 
@@ -34,6 +41,8 @@ Verified locally on this machine:
 - `POST /api/v1/ingest/batch` can persist into Timescale/PostgreSQL mode
 - `GET /api/v1/devices/{id}` returns the persisted device snapshot
 - `PATCH /api/v1/alerts/{id}/ack` updates persisted alert state
+- `GET /api/v1/telemetry/equipment/{id}` returns persisted history rows
+- `GET /api/v1/wristband/{id}/bindings` returns persisted binding events
 
 Apple `container` note:
 

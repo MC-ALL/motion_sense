@@ -46,3 +46,22 @@ class AlertRecord(BaseModel):
     is_ack: bool = False
     triggered_at: str
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class TelemetryRecord(BaseModel):
+    ts: str
+    gym_id: str
+    device_type: str
+    device_id: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class BindingEventRecord(BaseModel):
+    id: int
+    wristband_id: str
+    equipment_id: str
+    gym_id: str
+    action: str
+    reason: str | None = None
+    ts: str
+    duration_s: int | None = None

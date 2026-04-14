@@ -31,12 +31,23 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
                             "priority": "P0",
                         },
                     },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/binding",
+                        "payload": {
+                            "ts": 1712345680,
+                            "wristband_id": "wb-001",
+                            "equipment_id": "eq-001",
+                            "action": "bind",
+                            "reason": "ble_connected",
+                        },
+                    },
                 ],
             },
         )
 
         assert response.status_code == 200
-        assert response.json() == {"accepted": 2}
+        assert response.json() == {"accepted": 3}
 
         devices_response = client.get("/api/v1/devices")
         alerts_response = client.get("/api/v1/alerts")
@@ -55,7 +66,22 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
                     "device_id": "eq-001",
                     "power_w": 350.5,
                 },
-            }
+            },
+            {
+                "gym_id": "gym-gz-01",
+                "device_type": "wristband",
+                "device_id": "wb-001",
+                "status": "bound",
+                "online": True,
+                "last_seen_ts": 1712345680,
+                "last_payload": {
+                    "ts": 1712345680,
+                    "wristband_id": "wb-001",
+                    "equipment_id": "eq-001",
+                    "action": "bind",
+                    "reason": "ble_connected",
+                },
+            },
         ]
 
         assert alerts_response.status_code == 200
@@ -66,6 +92,8 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
         device_detail_response = client.get("/api/v1/devices/eq-001")
         alert_detail_response = client.get("/api/v1/alerts/1")
         ack_response = client.patch("/api/v1/alerts/1/ack")
+        equipment_telemetry_response = client.get("/api/v1/telemetry/equipment/eq-001")
+        bindings_response = client.get("/api/v1/wristband/wb-001/bindings")
 
         assert device_detail_response.status_code == 200
         assert device_detail_response.json()["device_id"] == "eq-001"
@@ -73,3 +101,9 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
         assert alert_detail_response.json()["id"] == 1
         assert ack_response.status_code == 200
         assert ack_response.json()["is_ack"] is True
+        assert equipment_telemetry_response.status_code == 200
+        assert equipment_telemetry_response.json()[0]["device_id"] == "eq-001"
+        assert equipment_telemetry_response.json()[0]["payload"]["power_w"] == 350.5
+        assert bindings_response.status_code == 200
+        assert bindings_response.json()[0]["wristband_id"] == "wb-001"
+        assert bindings_response.json()[0]["equipment_id"] == "eq-001"

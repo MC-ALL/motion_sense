@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
-from app.models.ingest import AlertRecord, DeviceSummary
+from app.models.ingest import AlertRecord, BindingEventRecord, DeviceSummary, TelemetryRecord
 
 
 class EventStore:
@@ -11,7 +11,10 @@ class EventStore:
         self._lock = asyncio.Lock()
         self._devices: dict[str, DeviceSummary] = {}
         self._alerts: list[AlertRecord] = []
+        self._bindings: list[BindingEventRecord] = []
+        self._telemetry: list[TelemetryRecord] = []
         self._next_alert_id = 1
+        self._next_binding_id = 1
 
     async def initialize(self) -> None:
         return None
@@ -84,7 +87,38 @@ class EventStore:
         reason: str | None,
         ts: int | None,
     ) -> None:
-        return None
+        async with self._lock:
+            duration_s = None
+            event_time = _isoformat_from_ts(ts)
+
+            if action == "unbind":
+                for existing in self._bindings:
+                    if (
+                        existing.gym_id == gym_id
+                        and existing.wristband_id == wristband_id
+                        and existing.equipment_id == equipment_id
+                        and existing.action == "bind"
+                    ):
+                        duration_s = int(
+                            (
+                                _parse_isoformat(event_time)
+                                - _parse_isoformat(existing.ts)
+                            ).total_seconds()
+                        )
+                        break
+
+            event = BindingEventRecord(
+                id=self._next_binding_id,
+                wristband_id=wristband_id,
+                equipment_id=equipment_id,
+                gym_id=gym_id,
+                action=action,
+                reason=reason,
+                ts=event_time,
+                duration_s=duration_s,
+            )
+            self._next_binding_id += 1
+            self._bindings.insert(0, event)
 
     async def record_telemetry(
         self,
@@ -94,7 +128,17 @@ class EventStore:
         device_id: str,
         payload: dict,
     ) -> None:
-        return None
+        async with self._lock:
+            self._telemetry.insert(
+                0,
+                TelemetryRecord(
+                    ts=_isoformat_from_ts(payload.get("ts")),
+                    gym_id=gym_id,
+                    device_type=device_type,
+                    device_id=device_id,
+                    payload=payload,
+                ),
+            )
 
     async def list_devices(
         self,
@@ -149,6 +193,53 @@ class EventStore:
                     return updated
         return None
 
+    async def list_telemetry(
+        self,
+        *,
+        device_type: str,
+        device_id: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[TelemetryRecord]:
+        async with self._lock:
+            items = [
+                item
+                for item in self._telemetry
+                if item.device_type == device_type and item.device_id == device_id
+            ]
+
+        if start is not None:
+            start_ts = _parse_isoformat(start)
+            items = [item for item in items if _parse_isoformat(item.ts) >= start_ts]
+        if end is not None:
+            end_ts = _parse_isoformat(end)
+            items = [item for item in items if _parse_isoformat(item.ts) <= end_ts]
+
+        return items[offset : offset + limit]
+
+    async def list_binding_events(
+        self,
+        *,
+        wristband_id: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[BindingEventRecord]:
+        async with self._lock:
+            items = [item for item in self._bindings if item.wristband_id == wristband_id]
+
+        if start is not None:
+            start_ts = _parse_isoformat(start)
+            items = [item for item in items if _parse_isoformat(item.ts) >= start_ts]
+        if end is not None:
+            end_ts = _parse_isoformat(end)
+            items = [item for item in items if _parse_isoformat(item.ts) <= end_ts]
+
+        return items[offset : offset + limit]
+
 
 def coerce_online(status: str) -> bool:
     return status not in {"offline", "disconnected"}
@@ -172,3 +263,13 @@ def payload_triggered_at(payload: dict) -> str:
 
 def _device_key(gym_id: str, device_type: str, device_id: str) -> str:
     return f"{gym_id}:{device_type}:{device_id}"
+
+
+def _isoformat_from_ts(value: int | None) -> str:
+    if isinstance(value, int):
+        return datetime.fromtimestamp(value, tz=UTC).isoformat()
+    return datetime.now(UTC).isoformat()
+
+
+def _parse_isoformat(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))

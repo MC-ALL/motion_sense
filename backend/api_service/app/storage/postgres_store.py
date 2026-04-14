@@ -7,7 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
-from app.models.ingest import AlertRecord, DeviceSummary
+from app.models.ingest import AlertRecord, BindingEventRecord, DeviceSummary, TelemetryRecord
 from app.settings import RuntimeSettings
 
 
@@ -360,6 +360,105 @@ class PostgresStore:
             return None
         return _alert_record_from_row(row)
 
+    async def list_telemetry(
+        self,
+        *,
+        device_type: str,
+        device_id: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[TelemetryRecord]:
+        clauses = ["device_id = %s"]
+        params: list[Any] = [device_id]
+        table_name = _telemetry_table_name(device_type)
+
+        if start is not None:
+            clauses.append("ts >= %s")
+            params.append(_coerce_timestamptz(start))
+        if end is not None:
+            clauses.append("ts <= %s")
+            params.append(_coerce_timestamptz(end))
+
+        params.extend([limit, offset])
+        where_clause = " AND ".join(clauses)
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    f"""
+                    SELECT ts, gym_id, device_id, payload
+                    FROM {table_name}
+                    WHERE {where_clause}
+                    ORDER BY ts DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params,
+                )
+                rows = await cursor.fetchall()
+
+        return [
+            TelemetryRecord(
+                ts=row["ts"].isoformat(),
+                gym_id=row["gym_id"],
+                device_type=device_type,
+                device_id=row["device_id"],
+                payload=row["payload"] or {},
+            )
+            for row in rows
+        ]
+
+    async def list_binding_events(
+        self,
+        *,
+        wristband_id: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[BindingEventRecord]:
+        clauses = ["wristband_id = %s"]
+        params: list[Any] = [wristband_id]
+
+        if start is not None:
+            clauses.append("ts >= %s")
+            params.append(_coerce_timestamptz(start))
+        if end is not None:
+            clauses.append("ts <= %s")
+            params.append(_coerce_timestamptz(end))
+
+        params.extend([limit, offset])
+        where_clause = " AND ".join(clauses)
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    f"""
+                    SELECT id, wristband_id, equipment_id, gym_id, action, reason, ts, duration_s
+                    FROM equipment_binding_events
+                    WHERE {where_clause}
+                    ORDER BY ts DESC, id DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params,
+                )
+                rows = await cursor.fetchall()
+
+        return [
+            BindingEventRecord(
+                id=row["id"],
+                wristband_id=row["wristband_id"],
+                equipment_id=row["equipment_id"],
+                gym_id=row["gym_id"],
+                action=row["action"],
+                reason=row["reason"],
+                ts=row["ts"].isoformat(),
+                duration_s=row["duration_s"],
+            )
+            for row in rows
+        ]
+
     async def _bootstrap_schema(self) -> None:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
@@ -430,6 +529,12 @@ class PostgresStore:
                         SELECT create_hypertable(%s, by_range('ts'), if_not_exists => TRUE)
                         """,
                         (table_name,),
+                    )
+                    await cursor.execute(
+                        f"""
+                        CREATE INDEX IF NOT EXISTS idx_{table_name}_device_ts
+                        ON {table_name} (device_id, ts DESC)
+                        """
                     )
 
                 await cursor.execute(
