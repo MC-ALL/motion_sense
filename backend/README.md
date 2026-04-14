@@ -8,6 +8,8 @@
 - `GET /api/v1/devices`
 - `GET /api/v1/devices/{id}`
 - `POST /api/v1/devices/{id}/config`
+- `POST /api/v1/auth/login`（预留，当前返回 `501`）
+- `POST /api/v1/auth/refresh`（预留，当前返回 `501`）
 - `POST /api/v1/devices/{id}/ota`（预留，当前返回 `501`）
 - `GET /api/v1/ota/tasks`（预留，当前返回 `501`）
 - `GET /api/v1/ota/tasks/{task_id}`（预留，当前返回 `501`）
@@ -38,15 +40,16 @@
 
 1. `health.router`：健康检查 `GET /healthz`
 2. `ingest.router`：网关批量入库 `POST /api/v1/ingest/batch`
-3. `devices.router`：设备查询与配置下发
-4. `alerts.router`：告警查询、确认、批量确认
-5. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
-6. `bindings.router`：手环绑定历史
-7. `gateway_commands.router`：配置命令轮询与结果回报
-8. `system_health.router`：网关基础设施健康上报与查询
-9. `ota.router`：OTA 预留接口
-10. `ai.router`：AI 预留接口
-11. `websocket.router`：实时推送 `GET /api/ws`
+3. `auth.router`：认证接口预留
+4. `devices.router`：设备查询与配置下发
+5. `alerts.router`：告警查询、确认、批量确认
+6. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
+7. `bindings.router`：手环绑定历史
+8. `gateway_commands.router`：配置命令轮询与结果回报
+9. `system_health.router`：网关基础设施健康上报与查询
+10. `ota.router`：OTA 预留接口
+11. `ai.router`：AI 预留接口
+12. `websocket.router`：实时推送 `GET /api/ws`
 
 主数据流如下：
 
@@ -104,7 +107,7 @@ container build \
 ## 风险与待补项
 
 - `redis` 仅验证了单后台实例广播，多实例自动化覆盖尚缺
-- 鉴权、JWT 黑名单与 AI 报告流程仍待实现
+- JWT 黑名单与 AI 报告流程仍待实现；`auth` 路由当前仅预留
 - 设备侧当前未预留 ACK 机制，配置命令成功只代表网关已本地执行或已转发 MQTT
 - AI 实际集成仍待实现
 - OTA 当前仅保留接口预留，不纳入后续开发计划

@@ -5,6 +5,7 @@
 ## 当前实现范围
 
 - 批量入库：`POST /api/v1/ingest/batch`
+- 认证接口预留：`POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`
 - 设备、告警、遥测、绑定历史查询接口
 - WebSocket 实时接口：`GET /api/ws`
 - 设备配置下发：`POST /api/v1/devices/{id}/config`
@@ -20,6 +21,7 @@
 
 - `/healthz`：健康检查
 - `/api/v1/ingest/*`：网关批量上报入口
+- `/api/v1/auth/*`：认证接口预留
 - `/api/v1/devices/*`：设备查询与配置下发
 - `/api/v1/ota/*`：OTA 预留接口
 - `/api/v1/gateway/*`：配置命令轮询与状态回报
