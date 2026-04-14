@@ -4,7 +4,13 @@ from datetime import UTC, datetime
 
 import httpx
 
+from app.models.device_command import (
+    DeviceConfigCommandRecord,
+    GatewayCommandResultRequest,
+    GatewayPendingCommandList,
+)
 from app.models.ingest_item import IngestBatch, IngestItem
+from app.models.system_health import GatewayHealthReportRequest
 from app.settings import RuntimeSettings
 
 
@@ -26,3 +32,35 @@ class BackendClient:
             items=items,
         )
         return await self._client.post(self._settings.backend.ingest_path, json=batch.model_dump())
+
+    async def fetch_pending_commands(self) -> list[DeviceConfigCommandRecord]:
+        response = await self._client.get(
+            self._settings.backend.gateway_command_pending_path.format(
+                gateway_id=self._settings.gateway_id
+            )
+        )
+        response.raise_for_status()
+        payload = GatewayPendingCommandList.model_validate(response.json())
+        return payload.items
+
+    async def report_command_result(
+        self,
+        *,
+        command_id: str,
+        result: GatewayCommandResultRequest,
+    ) -> DeviceConfigCommandRecord:
+        response = await self._client.post(
+            self._settings.backend.gateway_command_result_path.format(
+                gateway_id=self._settings.gateway_id,
+                command_id=command_id,
+            ),
+            json=result.model_dump(),
+        )
+        response.raise_for_status()
+        return DeviceConfigCommandRecord.model_validate(response.json())
+
+    async def post_system_health(
+        self,
+        report: GatewayHealthReportRequest,
+    ) -> httpx.Response:
+        return await self._client.post("/system/health/report", json=report.model_dump())

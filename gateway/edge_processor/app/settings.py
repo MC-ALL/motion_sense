@@ -15,6 +15,8 @@ DEFAULT_INFLUXDB_TOKEN_PATH = Path("/runtime/config/influxdb/admin_token.txt")
 class HttpBackendSettings(BaseModel):
     base_url: str = "http://backend:8000/api/v1"
     ingest_path: str = "/ingest/batch"
+    gateway_command_pending_path: str = "/gateway/{gateway_id}/commands/pending"
+    gateway_command_result_path: str = "/gateway/{gateway_id}/commands/{command_id}/result"
     request_timeout_s: float = 5.0
     health_path: str = "/healthz"
 
@@ -52,10 +54,12 @@ class InfluxdbSettings(BaseModel):
 class RuntimeSettings(BaseModel):
     app_name: str = "motion-sense-edge-processor"
     gateway_id: str = "gw-001"
+    gym_id: str = "gym-gz-01"
     host: str = "0.0.0.0"
     port: int = 8080
     log_level: str = "INFO"
     batch_interval_s: int = 10
+    command_poll_interval_s: int = 3
     health_interval_s: int = 15
     rules_reload_interval_s: int = 5
     backend: HttpBackendSettings = Field(default_factory=HttpBackendSettings)
@@ -84,14 +88,22 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
 
     if value := os.environ.get("EDGE_PROCESSOR_GATEWAY_ID"):
         raw["gateway_id"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_GYM_ID"):
+        raw["gym_id"] = value
     if value := os.environ.get("EDGE_PROCESSOR_BATCH_INTERVAL_S"):
         raw["batch_interval_s"] = int(value)
+    if value := os.environ.get("EDGE_PROCESSOR_COMMAND_POLL_INTERVAL_S"):
+        raw["command_poll_interval_s"] = int(value)
     if value := os.environ.get("EDGE_PROCESSOR_LOG_LEVEL"):
         raw["log_level"] = value
     if value := os.environ.get("EDGE_PROCESSOR_BACKEND_BASE_URL"):
         backend["base_url"] = value
     if value := os.environ.get("EDGE_PROCESSOR_BACKEND_INGEST_PATH"):
         backend["ingest_path"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_BACKEND_COMMAND_PENDING_PATH"):
+        backend["gateway_command_pending_path"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_BACKEND_COMMAND_RESULT_PATH"):
+        backend["gateway_command_result_path"] = value
     if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_BASE_URL"):
         influxdb["base_url"] = value
     if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_DATABASE_NAME"):
