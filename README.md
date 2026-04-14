@@ -14,6 +14,7 @@
 - 后台 `local` / `redis` 两种 WebSocket 实时推送路径
 - 后台 `POST /api/v1/devices/{id}/config` 配置命令入库
 - 网关 `GET /api/v1/gateway/{gateway_id}/commands/pending` 轮询执行与结果回报
+- 配置命令失败重试、租约领取与 `timed_out` 超时收敛
 - 后台 AI / OTA 预留接口已占位，当前返回 `501 reserved`
 - 网关基于 InfluxDB 的本地缓存与补发链路
 - 网关 P1 规则引擎与规则热重载
@@ -25,7 +26,7 @@
 
 - 后台鉴权 / JWT / AI 报告流程尚未实现
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
-- 网关仍缺真实 Broker 重连、命令失败重试、规则热重载边界场景的端到端覆盖
+- 网关仍缺真实 Broker 重连、规则热重载边界场景的端到端覆盖
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - Apple `container build` 直接打包仓库根上下文仍存在归档兼容性问题，当前单测采用 `container run` 挂载代码目录规避
 

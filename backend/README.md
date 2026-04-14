@@ -90,6 +90,7 @@ container build \
 - `GET /api/v1/telemetry/env/{id}/aggregate` 可返回环境聚合结果
 - `POST /api/v1/alerts/batch-ack` 可批量确认告警
 - `POST /api/v1/devices/{id}/config` 与 `/api/v1/gateway/*/commands/*` 已具备配置命令闭环
+- 配置命令已具备领取租约、失败重试与超时收敛能力
 - `POST /api/v1/system/health/report` 与 `GET /api/v1/system/health*` 已具备基础设施健康汇聚能力
 - `redis` 实时模式已在 macOS Apple `container` 上验证
 
@@ -105,7 +106,7 @@ container build \
 - `redis` 仅验证了单后台实例广播，多实例自动化覆盖尚缺
 - 鉴权、JWT 黑名单与 AI 报告流程仍待实现
 - 设备侧当前未预留 ACK 机制，配置命令成功只代表网关已本地执行或已转发 MQTT
-- 配置命令失败重试与 AI 实际集成仍待实现
+- AI 实际集成仍待实现
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 
 ## 单元测试

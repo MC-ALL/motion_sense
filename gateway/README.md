@@ -55,6 +55,8 @@ Compose 约定以下宿主机挂载目录位于 `deployment/compose/runtime/`：
 - `rules.yaml` 改写与重载检测已实现
 - 已支持 P1 规则：`EQ_OVERLOAD`、`CO2_HIGH`、`CO2_CRITICAL`、`PM25_HIGH`、`TEMP_HIGH`
 - 已支持 `DEVICE_OFFLINE` 监控，并发布 MQTT `alert` 与 retained `status`
+- 已支持后台配置命令轮询、失败回报、重试领取与超时收敛
+- 已支持基础设施健康采集并上报后台 `/api/v1/system/health/report`
 
 ## 当前风险
 

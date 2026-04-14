@@ -35,6 +35,9 @@
 - 后台仅负责创建配置命令，不直接连接 MQTT Broker
 - 命令由目标网关通过 `/api/v1/gateway/{gateway_id}/commands/pending` 轮询拉取
 - 网关对当前网关配置执行本地落地，对器材端 / 环境端配置转发到局域网 MQTT
+- 命令状态支持 `pending`、`succeeded`、`failed`、`timed_out`
+- 网关拉取待执行命令时，后台会递增 `attempt_count` 并设置短期 `leased_until`
+- 网关回报 `failed` 后，命令会按 `retry_backoff_s` 重入队列；超过 `max_attempts` 或 `expires_at` 后结束
 - 设备侧当前未预留 ACK 机制，`succeeded` 不代表设备已最终持久化
 - 目标 topic 格式仍为 `gym/{gym_id}/{device_type}/{device_id}/config`
 
