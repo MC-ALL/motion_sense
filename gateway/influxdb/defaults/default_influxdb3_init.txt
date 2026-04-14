@@ -1,0 +1,2 @@
+database_name=gym_local
+retention_period=7d

@@ -1,0 +1,28 @@
+app_name: motion-sense-edge-processor
+gateway_id: gw-001
+host: 0.0.0.0
+port: 8080
+log_level: INFO
+batch_interval_s: 10
+health_interval_s: 15
+rules_reload_interval_s: 5
+backend:
+  base_url: http://backend:8000/api/v1
+  ingest_path: /ingest/batch
+  request_timeout_s: 5.0
+  health_path: /healthz
+mqtt:
+  host: mosquitto
+  port: 1883
+  client_id: gw-001-edge-processor
+  qos: 1
+  topic_patterns:
+    - gym/+/wristband/+/telemetry
+    - gym/+/wristband/+/binding
+    - gym/+/equipment/+/telemetry
+    - gym/+/equipment/+/alert
+    - gym/+/equipment/+/status
+    - gym/+/env/+/telemetry
+    - gym/+/env/+/alert
+    - gym/+/env/+/status
+    - gym/+/gateway/+/config

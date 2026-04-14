@@ -1,0 +1,25 @@
+alert_rules:
+  EQ_OVERLOAD:
+    enabled: true
+    threshold_ratio: 1.5
+    window_s: 5
+    level: warning
+  CO2_HIGH:
+    enabled: true
+    threshold_ppm: 1000
+    window_s: 60
+    level: warning
+  PM25_HIGH:
+    enabled: true
+    threshold_ugm3: 75
+    window_s: 60
+    level: warning
+  TEMP_HIGH:
+    enabled: true
+    threshold_c: 35.0
+    window_s: 120
+    level: warning
+  DEVICE_OFFLINE:
+    enabled: true
+    timeout_s: 30
+    level: warning
