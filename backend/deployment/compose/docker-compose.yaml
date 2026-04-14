@@ -1,0 +1,10 @@
+services:
+  api_service:
+    build:
+      context: ../../..
+      dockerfile: backend/deployment/api_service/Dockerfile
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ./runtime/config:/runtime/config

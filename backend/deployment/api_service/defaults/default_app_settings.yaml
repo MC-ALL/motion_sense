@@ -1,0 +1,7 @@
+app_name: motion-sense-backend-api-service
+host: 0.0.0.0
+port: 8000
+log_level: INFO
+ws_heartbeat_timeout_s: 45
+cors_origins:
+  - "*"
