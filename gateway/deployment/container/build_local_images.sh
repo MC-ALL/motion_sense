@@ -18,5 +18,10 @@ container build \
 
 container build \
   --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  -t motion-sense-backend-api-local \
+  -f backend/deployment/api_service/Dockerfile .
+
+container build \
+  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
   -t motion-sense-mock-backend-local \
   -f gateway/deployment/testing/mock_backend/Dockerfile .

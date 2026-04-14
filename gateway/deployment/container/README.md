@@ -114,10 +114,11 @@ sh gateway/deployment/container/stop_local_stack.sh
 
 - The Apple `container` CLI supports image build, run, volumes, networks, bind mounts, port publishing, and env files.
 - It does not provide a Compose-compatible orchestration layer in this toolchain, so multi-service local testing must be done service by service or with project-specific helper automation later.
+- The default local stack now starts the real backend API skeleton (`motion-sense-backend-api-local`) instead of the mock backend image, so gateway and backend can evolve on one test path.
 - In local stack mode, `start_local_stack.sh` resolves backend and broker container IPs and injects them into `edge_processor` via environment variables, because container-name DNS resolution is not available by default in this setup.
 - In local stack mode, `start_local_stack.sh` also injects MQTT credentials from `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`.
 - Generated config files appear under the mounted `runtime/config/...` directories after first start.
-- Verified locally on this machine: MQTT telemetry can flow `mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> mock_backend`.
+- Verified locally on this machine: MQTT telemetry can flow `mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> backend/api_service`.
 - Known remaining risk: bind-mounted `acl.conf` keeps host ownership and mode in Apple `container`, so Mosquitto 2.1.2 logs a warning. It still works now, but Linux deployment must add an explicit permission-initialization step before production rollout.
 - Verified locally on this machine:
   - `dockerproxy.net/library/python:3.13-slim` builds successfully with `container build`

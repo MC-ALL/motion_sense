@@ -6,12 +6,15 @@ config_root="${runtime_root}/config"
 secret_root="${runtime_root}/secrets"
 cert_root="${runtime_root}/certs"
 data_root="${runtime_root}/data"
+backend_runtime_root="${PWD}/backend/deployment/compose/runtime"
+backend_config_root="${backend_runtime_root}/config"
 network_name="${CONTAINER_NETWORK:-motion-sense-local}"
 mosquitto_user="${MOSQUITTO_USER:-admin}"
 mosquitto_password="${MOSQUITTO_PASSWORD:-admin123}"
 
 mkdir -p "${config_root}" "${secret_root}" "${cert_root}"
 mkdir -p "${data_root}/mosquitto_data" "${data_root}/mosquitto_log" "${data_root}/influxdb_data"
+mkdir -p "${backend_config_root}"
 
 container network create "${network_name}" >/dev/null 2>&1 || true
 
@@ -21,7 +24,8 @@ container run \
   -d \
   --network "${network_name}" \
   -p 18000:8000 \
-  motion-sense-mock-backend-local
+  --mount "type=bind,source=${backend_config_root},target=/runtime/config" \
+  motion-sense-backend-api-local
 
 container run \
   --name influxdb \
