@@ -8,6 +8,9 @@
 - `GET /api/v1/devices`
 - `GET /api/v1/devices/{id}`
 - `POST /api/v1/devices/{id}/config`
+- `GET /api/v1/gateway/{gateway_id}/commands/pending`
+- `GET /api/v1/gateway/commands/{command_id}`
+- `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
 - `GET /api/v1/system/health`
 - `GET /api/v1/system/health/{gateway_id}`
 - `POST /api/v1/system/health/report`
@@ -33,8 +36,9 @@
 4. `alerts.router`：告警查询、确认、批量确认
 5. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
 6. `bindings.router`：手环绑定历史
-7. `system_health.router`：网关基础设施健康上报与查询
-8. `websocket.router`：实时推送 `GET /api/ws`
+7. `gateway_commands.router`：配置命令轮询与结果回报
+8. `system_health.router`：网关基础设施健康上报与查询
+9. `websocket.router`：实时推送 `GET /api/ws`
 
 主数据流如下：
 
@@ -42,8 +46,10 @@
 2. `IngestService` 解析批次并写入存储层
 3. 写入成功后通过 `RealtimeService` 推送到 WebSocket
 4. 如启用 `redis`，则经 Redis Pub/Sub 做跨实例广播
-5. 后台调用 `POST /api/v1/devices/{id}/config` 时，通过 MQTT 发布到设备 `config` topic
-6. 网关可通过 `POST /api/v1/system/health/report` 上报本地基础设施健康快照
+5. 后台调用 `POST /api/v1/devices/{id}/config` 时，创建待执行配置命令
+6. 网关调用 `GET /api/v1/gateway/{gateway_id}/commands/pending` 拉取命令并在本地执行 / 转发 MQTT
+7. 网关调用 `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result` 回报结果
+8. 网关可通过 `POST /api/v1/system/health/report` 上报本地基础设施健康快照
 
 ## 运行模式
 
@@ -75,7 +81,7 @@ container build \
 - `GET /api/v1/wristband/{id}/bindings` 可返回绑定历史
 - `GET /api/v1/telemetry/env/{id}/aggregate` 可返回环境聚合结果
 - `POST /api/v1/alerts/batch-ack` 可批量确认告警
-- `POST /api/v1/devices/{id}/config` 已具备 MQTT 配置下发基础能力
+- `POST /api/v1/devices/{id}/config` 与 `/api/v1/gateway/*/commands/*` 已具备配置命令闭环
 - `POST /api/v1/system/health/report` 与 `GET /api/v1/system/health*` 已具备基础设施健康汇聚能力
 - `redis` 实时模式已在 macOS Apple `container` 上验证
 
@@ -90,13 +96,14 @@ container build \
 
 - `redis` 仅验证了单后台实例广播，多实例自动化覆盖尚缺
 - 鉴权、JWT 黑名单与 AI 报告流程仍待实现
-- 设备配置下发目前只有“发布到 MQTT”，尚无设备 ack / 回执追踪
+- 设备配置下发尚无设备侧二次 ack / 回执追踪与失败重试
 
 ## 单元测试
 
 ```bash
 container run --remove \
-  --mount "type=bind,source=$PWD,target=/workspace" \
-  --entrypoint sh motion-sense-backend-api-local \
-  -lc "pip install --no-cache-dir pytest==8.3.5 httpx==0.28.1 >/tmp/pip.log 2>&1 && cd /workspace/backend/api_service && PYTHONPATH=/workspace/backend/api_service pytest tests/unit -q"
+  --volume "$PWD:/workspace" \
+  --workdir /workspace/backend/api_service \
+  dockerproxy.net/library/python:3.13-slim \
+  sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```
