@@ -6,8 +6,7 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /opt/motion_sense/gateway/edge_processor
 
-COPY gateway/edge_processor/pyproject.toml ./pyproject.toml
-COPY gateway/edge_processor/app ./app
+COPY gateway/edge_processor/ ./
 COPY gateway/deployment/edge_processor/defaults /opt/motion_sense/deployment/edge_processor/defaults
 COPY --chmod=755 gateway/deployment/edge_processor/entrypoint.sh /entrypoint.sh
 

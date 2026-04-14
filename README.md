@@ -12,14 +12,17 @@ Completed and verified on this machine:
 
 - backend ingest/query path with TimescaleDB persistence
 - backend WebSocket realtime path in both `local` and `redis` modes
+- backend MQTT device config publish foundation via `POST /api/v1/devices/{id}/config`
 - gateway local InfluxDB-backed cache and replay path
+- gateway P1 rule engine with runtime rule reload
+- gateway `DEVICE_OFFLINE` alert + retained status publishing
 - local chain: `mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> backend/api_service`
 
 Current gaps:
 
-- gateway P1 rule engine
-- gateway `DEVICE_OFFLINE` alert publishing
 - backend auth/JWT and AI report flow
+- device config ack / delivery trace is not implemented yet
+- gateway still lacks end-to-end integration coverage for real broker reconnect and rule reload edge cases
 
 ## Repository Layout
 
