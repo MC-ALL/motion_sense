@@ -3,6 +3,22 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 
 
+def test_auth_reserved_routes_return_501() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "username": "admin",
+                "password": "not-configured",
+            },
+        )
+
+        assert response.status_code == 501
+        detail = response.json()["detail"]
+        assert detail["status"] == "reserved"
+        assert detail["reserved_for"] == "phase_2_auth_integration"
+
+
 def test_ai_reserved_routes_return_501() -> None:
     with TestClient(create_app()) as client:
         response = client.post(

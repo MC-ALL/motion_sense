@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     ai,
     alerts,
+    auth,
     bindings,
     devices,
     gateway_commands,
@@ -67,6 +68,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(ingest.router)
+    app.include_router(auth.router)
     app.include_router(devices.router)
     app.include_router(ota.router)
     app.include_router(alerts.router)
