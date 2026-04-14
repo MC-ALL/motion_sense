@@ -8,7 +8,12 @@ Current backend work lives under `backend/api_service/` and focuses on the Sprin
 - `GET /healthz`
 - `GET /api/ws`
 
-The current implementation is an async FastAPI skeleton with in-memory state for device status, alert records, and WebSocket broadcast. It is intentionally a transition layer: the API contract is already aligned with `docs/05-后台端.md` and `docs/07-通讯接口定义.md`, while PostgreSQL / TimescaleDB / Redis are still to be added behind the same interfaces.
+The current implementation is an async FastAPI skeleton with two storage modes:
+
+- `memory`: default for unit tests and minimal local runs
+- `postgres`: async `psycopg` + Timescale/PostgreSQL persistence for `devices`, `alerts`, `equipment_binding_events`, and telemetry hypertables
+
+It is intentionally a transition layer: the API contract is already aligned with `docs/05-后台端.md` and `docs/07-通讯接口定义.md`, while Redis, JWT, and AI flows are still to be added.
 
 Build locally:
 
@@ -18,6 +23,22 @@ container build \
   -t motion-sense-backend-api-local \
   -f backend/deployment/api_service/Dockerfile .
 ```
+
+Backend Linux compose baseline now includes:
+
+- `api_service`
+- `timescaledb`
+
+Verified locally on this machine:
+
+- `POST /api/v1/ingest/batch` can persist into Timescale/PostgreSQL mode
+- `GET /api/v1/devices/{id}` returns the persisted device snapshot
+- `PATCH /api/v1/alerts/{id}/ack` updates persisted alert state
+
+Apple `container` note:
+
+- local test networking does not provide Compose-like service-name DNS by default
+- when testing outside Linux Compose, pass the database container IP to `BACKEND_DATABASE_HOST`
 
 Run unit tests in a one-off container:
 

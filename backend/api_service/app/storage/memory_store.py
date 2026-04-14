@@ -13,6 +13,12 @@ class EventStore:
         self._alerts: list[AlertRecord] = []
         self._next_alert_id = 1
 
+    async def initialize(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
     async def upsert_device(
         self,
         *,
@@ -68,7 +74,33 @@ class EventStore:
             self._alerts.insert(0, alert)
             return alert
 
-    async def list_devices(self, device_type: str | None = None, status: str | None = None) -> list[DeviceSummary]:
+    async def record_binding_event(
+        self,
+        *,
+        gym_id: str,
+        wristband_id: str,
+        equipment_id: str,
+        action: str,
+        reason: str | None,
+        ts: int | None,
+    ) -> None:
+        return None
+
+    async def record_telemetry(
+        self,
+        *,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+        payload: dict,
+    ) -> None:
+        return None
+
+    async def list_devices(
+        self,
+        device_type: str | None = None,
+        status: str | None = None,
+    ) -> list[DeviceSummary]:
         async with self._lock:
             devices = list(self._devices.values())
 
@@ -79,7 +111,18 @@ class EventStore:
 
         return sorted(devices, key=lambda item: (item.device_type, item.device_id))
 
-    async def list_alerts(self, level: str | None = None, is_ack: bool | None = None) -> list[AlertRecord]:
+    async def get_device(self, *, device_id: str) -> DeviceSummary | None:
+        async with self._lock:
+            for device in self._devices.values():
+                if device.device_id == device_id:
+                    return device
+        return None
+
+    async def list_alerts(
+        self,
+        level: str | None = None,
+        is_ack: bool | None = None,
+    ) -> list[AlertRecord]:
         async with self._lock:
             alerts = list(self._alerts)
 
@@ -89,6 +132,22 @@ class EventStore:
             alerts = [item for item in alerts if item.is_ack == is_ack]
 
         return alerts
+
+    async def get_alert(self, *, alert_id: int) -> AlertRecord | None:
+        async with self._lock:
+            for alert in self._alerts:
+                if alert.id == alert_id:
+                    return alert
+        return None
+
+    async def ack_alert(self, *, alert_id: int) -> AlertRecord | None:
+        async with self._lock:
+            for index, alert in enumerate(self._alerts):
+                if alert.id == alert_id:
+                    updated = alert.model_copy(update={"is_ack": True})
+                    self._alerts[index] = updated
+                    return updated
+        return None
 
 
 def coerce_online(status: str) -> bool:

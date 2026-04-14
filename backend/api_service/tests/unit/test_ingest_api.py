@@ -62,3 +62,14 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
         assert alerts_response.json()[0]["device_id"] == "wb-001"
         assert alerts_response.json()[0]["code"] == "HR_HIGH"
         assert alerts_response.json()[0]["priority"] == "P0"
+
+        device_detail_response = client.get("/api/v1/devices/eq-001")
+        alert_detail_response = client.get("/api/v1/alerts/1")
+        ack_response = client.patch("/api/v1/alerts/1/ack")
+
+        assert device_detail_response.status_code == 200
+        assert device_detail_response.json()["device_id"] == "eq-001"
+        assert alert_detail_response.status_code == 200
+        assert alert_detail_response.json()["id"] == 1
+        assert ack_response.status_code == 200
+        assert ack_response.json()["is_ack"] is True

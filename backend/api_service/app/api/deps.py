@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from app.services.event_store import EventStore
 from app.services.ingest_service import IngestService
 from app.services.websocket_manager import WebSocketManager
+from app.storage.store import Store
 
 
-def get_event_store(request: Request) -> EventStore:
+def get_event_store(request: Request) -> Store:
     return request.app.state.event_store
 
 
