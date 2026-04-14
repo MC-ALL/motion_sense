@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from psycopg.rows import dict_row
@@ -634,6 +634,10 @@ class PostgresStore:
         qos: int,
         retain: bool,
         payload: dict,
+        max_attempts: int,
+        retry_backoff_s: int,
+        next_retry_at: str,
+        expires_at: str,
     ) -> DeviceConfigCommandRecord:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
@@ -649,11 +653,18 @@ class PostgresStore:
                         retain,
                         payload,
                         status,
+                        attempt_count,
+                        max_attempts,
+                        retry_backoff_s,
+                        next_retry_at,
+                        expires_at,
                         result_payload
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', '{}'::jsonb)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', 0, %s, %s, %s, %s, '{}'::jsonb)
                     RETURNING command_id, gateway_id, gym_id, device_type, device_id, topic,
-                              qos, retain, payload, status, created_at, updated_at,
+                              qos, retain, payload, status, attempt_count, max_attempts,
+                              retry_backoff_s, last_attempt_at, next_retry_at, leased_until,
+                              expires_at, created_at, updated_at,
                               result_detail, result_payload
                     """,
                     (
@@ -665,6 +676,10 @@ class PostgresStore:
                         qos,
                         retain,
                         Jsonb(payload),
+                        max_attempts,
+                        retry_backoff_s,
+                        _coerce_timestamptz(next_retry_at),
+                        _coerce_timestamptz(expires_at),
                     ),
                 )
                 row = await cursor.fetchone()
@@ -677,25 +692,67 @@ class PostgresStore:
         *,
         gateway_id: str,
         limit: int = 100,
+        delivery_lease_s: int = 15,
     ) -> list[DeviceConfigCommandRecord]:
+        now = datetime.now(UTC)
+        lease_until = now + timedelta(seconds=delivery_lease_s)
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     """
+                    UPDATE device_config_commands
+                    SET status = 'timed_out',
+                        updated_at = %s,
+                        leased_until = NULL,
+                        next_retry_at = NULL,
+                        result_detail = COALESCE(result_detail, 'command expired before successful delivery')
+                    WHERE gateway_id = %s
+                      AND status = 'pending'
+                      AND expires_at <= %s
+                    """,
+                    (now, gateway_id, now),
+                )
+                await cursor.execute(
+                    """
                     SELECT command_id, gateway_id, gym_id, device_type, device_id, topic,
-                           qos, retain, payload, status, created_at, updated_at,
-                           result_detail, result_payload
+                           qos, retain, payload, status, attempt_count, max_attempts,
+                           retry_backoff_s, last_attempt_at, next_retry_at, leased_until,
+                           expires_at, created_at, updated_at, result_detail, result_payload
                     FROM device_config_commands
                     WHERE gateway_id = %s
                       AND status = 'pending'
+                      AND next_retry_at <= %s
+                      AND (leased_until IS NULL OR leased_until <= %s)
+                      AND expires_at > %s
                     ORDER BY created_at ASC, command_id ASC
                     LIMIT %s
+                    FOR UPDATE
                     """,
-                    (gateway_id, limit),
+                    (gateway_id, now, now, now, limit),
                 )
                 rows = await cursor.fetchall()
 
-        return [_device_config_command_from_row(row) for row in rows]
+                claimed_rows: list[dict[str, Any]] = []
+                for row in rows:
+                    await cursor.execute(
+                        """
+                        UPDATE device_config_commands
+                        SET attempt_count = attempt_count + 1,
+                            last_attempt_at = %s,
+                            leased_until = %s,
+                            updated_at = %s
+                        WHERE command_id = %s
+                        RETURNING command_id, gateway_id, gym_id, device_type, device_id, topic,
+                                  qos, retain, payload, status, attempt_count, max_attempts,
+                                  retry_backoff_s, last_attempt_at, next_retry_at, leased_until,
+                                  expires_at, created_at, updated_at, result_detail, result_payload
+                        """,
+                        (now, lease_until, now, row["command_id"]),
+                    )
+                    claimed_rows.append(await cursor.fetchone())
+            await connection.commit()
+
+        return [_device_config_command_from_row(row) for row in claimed_rows]
 
     async def get_device_config_command(
         self,
@@ -707,7 +764,9 @@ class PostgresStore:
                 await cursor.execute(
                     """
                     SELECT command_id, gateway_id, gym_id, device_type, device_id, topic,
-                           qos, retain, payload, status, created_at, updated_at,
+                           qos, retain, payload, status, attempt_count, max_attempts,
+                           retry_backoff_s, last_attempt_at, next_retry_at, leased_until,
+                           expires_at, created_at, updated_at,
                            result_detail, result_payload
                     FROM device_config_commands
                     WHERE command_id = %s
@@ -731,27 +790,65 @@ class PostgresStore:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     """
-                    UPDATE device_config_commands
-                    SET status = %s,
-                        updated_at = %s,
-                        result_detail = %s,
-                        result_payload = %s
+                    SELECT command_id, gateway_id, gym_id, device_type, device_id, topic,
+                           qos, retain, payload, status, attempt_count, max_attempts,
+                           retry_backoff_s, last_attempt_at, next_retry_at, leased_until,
+                           expires_at, created_at, updated_at, result_detail, result_payload
+                    FROM device_config_commands
                     WHERE command_id = %s
                       AND gateway_id = %s
-                    RETURNING command_id, gateway_id, gym_id, device_type, device_id, topic,
-                              qos, retain, payload, status, created_at, updated_at,
-                              result_detail, result_payload
+                    FOR UPDATE
                     """,
-                    (
-                        result.status,
-                        _coerce_timestamptz(result.reported_at),
-                        result.detail,
-                        Jsonb(result.result_payload),
-                        command_id,
-                        gateway_id,
-                    ),
+                    (command_id, gateway_id),
                 )
-                row = await cursor.fetchone()
+                existing = await cursor.fetchone()
+                if existing is None:
+                    row = None
+                elif existing["status"] in {"succeeded", "failed", "timed_out"}:
+                    row = existing
+                else:
+                    reported_at = _coerce_timestamptz(result.reported_at)
+                    new_status = result.status
+                    next_retry_at: datetime | None = None
+
+                    if result.status == "failed":
+                        if reported_at >= existing["expires_at"]:
+                            new_status = "timed_out"
+                        elif existing["attempt_count"] >= existing["max_attempts"]:
+                            new_status = "failed"
+                        else:
+                            new_status = "pending"
+                            next_retry_at = reported_at + timedelta(
+                                seconds=existing["retry_backoff_s"]
+                            )
+
+                    await cursor.execute(
+                        """
+                        UPDATE device_config_commands
+                        SET status = %s,
+                            updated_at = %s,
+                            result_detail = %s,
+                            result_payload = %s,
+                            leased_until = NULL,
+                            next_retry_at = %s
+                        WHERE command_id = %s
+                          AND gateway_id = %s
+                        RETURNING command_id, gateway_id, gym_id, device_type, device_id, topic,
+                                  qos, retain, payload, status, attempt_count, max_attempts,
+                                  retry_backoff_s, last_attempt_at, next_retry_at, leased_until,
+                                  expires_at, created_at, updated_at, result_detail, result_payload
+                        """,
+                        (
+                            new_status,
+                            reported_at,
+                            result.detail,
+                            Jsonb(result.result_payload),
+                            next_retry_at,
+                            command_id,
+                            gateway_id,
+                        ),
+                    )
+                    row = await cursor.fetchone()
             await connection.commit()
 
         if row is None:
@@ -889,6 +986,63 @@ class PostgresStore:
                     )
                     """
                 )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ADD COLUMN IF NOT EXISTS max_attempts INTEGER NOT NULL DEFAULT 3
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ADD COLUMN IF NOT EXISTS retry_backoff_s INTEGER NOT NULL DEFAULT 5
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ADD COLUMN IF NOT EXISTS last_attempt_at TIMESTAMPTZ
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ADD COLUMN IF NOT EXISTS leased_until TIMESTAMPTZ
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '5 minutes')
+                    """
+                )
+                await cursor.execute(
+                    """
+                    UPDATE device_config_commands
+                    SET attempt_count = COALESCE(attempt_count, 0),
+                        max_attempts = COALESCE(max_attempts, 3),
+                        retry_backoff_s = COALESCE(retry_backoff_s, 5),
+                        next_retry_at = COALESCE(next_retry_at, created_at),
+                        expires_at = COALESCE(expires_at, created_at + INTERVAL '5 minutes')
+                    WHERE attempt_count IS NULL
+                       OR max_attempts IS NULL
+                       OR retry_backoff_s IS NULL
+                       OR next_retry_at IS NULL
+                       OR expires_at IS NULL
+                    """
+                )
                 for table_name in (
                     "wristband_telemetry",
                     "equipment_telemetry",
@@ -944,7 +1098,7 @@ class PostgresStore:
                 await cursor.execute(
                     """
                     CREATE INDEX IF NOT EXISTS idx_device_config_commands_gateway_pending
-                    ON device_config_commands (gateway_id, status, created_at ASC)
+                    ON device_config_commands (gateway_id, status, next_retry_at ASC, created_at ASC)
                     """
                 )
             await connection.commit()
@@ -997,6 +1151,19 @@ def _device_config_command_from_row(row: dict[str, Any]) -> DeviceConfigCommandR
         retain=row["retain"],
         payload=row.get("payload") or {},
         status=row["status"],
+        attempt_count=row.get("attempt_count", 0),
+        max_attempts=row.get("max_attempts", 3),
+        retry_backoff_s=row.get("retry_backoff_s", 5),
+        last_attempt_at=(
+            row["last_attempt_at"].isoformat() if row.get("last_attempt_at") is not None else None
+        ),
+        next_retry_at=(
+            row["next_retry_at"].isoformat() if row.get("next_retry_at") is not None else None
+        ),
+        leased_until=(
+            row["leased_until"].isoformat() if row.get("leased_until") is not None else None
+        ),
+        expires_at=row["expires_at"].isoformat(),
         created_at=row["created_at"].isoformat(),
         updated_at=row["updated_at"].isoformat(),
         result_detail=row["result_detail"],

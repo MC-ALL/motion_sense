@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from app.models.device_config import (
@@ -40,12 +41,20 @@ class DeviceConfigService:
         default_qos: int,
         default_retain: bool,
         pending_fetch_limit: int = 100,
+        max_attempts: int = 3,
+        retry_backoff_s: int = 5,
+        delivery_lease_s: int = 15,
+        expire_after_s: int = 300,
     ) -> None:
         self._store = store
         self._topic_prefix = topic_prefix
         self._default_qos = default_qos
         self._default_retain = default_retain
         self._pending_fetch_limit = pending_fetch_limit
+        self._max_attempts = max_attempts
+        self._retry_backoff_s = retry_backoff_s
+        self._delivery_lease_s = delivery_lease_s
+        self._expire_after_s = expire_after_s
 
     async def publish_config(
         self,
@@ -66,6 +75,7 @@ class DeviceConfigService:
         qos = request.qos if request.qos is not None else self._default_qos
         retain = request.retain if request.retain is not None else self._default_retain
         topic = f"{self._topic_prefix}/{gym_id}/{device_type}/{device_id}/config"
+        created_at = _utc_now_iso()
         record = await self._store.create_device_config_command(
             gateway_id=gateway_id,
             gym_id=gym_id,
@@ -75,6 +85,10 @@ class DeviceConfigService:
             qos=qos,
             retain=retain,
             payload=payload,
+            max_attempts=self._max_attempts,
+            retry_backoff_s=self._retry_backoff_s,
+            next_retry_at=created_at,
+            expires_at=_advance_iso(created_at, self._expire_after_s),
         )
         return DeviceConfigPublishResult.model_validate(record.model_dump())
 
@@ -86,6 +100,7 @@ class DeviceConfigService:
         return await self._store.list_pending_device_config_commands(
             gateway_id=gateway_id,
             limit=self._pending_fetch_limit,
+            delivery_lease_s=self._delivery_lease_s,
         )
 
     async def get_command(
@@ -192,3 +207,14 @@ class DeviceConfigService:
         raise DeviceConfigTargetNotFoundError(
             "gateway_id is required for non-gateway config commands"
         )
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _advance_iso(value: str, seconds: int) -> str:
+    return (
+        datetime.fromisoformat(value.replace("Z", "+00:00")) + timedelta(seconds=seconds)
+    ).isoformat()
+

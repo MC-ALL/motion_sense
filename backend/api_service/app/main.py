@@ -40,6 +40,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             default_qos=runtime_settings.device_command.default_qos,
             default_retain=runtime_settings.device_command.default_retain,
             pending_fetch_limit=runtime_settings.device_command.pending_fetch_limit,
+            max_attempts=runtime_settings.device_command.max_attempts,
+            retry_backoff_s=runtime_settings.device_command.retry_backoff_s,
+            delivery_lease_s=runtime_settings.device_command.delivery_lease_s,
+            expire_after_s=runtime_settings.device_command.expire_after_s,
         )
         app.state.event_store = event_store
         app.state.websocket_manager = websocket_manager

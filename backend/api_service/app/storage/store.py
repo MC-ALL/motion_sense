@@ -164,6 +164,10 @@ class Store(Protocol):
         qos: int,
         retain: bool,
         payload: dict,
+        max_attempts: int,
+        retry_backoff_s: int,
+        next_retry_at: str,
+        expires_at: str,
     ) -> DeviceConfigCommandRecord: ...
 
     async def list_pending_device_config_commands(
@@ -171,6 +175,7 @@ class Store(Protocol):
         *,
         gateway_id: str,
         limit: int = 100,
+        delivery_lease_s: int = 15,
     ) -> list[DeviceConfigCommandRecord]: ...
 
     async def get_device_config_command(

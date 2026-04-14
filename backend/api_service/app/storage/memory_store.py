@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
@@ -389,6 +389,10 @@ class EventStore:
         qos: int,
         retain: bool,
         payload: dict,
+        max_attempts: int,
+        retry_backoff_s: int,
+        next_retry_at: str,
+        expires_at: str,
     ) -> DeviceConfigCommandRecord:
         async with self._lock:
             now = _isoformat_from_ts(None)
@@ -403,6 +407,11 @@ class EventStore:
                 retain=retain,
                 payload=payload,
                 status="pending",
+                attempt_count=0,
+                max_attempts=max_attempts,
+                retry_backoff_s=retry_backoff_s,
+                next_retry_at=next_retry_at,
+                expires_at=expires_at,
                 created_at=now,
                 updated_at=now,
             )
@@ -414,15 +423,47 @@ class EventStore:
         *,
         gateway_id: str,
         limit: int = 100,
+        delivery_lease_s: int = 15,
     ) -> list[DeviceConfigCommandRecord]:
         async with self._lock:
-            items = [
-                item
-                for item in self._device_config_commands.values()
-                if item.gateway_id == gateway_id and item.status == "pending"
-            ]
-        items.sort(key=lambda item: (item.created_at, item.command_id))
-        return items[:limit]
+            now = _isoformat_from_ts(None)
+            now_dt = _parse_isoformat(now)
+
+            for command_id, item in list(self._device_config_commands.items()):
+                expired = _expire_command_record(item, now=now, now_dt=now_dt)
+                if expired is not None:
+                    self._device_config_commands[command_id] = expired
+
+            eligible = sorted(
+                [
+                    item
+                    for item in self._device_config_commands.values()
+                    if item.gateway_id == gateway_id
+                    and item.status == "pending"
+                    and _parse_isoformat(item.expires_at) > now_dt
+                    and _parse_isoformat(item.next_retry_at or item.created_at) <= now_dt
+                    and (
+                        item.leased_until is None
+                        or _parse_isoformat(item.leased_until) <= now_dt
+                    )
+                ],
+                key=lambda item: (item.created_at, item.command_id),
+            )[:limit]
+
+            claimed: list[DeviceConfigCommandRecord] = []
+            for item in eligible:
+                updated = item.model_copy(
+                    update={
+                        "attempt_count": item.attempt_count + 1,
+                        "last_attempt_at": now,
+                        "leased_until": _advance_iso(now, delivery_lease_s),
+                        "updated_at": now,
+                    }
+                )
+                self._device_config_commands[item.command_id] = updated
+                claimed.append(updated)
+
+        return claimed
 
     async def get_device_config_command(
         self,
@@ -443,13 +484,35 @@ class EventStore:
             existing = self._device_config_commands.get(command_id)
             if existing is None or existing.gateway_id != gateway_id:
                 return None
+            if existing.status in {"succeeded", "failed", "timed_out"}:
+                return existing
+
+            new_status = result.status
+            next_retry_at = existing.next_retry_at
+            leased_until = None
+
+            if result.status == "failed":
+                reported_at_dt = _parse_isoformat(result.reported_at)
+                if reported_at_dt >= _parse_isoformat(existing.expires_at):
+                    new_status = "timed_out"
+                    next_retry_at = None
+                elif existing.attempt_count >= existing.max_attempts:
+                    new_status = "failed"
+                    next_retry_at = None
+                else:
+                    new_status = "pending"
+                    next_retry_at = _advance_iso(result.reported_at, existing.retry_backoff_s)
+            else:
+                next_retry_at = None
 
             updated = existing.model_copy(
                 update={
-                    "status": result.status,
+                    "status": new_status,
                     "updated_at": result.reported_at,
                     "result_detail": result.detail,
                     "result_payload": result.result_payload,
+                    "next_retry_at": next_retry_at,
+                    "leased_until": leased_until,
                 }
             )
             self._device_config_commands[command_id] = updated
@@ -513,3 +576,28 @@ def _isoformat_from_ts(value: int | None) -> str:
 
 def _parse_isoformat(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _advance_iso(value: str, seconds: int) -> str:
+    return (_parse_isoformat(value) + timedelta(seconds=seconds)).isoformat()
+
+
+def _expire_command_record(
+    item: DeviceConfigCommandRecord,
+    *,
+    now: str,
+    now_dt: datetime,
+) -> DeviceConfigCommandRecord | None:
+    if item.status != "pending":
+        return None
+    if _parse_isoformat(item.expires_at) > now_dt:
+        return None
+    return item.model_copy(
+        update={
+            "status": "timed_out",
+            "updated_at": now,
+            "leased_until": None,
+            "next_retry_at": None,
+            "result_detail": item.result_detail or "command expired before successful delivery",
+        }
+    )

@@ -25,3 +25,7 @@ device_command:
   default_qos: 1
   default_retain: false
   pending_fetch_limit: 100
+  max_attempts: 3
+  retry_backoff_s: 5
+  delivery_lease_s: 15
+  expire_after_s: 300

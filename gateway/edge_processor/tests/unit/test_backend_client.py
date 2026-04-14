@@ -31,6 +31,13 @@ def test_backend_client_fetches_and_reports_gateway_commands() -> None:
                             "retain": False,
                             "payload": {"telemetry_interval_s": 20},
                             "status": "pending",
+                            "attempt_count": 1,
+                            "max_attempts": 3,
+                            "retry_backoff_s": 5,
+                            "last_attempt_at": "2026-04-15T08:00:01Z",
+                            "next_retry_at": "2026-04-15T08:00:00Z",
+                            "leased_until": "2026-04-15T08:00:16Z",
+                            "expires_at": "2026-04-15T08:05:00Z",
                             "created_at": "2026-04-15T08:00:00Z",
                             "updated_at": "2026-04-15T08:00:00Z",
                             "result_detail": None,
@@ -54,6 +61,13 @@ def test_backend_client_fetches_and_reports_gateway_commands() -> None:
                     "retain": False,
                     "payload": {"telemetry_interval_s": 20},
                     "status": "succeeded",
+                    "attempt_count": 1,
+                    "max_attempts": 3,
+                    "retry_backoff_s": 5,
+                    "last_attempt_at": "2026-04-15T08:00:01Z",
+                    "next_retry_at": None,
+                    "leased_until": None,
+                    "expires_at": "2026-04-15T08:05:00Z",
                     "created_at": "2026-04-15T08:00:00Z",
                     "updated_at": "2026-04-15T08:01:00Z",
                     "result_detail": "applied",
@@ -78,6 +92,8 @@ def test_backend_client_fetches_and_reports_gateway_commands() -> None:
         commands = await client.fetch_pending_commands()
         assert len(commands) == 1
         assert commands[0].command_id == "cmd-001"
+        assert commands[0].attempt_count == 1
+        assert commands[0].leased_until is not None
 
         result = GatewayCommandResultRequest(
             status="succeeded",

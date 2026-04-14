@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.settings import RuntimeSettings
 
 
 def test_create_device_config_command_for_existing_device() -> None:
@@ -40,6 +43,13 @@ def test_create_device_config_command_for_existing_device() -> None:
         assert body["topic"] == "gym/gym-gz-01/equipment/eq-001/config"
         assert body["payload"]["target_reps"] == 15
         assert body["status"] == "pending"
+        assert body["attempt_count"] == 0
+        assert body["max_attempts"] == 3
+        assert body["retry_backoff_s"] == 5
+        assert body["last_attempt_at"] is None
+        assert body["leased_until"] is None
+        assert body["next_retry_at"] is not None
+        assert body["expires_at"] is not None
         assert isinstance(body["command_id"], str)
         assert isinstance(body["payload"]["ts"], int)
 
@@ -91,7 +101,16 @@ def test_gateway_can_list_pending_commands_and_report_result() -> None:
             },
         )
         assert create_response.status_code == 200
-        command_id = create_response.json()["command_id"]
+        create_body = create_response.json()
+        command_id = create_body["command_id"]
+        first_reported_at = (
+            datetime.fromisoformat(create_body["created_at"].replace("Z", "+00:00"))
+            + timedelta(seconds=1)
+        ).isoformat()
+        second_reported_at = (
+            datetime.fromisoformat(create_body["created_at"].replace("Z", "+00:00"))
+            + timedelta(seconds=2)
+        ).isoformat()
 
         pending_response = client.get("/api/v1/gateway/gw-002/commands/pending")
         assert pending_response.status_code == 200
@@ -99,6 +118,9 @@ def test_gateway_can_list_pending_commands_and_report_result() -> None:
         assert pending_body["gateway_id"] == "gw-002"
         assert len(pending_body["items"]) == 1
         assert pending_body["items"][0]["command_id"] == command_id
+        assert pending_body["items"][0]["attempt_count"] == 1
+        assert pending_body["items"][0]["last_attempt_at"] is not None
+        assert pending_body["items"][0]["leased_until"] is not None
 
         result_response = client.post(
             f"/api/v1/gateway/gw-002/commands/{command_id}/result",
@@ -120,6 +142,7 @@ def test_gateway_can_list_pending_commands_and_report_result() -> None:
         detail_response = client.get(f"/api/v1/gateway/commands/{command_id}")
         assert detail_response.status_code == 200
         assert detail_response.json()["result_detail"] == "applied"
+        assert detail_response.json()["next_retry_at"] is None
 
 
 def test_gateway_result_rejects_wrong_gateway() -> None:
@@ -147,3 +170,116 @@ def test_gateway_result_rejects_wrong_gateway() -> None:
 
         assert result_response.status_code == 409
         assert "does not belong to this gateway" in result_response.json()["detail"]
+
+
+def test_failed_command_requeues_before_reaching_max_attempts() -> None:
+    settings = RuntimeSettings(
+        device_command={
+            "max_attempts": 2,
+            "retry_backoff_s": 0,
+            "delivery_lease_s": 15,
+            "expire_after_s": 300,
+        }
+    )
+
+    with TestClient(create_app(settings)) as client:
+        create_response = client.post(
+            "/api/v1/devices/env-a/config",
+            json={
+                "gym_id": "gym-gz-01",
+                "gateway_id": "gw-002",
+                "device_type": "env",
+                "config": {"telemetry_interval_s": 20},
+            },
+        )
+        assert create_response.status_code == 200
+        create_body = create_response.json()
+        command_id = create_body["command_id"]
+        first_reported_at = create_body["created_at"]
+        second_reported_at = create_body["created_at"]
+
+        first_pending = client.get("/api/v1/gateway/gw-002/commands/pending")
+        assert first_pending.status_code == 200
+        assert first_pending.json()["items"][0]["attempt_count"] == 1
+
+        first_failed = client.post(
+            f"/api/v1/gateway/gw-002/commands/{command_id}/result",
+            json={
+                "status": "failed",
+                "reported_at": first_reported_at,
+                "detail": "mqtt publish failed",
+            },
+        )
+        assert first_failed.status_code == 200
+        assert first_failed.json()["status"] == "pending"
+        assert first_failed.json()["next_retry_at"] == first_reported_at
+
+        second_pending = client.get("/api/v1/gateway/gw-002/commands/pending")
+        assert second_pending.status_code == 200
+        assert len(second_pending.json()["items"]) == 1
+        assert second_pending.json()["items"][0]["attempt_count"] == 2
+
+        second_failed = client.post(
+            f"/api/v1/gateway/gw-002/commands/{command_id}/result",
+            json={
+                "status": "failed",
+                "reported_at": second_reported_at,
+                "detail": "mqtt publish failed again",
+            },
+        )
+        assert second_failed.status_code == 200
+        assert second_failed.json()["status"] == "failed"
+        assert second_failed.json()["next_retry_at"] is None
+
+        pending_after = client.get("/api/v1/gateway/gw-002/commands/pending")
+        assert pending_after.status_code == 200
+        assert pending_after.json()["items"] == []
+
+
+def test_failed_command_becomes_timed_out_when_reported_after_expiry() -> None:
+    settings = RuntimeSettings(
+        device_command={
+            "max_attempts": 3,
+            "retry_backoff_s": 0,
+            "delivery_lease_s": 15,
+            "expire_after_s": 60,
+        }
+    )
+
+    with TestClient(create_app(settings)) as client:
+        create_response = client.post(
+            "/api/v1/devices/env-a/config",
+            json={
+                "gym_id": "gym-gz-01",
+                "gateway_id": "gw-002",
+                "device_type": "env",
+                "config": {"telemetry_interval_s": 20},
+            },
+        )
+        assert create_response.status_code == 200
+        create_body = create_response.json()
+        command_id = create_body["command_id"]
+        expires_at = create_body["expires_at"]
+
+        pending_response = client.get("/api/v1/gateway/gw-002/commands/pending")
+        assert pending_response.status_code == 200
+        assert len(pending_response.json()["items"]) == 1
+
+        reported_at = (
+            datetime.fromisoformat(expires_at.replace("Z", "+00:00")) + timedelta(seconds=1)
+        ).isoformat()
+        failed_response = client.post(
+            f"/api/v1/gateway/gw-002/commands/{command_id}/result",
+            json={
+                "status": "failed",
+                "reported_at": reported_at,
+                "detail": "delivery expired",
+            },
+        )
+        assert failed_response.status_code == 200
+        assert failed_response.json()["status"] == "timed_out"
+        assert failed_response.json()["next_retry_at"] is None
+
+        detail_response = client.get(f"/api/v1/gateway/commands/{command_id}")
+        assert detail_response.status_code == 200
+        assert detail_response.json()["status"] == "timed_out"

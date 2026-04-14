@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 DeviceType = Literal["wristband", "equipment", "env", "gateway"]
-CommandStatus = Literal["pending", "succeeded", "failed"]
+CommandStatus = Literal["pending", "succeeded", "failed", "timed_out"]
 
 
 class DeviceConfigPublishRequest(BaseModel):
@@ -29,6 +29,13 @@ class DeviceConfigCommandRecord(BaseModel):
     retain: bool
     payload: dict[str, Any]
     status: CommandStatus
+    attempt_count: int = 0
+    max_attempts: int
+    retry_backoff_s: int
+    last_attempt_at: str | None = None
+    next_retry_at: str | None = None
+    leased_until: str | None = None
+    expires_at: str
     created_at: str
     updated_at: str
     result_detail: str | None = None

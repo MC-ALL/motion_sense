@@ -42,6 +42,10 @@ class DeviceCommandSettings(BaseModel):
     default_qos: int = 1
     default_retain: bool = False
     pending_fetch_limit: int = 100
+    max_attempts: int = 3
+    retry_backoff_s: int = 5
+    delivery_lease_s: int = 15
+    expire_after_s: int = 300
 
 
 class RuntimeSettings(BaseModel):
@@ -117,3 +121,11 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         device_command["default_retain"] = value.lower() in {"1", "true", "yes", "on"}
     if value := os.environ.get("BACKEND_COMMAND_PENDING_FETCH_LIMIT"):
         device_command["pending_fetch_limit"] = int(value)
+    if value := os.environ.get("BACKEND_COMMAND_MAX_ATTEMPTS"):
+        device_command["max_attempts"] = int(value)
+    if value := os.environ.get("BACKEND_COMMAND_RETRY_BACKOFF_S"):
+        device_command["retry_backoff_s"] = int(value)
+    if value := os.environ.get("BACKEND_COMMAND_DELIVERY_LEASE_S"):
+        device_command["delivery_lease_s"] = int(value)
+    if value := os.environ.get("BACKEND_COMMAND_EXPIRE_AFTER_S"):
+        device_command["expire_after_s"] = int(value)
