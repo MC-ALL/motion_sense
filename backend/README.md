@@ -14,6 +14,7 @@ Current backend work lives under `backend/api_service/` and focuses on the Sprin
 - `GET /api/v1/telemetry/env/{id}/aggregate`
 - `GET /api/v1/wristband/{id}/bindings`
 - `POST /api/v1/alerts/batch-ack`
+- `POST /api/v1/devices/{id}/config`
 - `GET /healthz`
 - `GET /api/ws`
 
@@ -73,6 +74,7 @@ Remaining risks:
 
 - Redis realtime has been verified with a single backend instance; multi-instance fan-out is not yet covered by automated integration tests
 - auth, JWT blacklist, and AI report generation are still pending implementation
+- device config publish currently covers MQTT topic publishing only; downstream device ack/trace flow is not implemented yet
 
 Run unit tests in a one-off container:
 
