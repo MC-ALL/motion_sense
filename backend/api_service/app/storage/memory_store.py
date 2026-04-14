@@ -3,7 +3,14 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
-from app.models.ingest import AlertRecord, BindingEventRecord, DeviceSummary, TelemetryRecord
+from app.models.ingest import (
+    AlertRecord,
+    BindingEventRecord,
+    DeviceSummary,
+    EnvTelemetryAggregateRecord,
+    TelemetryRecord,
+)
+from app.storage.telemetry_aggregate import aggregate_env_records
 
 
 class EventStore:
@@ -193,6 +200,19 @@ class EventStore:
                     return updated
         return None
 
+    async def batch_ack_alerts(self, *, alert_ids: list[int]) -> list[AlertRecord]:
+        updated: list[AlertRecord] = []
+        async with self._lock:
+            id_set = set(alert_ids)
+            for index, alert in enumerate(self._alerts):
+                if alert.id in id_set and not alert.is_ack:
+                    patched = alert.model_copy(update={"is_ack": True})
+                    self._alerts[index] = patched
+                    updated.append(patched)
+                elif alert.id in id_set:
+                    updated.append(alert)
+        return sorted(updated, key=lambda item: item.id)
+
     async def list_telemetry(
         self,
         *,
@@ -239,6 +259,26 @@ class EventStore:
             items = [item for item in items if _parse_isoformat(item.ts) <= end_ts]
 
         return items[offset : offset + limit]
+
+    async def aggregate_env_telemetry(
+        self,
+        *,
+        device_id: str,
+        interval: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[EnvTelemetryAggregateRecord]:
+        records = await self.list_telemetry(
+            device_type="env",
+            device_id=device_id,
+            start=start,
+            end=end,
+            limit=100000,
+            offset=0,
+        )
+        return aggregate_env_records(records, interval, limit=limit, offset=offset)
 
 
 def coerce_online(status: str) -> bool:

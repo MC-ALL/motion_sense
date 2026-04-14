@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from app.models.ingest import AlertRecord, BindingEventRecord, DeviceSummary, TelemetryRecord
+from app.models.ingest import (
+    AlertRecord,
+    BindingEventRecord,
+    DeviceSummary,
+    EnvTelemetryAggregateRecord,
+    TelemetryRecord,
+)
 
 
 class Store(Protocol):
@@ -86,6 +92,12 @@ class Store(Protocol):
         alert_id: int,
     ) -> AlertRecord | None: ...
 
+    async def batch_ack_alerts(
+        self,
+        *,
+        alert_ids: list[int],
+    ) -> list[AlertRecord]: ...
+
     async def list_telemetry(
         self,
         *,
@@ -106,3 +118,14 @@ class Store(Protocol):
         limit: int = 1000,
         offset: int = 0,
     ) -> list[BindingEventRecord]: ...
+
+    async def aggregate_env_telemetry(
+        self,
+        *,
+        device_id: str,
+        interval: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[EnvTelemetryAggregateRecord]: ...

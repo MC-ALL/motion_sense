@@ -11,7 +11,9 @@ Current backend work lives under `backend/api_service/` and focuses on the Sprin
 - `GET /api/v1/telemetry/wristband/{id}`
 - `GET /api/v1/telemetry/equipment/{id}`
 - `GET /api/v1/telemetry/env/{id}`
+- `GET /api/v1/telemetry/env/{id}/aggregate`
 - `GET /api/v1/wristband/{id}/bindings`
+- `POST /api/v1/alerts/batch-ack`
 - `GET /healthz`
 - `GET /api/ws`
 
@@ -43,6 +45,8 @@ Verified locally on this machine:
 - `PATCH /api/v1/alerts/{id}/ack` updates persisted alert state
 - `GET /api/v1/telemetry/equipment/{id}` returns persisted history rows
 - `GET /api/v1/wristband/{id}/bindings` returns persisted binding events
+- `GET /api/v1/telemetry/env/{id}/aggregate` returns persisted interval aggregates
+- `POST /api/v1/alerts/batch-ack` updates multiple persisted alerts in one request
 
 Apple `container` note:
 

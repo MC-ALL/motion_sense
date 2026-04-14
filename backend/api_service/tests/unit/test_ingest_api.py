@@ -94,6 +94,7 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
         ack_response = client.patch("/api/v1/alerts/1/ack")
         equipment_telemetry_response = client.get("/api/v1/telemetry/equipment/eq-001")
         bindings_response = client.get("/api/v1/wristband/wb-001/bindings")
+        batch_ack_response = client.post("/api/v1/alerts/batch-ack", json={"ids": [1]})
 
         assert device_detail_response.status_code == 200
         assert device_detail_response.json()["device_id"] == "eq-001"
@@ -107,3 +108,55 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
         assert bindings_response.status_code == 200
         assert bindings_response.json()[0]["wristband_id"] == "wb-001"
         assert bindings_response.json()[0]["equipment_id"] == "eq-001"
+        assert batch_ack_response.status_code == 200
+        assert batch_ack_response.json()["updated"] == 1
+        assert batch_ack_response.json()["items"][0]["id"] == 1
+
+
+def test_env_telemetry_aggregate() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "2026-04-14T16:00:00Z",
+                "items": [
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/env/env-a/telemetry",
+                        "payload": {
+                            "ts": 1712347200,
+                            "temperature_c": 26.0,
+                            "co2_ppm": 800,
+                            "pm25_ugm3": 32.5,
+                        },
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/env/env-a/telemetry",
+                        "payload": {
+                            "ts": 1712347500,
+                            "temperature_c": 28.0,
+                            "co2_ppm": 1000,
+                            "pm25_ugm3": 40.5,
+                        },
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+
+        aggregate_response = client.get(
+            "/api/v1/telemetry/env/env-a/aggregate",
+            params={"interval": "1h"},
+        )
+
+        assert aggregate_response.status_code == 200
+        payload = aggregate_response.json()
+        assert payload[0]["count"] == 2
+        assert "ts" not in payload[0]["metrics"]
+        assert payload[0]["metrics"]["temperature_c"]["min"] == 26.0
+        assert payload[0]["metrics"]["temperature_c"]["max"] == 28.0
+        assert payload[0]["metrics"]["temperature_c"]["avg"] == 27.0
+        assert payload[0]["metrics"]["co2_ppm"]["avg"] == 900.0

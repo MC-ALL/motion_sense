@@ -48,12 +48,34 @@ class AlertRecord(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class AlertBatchAckRequest(BaseModel):
+    ids: list[int] = Field(default_factory=list)
+
+
+class AlertBatchAckResult(BaseModel):
+    updated: int
+    items: list[AlertRecord] = Field(default_factory=list)
+
+
 class TelemetryRecord(BaseModel):
     ts: str
     gym_id: str
     device_type: str
     device_id: str
     payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class MetricAggregate(BaseModel):
+    min: float
+    max: float
+    avg: float
+
+
+class EnvTelemetryAggregateRecord(BaseModel):
+    bucket_start: str
+    bucket_end: str
+    count: int
+    metrics: dict[str, MetricAggregate] = Field(default_factory=dict)
 
 
 class BindingEventRecord(BaseModel):

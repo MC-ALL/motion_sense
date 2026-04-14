@@ -7,8 +7,15 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
-from app.models.ingest import AlertRecord, BindingEventRecord, DeviceSummary, TelemetryRecord
+from app.models.ingest import (
+    AlertRecord,
+    BindingEventRecord,
+    DeviceSummary,
+    EnvTelemetryAggregateRecord,
+    TelemetryRecord,
+)
 from app.settings import RuntimeSettings
+from app.storage.telemetry_aggregate import aggregate_env_records
 
 
 class PostgresStore:
@@ -360,6 +367,26 @@ class PostgresStore:
             return None
         return _alert_record_from_row(row)
 
+    async def batch_ack_alerts(self, *, alert_ids: list[int]) -> list[AlertRecord]:
+        if not alert_ids:
+            return []
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE alerts
+                    SET is_ack = TRUE
+                    WHERE id = ANY(%s)
+                    RETURNING id, gym_id, device_type, device_id, level, code, message, priority, is_ack, triggered_at, payload
+                    """,
+                    (alert_ids,),
+                )
+                rows = await cursor.fetchall()
+            await connection.commit()
+
+        return sorted((_alert_record_from_row(row) for row in rows), key=lambda item: item.id)
+
     async def list_telemetry(
         self,
         *,
@@ -458,6 +485,26 @@ class PostgresStore:
             )
             for row in rows
         ]
+
+    async def aggregate_env_telemetry(
+        self,
+        *,
+        device_id: str,
+        interval: str,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[EnvTelemetryAggregateRecord]:
+        records = await self.list_telemetry(
+            device_type="env",
+            device_id=device_id,
+            start=start,
+            end=end,
+            limit=100000,
+            offset=0,
+        )
+        return aggregate_env_records(records, interval, limit=limit, offset=offset)
 
     async def _bootstrap_schema(self) -> None:
         async with self._pool.connection() as connection:

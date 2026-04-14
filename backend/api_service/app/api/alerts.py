@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.deps import get_event_store
-from app.models.ingest import AlertRecord
+from app.models.ingest import AlertBatchAckRequest, AlertBatchAckResult, AlertRecord
 from app.storage.store import Store
 
 
@@ -39,3 +39,12 @@ async def ack_alert(
     if alert is None:
         raise HTTPException(status_code=404, detail="alert not found")
     return alert
+
+
+@router.post("/batch-ack", response_model=AlertBatchAckResult)
+async def batch_ack_alerts(
+    payload: AlertBatchAckRequest,
+    store: Store = Depends(get_event_store),
+) -> AlertBatchAckResult:
+    items = await store.batch_ack_alerts(alert_ids=payload.ids)
+    return AlertBatchAckResult(updated=len(items), items=items)
