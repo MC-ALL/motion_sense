@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from uuid import uuid4
 
+from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
     AlertRecord,
     BindingEventRecord,
@@ -27,6 +29,7 @@ class EventStore:
         self._alerts: list[AlertRecord] = []
         self._bindings: list[BindingEventRecord] = []
         self._telemetry: list[TelemetryRecord] = []
+        self._device_config_commands: dict[str, DeviceConfigCommandRecord] = {}
         self._gateway_health_components: dict[tuple[str, str], GatewayHealthComponentRecord] = {}
         self._next_alert_id = 1
         self._next_binding_id = 1
@@ -374,6 +377,83 @@ class EventStore:
         if not has_gateway:
             return None
         return self._build_gateway_health_detail(gateway_id)
+
+    async def create_device_config_command(
+        self,
+        *,
+        gateway_id: str,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+        topic: str,
+        qos: int,
+        retain: bool,
+        payload: dict,
+    ) -> DeviceConfigCommandRecord:
+        async with self._lock:
+            now = _isoformat_from_ts(None)
+            record = DeviceConfigCommandRecord(
+                command_id=str(uuid4()),
+                gateway_id=gateway_id,
+                gym_id=gym_id,
+                device_type=device_type,
+                device_id=device_id,
+                topic=topic,
+                qos=qos,
+                retain=retain,
+                payload=payload,
+                status="pending",
+                created_at=now,
+                updated_at=now,
+            )
+            self._device_config_commands[record.command_id] = record
+            return record
+
+    async def list_pending_device_config_commands(
+        self,
+        *,
+        gateway_id: str,
+        limit: int = 100,
+    ) -> list[DeviceConfigCommandRecord]:
+        async with self._lock:
+            items = [
+                item
+                for item in self._device_config_commands.values()
+                if item.gateway_id == gateway_id and item.status == "pending"
+            ]
+        items.sort(key=lambda item: (item.created_at, item.command_id))
+        return items[:limit]
+
+    async def get_device_config_command(
+        self,
+        *,
+        command_id: str,
+    ) -> DeviceConfigCommandRecord | None:
+        async with self._lock:
+            return self._device_config_commands.get(command_id)
+
+    async def update_device_config_command_result(
+        self,
+        *,
+        gateway_id: str,
+        command_id: str,
+        result: GatewayCommandResultRequest,
+    ) -> DeviceConfigCommandRecord | None:
+        async with self._lock:
+            existing = self._device_config_commands.get(command_id)
+            if existing is None or existing.gateway_id != gateway_id:
+                return None
+
+            updated = existing.model_copy(
+                update={
+                    "status": result.status,
+                    "updated_at": result.reported_at,
+                    "result_detail": result.detail,
+                    "result_payload": result.result_payload,
+                }
+            )
+            self._device_config_commands[command_id] = updated
+            return updated
 
     def _build_gateway_health_detail(self, gateway_id: str) -> GatewayHealthDetail:
         components = sorted(

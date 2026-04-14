@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
+from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
     AlertRecord,
     BindingEventRecord,
@@ -622,6 +623,141 @@ class PostgresStore:
             return None
         return details[0]
 
+    async def create_device_config_command(
+        self,
+        *,
+        gateway_id: str,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+        topic: str,
+        qos: int,
+        retain: bool,
+        payload: dict,
+    ) -> DeviceConfigCommandRecord:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO device_config_commands (
+                        gateway_id,
+                        gym_id,
+                        device_type,
+                        device_id,
+                        topic,
+                        qos,
+                        retain,
+                        payload,
+                        status,
+                        result_payload
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', '{}'::jsonb)
+                    RETURNING command_id, gateway_id, gym_id, device_type, device_id, topic,
+                              qos, retain, payload, status, created_at, updated_at,
+                              result_detail, result_payload
+                    """,
+                    (
+                        gateway_id,
+                        gym_id,
+                        device_type,
+                        device_id,
+                        topic,
+                        qos,
+                        retain,
+                        Jsonb(payload),
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return _device_config_command_from_row(row)
+
+    async def list_pending_device_config_commands(
+        self,
+        *,
+        gateway_id: str,
+        limit: int = 100,
+    ) -> list[DeviceConfigCommandRecord]:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT command_id, gateway_id, gym_id, device_type, device_id, topic,
+                           qos, retain, payload, status, created_at, updated_at,
+                           result_detail, result_payload
+                    FROM device_config_commands
+                    WHERE gateway_id = %s
+                      AND status = 'pending'
+                    ORDER BY created_at ASC, command_id ASC
+                    LIMIT %s
+                    """,
+                    (gateway_id, limit),
+                )
+                rows = await cursor.fetchall()
+
+        return [_device_config_command_from_row(row) for row in rows]
+
+    async def get_device_config_command(
+        self,
+        *,
+        command_id: str,
+    ) -> DeviceConfigCommandRecord | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT command_id, gateway_id, gym_id, device_type, device_id, topic,
+                           qos, retain, payload, status, created_at, updated_at,
+                           result_detail, result_payload
+                    FROM device_config_commands
+                    WHERE command_id = %s
+                    """,
+                    (command_id,),
+                )
+                row = await cursor.fetchone()
+
+        if row is None:
+            return None
+        return _device_config_command_from_row(row)
+
+    async def update_device_config_command_result(
+        self,
+        *,
+        gateway_id: str,
+        command_id: str,
+        result: GatewayCommandResultRequest,
+    ) -> DeviceConfigCommandRecord | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE device_config_commands
+                    SET status = %s,
+                        updated_at = %s,
+                        result_detail = %s,
+                        result_payload = %s
+                    WHERE command_id = %s
+                      AND gateway_id = %s
+                    RETURNING command_id, gateway_id, gym_id, device_type, device_id, topic,
+                              qos, retain, payload, status, created_at, updated_at,
+                              result_detail, result_payload
+                    """,
+                    (
+                        result.status,
+                        _coerce_timestamptz(result.reported_at),
+                        result.detail,
+                        Jsonb(result.result_payload),
+                        command_id,
+                        gateway_id,
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            return None
+        return _device_config_command_from_row(row)
+
     async def _list_gateway_health_details(
         self,
         *,
@@ -666,6 +802,7 @@ class PostgresStore:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
+                await cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
                 await cursor.execute(
                     """
                     CREATE TABLE IF NOT EXISTS devices (
@@ -732,6 +869,26 @@ class PostgresStore:
                     )
                     """
                 )
+                await cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS device_config_commands (
+                        command_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        gateway_id TEXT NOT NULL,
+                        gym_id TEXT NOT NULL,
+                        device_type TEXT NOT NULL,
+                        device_id TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        qos INTEGER NOT NULL,
+                        retain BOOLEAN NOT NULL,
+                        payload JSONB NOT NULL,
+                        status TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        result_detail TEXT,
+                        result_payload JSONB NOT NULL DEFAULT '{}'::jsonb
+                    )
+                    """
+                )
                 for table_name in (
                     "wristband_telemetry",
                     "equipment_telemetry",
@@ -784,6 +941,12 @@ class PostgresStore:
                     ON gateway_component_health (gateway_id, reported_at DESC)
                     """
                 )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_device_config_commands_gateway_pending
+                    ON device_config_commands (gateway_id, status, created_at ASC)
+                    """
+                )
             await connection.commit()
 
 
@@ -819,6 +982,25 @@ def _alert_record_from_row(row: dict[str, Any]) -> AlertRecord:
         is_ack=row["is_ack"],
         triggered_at=row["triggered_at"].isoformat(),
         payload=payload,
+    )
+
+
+def _device_config_command_from_row(row: dict[str, Any]) -> DeviceConfigCommandRecord:
+    return DeviceConfigCommandRecord(
+        command_id=str(row["command_id"]),
+        gateway_id=row["gateway_id"],
+        gym_id=row["gym_id"],
+        device_type=row["device_type"],
+        device_id=row["device_id"],
+        topic=row["topic"],
+        qos=row["qos"],
+        retain=row["retain"],
+        payload=row.get("payload") or {},
+        status=row["status"],
+        created_at=row["created_at"].isoformat(),
+        updated_at=row["updated_at"].isoformat(),
+        result_detail=row["result_detail"],
+        result_payload=row.get("result_payload") or {},
     )
 
 

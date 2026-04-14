@@ -20,13 +20,8 @@ redis:
   port: 6379
   db: 0
   channel: motion_sense:realtime_events
-mqtt:
-  backend: disabled
-  host: mosquitto
-  port: 1883
-  username: null
-  password: null
-  client_id: backend-api-service
+device_command:
   topic_prefix: gym
   default_qos: 1
   default_retain: false
+  pending_fetch_limit: 100

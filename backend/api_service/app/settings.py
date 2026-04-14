@@ -37,16 +37,11 @@ class RedisSettings(BaseModel):
         return f"redis://{self.host}:{self.port}/{self.db}"
 
 
-class MqttSettings(BaseModel):
-    backend: str = "disabled"
-    host: str = "mosquitto"
-    port: int = 1883
-    username: str | None = None
-    password: str | None = None
-    client_id: str = "backend-api-service"
+class DeviceCommandSettings(BaseModel):
     topic_prefix: str = "gym"
     default_qos: int = 1
     default_retain: bool = False
+    pending_fetch_limit: int = 100
 
 
 class RuntimeSettings(BaseModel):
@@ -60,7 +55,7 @@ class RuntimeSettings(BaseModel):
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
-    mqtt: MqttSettings = Field(default_factory=MqttSettings)
+    device_command: DeviceCommandSettings = Field(default_factory=DeviceCommandSettings)
 
 
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSettings:
@@ -80,7 +75,7 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSetti
 def _apply_env_overrides(raw: dict[str, Any]) -> None:
     database = raw.setdefault("database", {})
     redis = raw.setdefault("redis", {})
-    mqtt = raw.setdefault("mqtt", {})
+    device_command = raw.setdefault("device_command", {})
 
     if value := os.environ.get("BACKEND_API_HOST"):
         raw["host"] = value
@@ -114,21 +109,11 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         redis["db"] = int(value)
     if value := os.environ.get("BACKEND_REDIS_CHANNEL"):
         redis["channel"] = value
-    if value := os.environ.get("BACKEND_MQTT_BACKEND"):
-        mqtt["backend"] = value
-    if value := os.environ.get("BACKEND_MQTT_HOST"):
-        mqtt["host"] = value
-    if value := os.environ.get("BACKEND_MQTT_PORT"):
-        mqtt["port"] = int(value)
-    if value := os.environ.get("BACKEND_MQTT_USERNAME"):
-        mqtt["username"] = value
-    if value := os.environ.get("BACKEND_MQTT_PASSWORD"):
-        mqtt["password"] = value
-    if value := os.environ.get("BACKEND_MQTT_CLIENT_ID"):
-        mqtt["client_id"] = value
-    if value := os.environ.get("BACKEND_MQTT_TOPIC_PREFIX"):
-        mqtt["topic_prefix"] = value
-    if value := os.environ.get("BACKEND_MQTT_DEFAULT_QOS"):
-        mqtt["default_qos"] = int(value)
-    if value := os.environ.get("BACKEND_MQTT_DEFAULT_RETAIN"):
-        mqtt["default_retain"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("BACKEND_COMMAND_TOPIC_PREFIX"):
+        device_command["topic_prefix"] = value
+    if value := os.environ.get("BACKEND_COMMAND_DEFAULT_QOS"):
+        device_command["default_qos"] = int(value)
+    if value := os.environ.get("BACKEND_COMMAND_DEFAULT_RETAIN"):
+        device_command["default_retain"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("BACKEND_COMMAND_PENDING_FETCH_LIMIT"):
+        device_command["pending_fetch_limit"] = int(value)

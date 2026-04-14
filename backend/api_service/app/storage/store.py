@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
     AlertRecord,
     BindingEventRecord,
@@ -151,3 +152,37 @@ class Store(Protocol):
         *,
         gateway_id: str,
     ) -> GatewayHealthDetail | None: ...
+
+    async def create_device_config_command(
+        self,
+        *,
+        gateway_id: str,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+        topic: str,
+        qos: int,
+        retain: bool,
+        payload: dict,
+    ) -> DeviceConfigCommandRecord: ...
+
+    async def list_pending_device_config_commands(
+        self,
+        *,
+        gateway_id: str,
+        limit: int = 100,
+    ) -> list[DeviceConfigCommandRecord]: ...
+
+    async def get_device_config_command(
+        self,
+        *,
+        command_id: str,
+    ) -> DeviceConfigCommandRecord | None: ...
+
+    async def update_device_config_command_result(
+        self,
+        *,
+        gateway_id: str,
+        command_id: str,
+        result: GatewayCommandResultRequest,
+    ) -> DeviceConfigCommandRecord | None: ...

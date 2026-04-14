@@ -7,7 +7,6 @@ from app.models.device_config import DeviceConfigPublishRequest, DeviceConfigPub
 from app.models.ingest import DeviceSummary
 from app.services.device_config_service import (
     DeviceConfigConflictError,
-    DeviceConfigPublisherUnavailableError,
     DeviceConfigService,
     DeviceConfigTargetNotFoundError,
 )
@@ -51,5 +50,3 @@ async def publish_device_config(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except DeviceConfigConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except DeviceConfigPublisherUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc

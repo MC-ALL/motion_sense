@@ -9,7 +9,6 @@ description = "Async backend API service for the motion_sense platform"
 readme = "README.md"
 requires-python = ">=3.13,<3.15"
 dependencies = [
-  "aiomqtt==2.4.0",
   "fastapi==0.115.12",
   "pydantic==2.11.4",
   "psycopg[binary,pool]==3.3.3",
