@@ -1,25 +1,35 @@
-# API Service
+# API 服务
 
-Async FastAPI backend for Sprint 1.
+这是第 1 迭代的异步 FastAPI 后台服务。
 
-Current implemented scope:
+## 当前实现范围
 
-- batch ingest: `POST /api/v1/ingest/batch`
-- device, alert, telemetry, and binding history query APIs
-- WebSocket endpoint: `GET /api/ws`
-- device config publish: `POST /api/v1/devices/{id}/config`
-- storage backends: `memory`, `postgres`
-- realtime backends: `local`, `redis`
+- 批量入库：`POST /api/v1/ingest/batch`
+- 设备、告警、遥测、绑定历史查询接口
+- WebSocket 实时接口：`GET /api/ws`
+- 设备配置下发：`POST /api/v1/devices/{id}/config`
+- 存储后端：`memory`、`postgres`
+- 实时广播后端：`local`、`redis`
 
-Device config publish behavior:
+## 路由结构
 
-- MQTT publish backend is configured by `mqtt.backend` in runtime settings.
-- default is `disabled` (API returns `503` for publish requests).
-- set `mqtt.backend: mqtt` and broker connection fields to enable publish.
-- target topic format: `gym/{gym_id}/{device_type}/{device_id}/config`.
+- `/healthz`：健康检查
+- `/api/v1/ingest/*`：网关批量上报入口
+- `/api/v1/devices/*`：设备查询与配置下发
+- `/api/v1/alerts/*`：告警查询与确认
+- `/api/v1/telemetry/*`：历史遥测与环境聚合
+- `/api/v1/wristband/*`：手环绑定历史
+- `/api/ws`：实时推送
 
-Runtime config file generation:
+## 配置下发行为
 
-- first start copies `backend/deployment/api_service/defaults/default_app_settings.yaml`
-  to `/runtime/config/backend/api_service/app_settings.yaml`
-- later edits apply on next `api_service` restart
+- MQTT 发布后端由运行配置中的 `mqtt.backend` 控制
+- 默认值为 `disabled`，此时配置下发接口会返回 `503`
+- 设置 `mqtt.backend: mqtt` 并提供 Broker 连接参数后可启用
+- 目标 topic 格式为 `gym/{gym_id}/{device_type}/{device_id}/config`
+
+## 运行配置文件生成
+
+- 首次启动会将 `backend/deployment/api_service/defaults/default_app_settings.yaml`
+  复制到 `/runtime/config/backend/api_service/app_settings.yaml`
+- 后续修改在下次 `api_service` 重启后生效

@@ -1,3 +1,3 @@
-# Edge Processor
+# 边缘处理服务
 
-Async Python 3.13 service for gateway-side ingestion, buffering, rule evaluation, and backend batch upload.
+这是网关侧的异步 Python 3.13 服务，负责 MQTT 数据接入、本地缓冲、规则判定，以及向后台批量上传。

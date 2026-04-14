@@ -1,16 +1,16 @@
-# Apple Container Local Testing
+# Apple Container 本地测试说明
 
-This directory documents how to test the gateway stack on macOS with Apple's `container` CLI.
+本目录说明如何在 macOS 上使用 Apple `container` CLI 测试网关栈。
 
-## Prerequisites
+## 前置条件
 
-1. Start the Apple container system service once:
+1. 首次启动 Apple container 系统服务：
 
 ```bash
 container system start
 ```
 
-2. Create runtime directories:
+2. 创建运行时目录：
 
 ```bash
 mkdir -p gateway/deployment/compose/runtime/config
@@ -18,15 +18,17 @@ mkdir -p gateway/deployment/compose/runtime/secrets
 mkdir -p gateway/deployment/compose/runtime/certs
 ```
 
-3. Provide `gateway/deployment/compose/runtime/secrets/mosquitto.passwd` before starting Mosquitto.
-   Or run `gateway/deployment/container/prepare_runtime.sh` after the local Mosquitto image is built.
+3. 启动 Mosquitto 前，准备 `gateway/deployment/compose/runtime/secrets/mosquitto.passwd`
+   或在本地 Mosquitto 镜像构建完成后执行 `gateway/deployment/container/prepare_runtime.sh`
 
-4. `mosquitto` will generate `runtime/config/mosquitto/acl.conf` on first start from the image template.
-   If you change `MOSQUITTO_USER` later, delete or update the generated ACL file before restarting.
+4. `mosquitto` 首次启动会从镜像模板生成 `runtime/config/mosquitto/acl.conf`
+   如果之后修改了 `MOSQUITTO_USER`，需要在重启前删除或更新该 ACL 文件
 
-## Build with registry mirror
+## 使用镜像源构建
 
-Current verified macOS mirror baseline is `dockerproxy.net`, without the `https://` prefix in image references:
+当前在 macOS 上已验证可用的镜像源基线为 `dockerproxy.net`，镜像引用中不要带 `https://` 前缀。
+
+构建 `edge_processor`：
 
 ```bash
 container build \
@@ -35,7 +37,7 @@ container build \
   -f gateway/deployment/edge_processor/Dockerfile .
 ```
 
-`mosquitto`:
+构建 `mosquitto`：
 
 ```bash
 container build \
@@ -44,7 +46,7 @@ container build \
   -f gateway/deployment/mosquitto/Dockerfile .
 ```
 
-`influxdb`:
+构建 `influxdb`：
 
 ```bash
 container build \
@@ -53,9 +55,9 @@ container build \
   -f gateway/deployment/influxdb/Dockerfile .
 ```
 
-## Run a single service locally
+## 单服务运行
 
-Example: run `edge_processor` only.
+例如仅运行 `edge_processor`：
 
 ```bash
 container run \
@@ -67,21 +69,21 @@ container run \
   motion-sense-edge-processor-local
 ```
 
-Inspect logs:
+查看日志：
 
 ```bash
 container logs edge-test
 ```
 
-Stop it:
+停止服务：
 
 ```bash
 container stop edge-test
 ```
 
-## Run the full local stack
+## 启动完整本地栈
 
-From the repository root:
+在仓库根目录执行：
 
 ```bash
 sh gateway/deployment/container/build_local_images.sh
@@ -89,13 +91,13 @@ sh gateway/deployment/container/prepare_runtime.sh
 sh gateway/deployment/container/start_local_stack.sh
 ```
 
-Publish a sample telemetry message:
+发送一条示例 telemetry：
 
 ```bash
 sh gateway/deployment/container/publish_sample_telemetry.sh
 ```
 
-Run gateway unit tests in a one-off container:
+运行网关单元测试：
 
 ```bash
 container run --remove \
@@ -104,25 +106,21 @@ container run --remove \
   -lc "pip install --no-cache-dir pytest==8.3.5 >/tmp/pip.log 2>&1 && cd /workspace/gateway/edge_processor && PYTHONPATH=/workspace/gateway/edge_processor pytest tests/unit -q"
 ```
 
-Stop the local stack:
+停止本地栈：
 
 ```bash
 sh gateway/deployment/container/stop_local_stack.sh
 ```
 
-## Notes
+## 说明
 
-- The Apple `container` CLI supports image build, run, volumes, networks, bind mounts, port publishing, and env files.
-- It does not provide a Compose-compatible orchestration layer in this toolchain, so multi-service local testing must be done service by service or with project-specific helper automation later.
-- The default local stack now starts the real backend API skeleton (`motion-sense-backend-api-local`) instead of the mock backend image, so gateway and backend can evolve on one test path.
-- In local stack mode, `start_local_stack.sh` resolves backend and broker container IPs and injects them into `edge_processor` via environment variables, because container-name DNS resolution is not available by default in this setup.
-- In local stack mode, `start_local_stack.sh` also injects MQTT credentials from `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`.
-- Generated config files appear under the mounted `runtime/config/...` directories after first start.
-- `influxdb` also generates `runtime/config/influxdb/admin_token.txt` on first start; `edge_processor` reads this token from the shared runtime mount for authenticated query/write access.
-- Verified locally on this machine: MQTT telemetry can flow `mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> backend/api_service`.
-- Verified locally on this machine: `edge_processor` can append cached events into InfluxDB, read pending events back, and remove them from replay results after writing `edge_delivery_log`.
-- Known remaining risk: bind-mounted `acl.conf` keeps host ownership and mode in Apple `container`, so Mosquitto 2.1.2 logs a warning. It still works now, but Linux deployment must add an explicit permission-initialization step before production rollout.
-- Verified locally on this machine:
-  - `dockerproxy.net/library/python:3.13-slim` builds successfully with `container build`
-  - `dockerproxy.net/library/eclipse-mosquitto:2.1.2-alpine` builds successfully with `container build`
-  - `dockerproxy.net/library/influxdb:3.8.0-core` builds successfully with `container build`
+- Apple `container` CLI 支持镜像构建、容器运行、卷、网络、绑定挂载、端口映射和环境文件
+- 当前工具链不提供 Compose 兼容的编排层，因此多服务本地联调需要逐个服务启动，或使用仓库自带辅助脚本
+- 当前本地栈默认启动真实后台 API 镜像 `motion-sense-backend-api-local`，不再默认使用 mock 后台
+- `start_local_stack.sh` 会解析后台与 Broker 容器 IP，并通过环境变量注入 `edge_processor`
+- `start_local_stack.sh` 也会注入 `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`
+- 首次启动后，生成的配置文件会出现在挂载的 `runtime/config/...` 目录中
+- `influxdb` 首次启动还会生成 `runtime/config/influxdb/admin_token.txt`，供 `edge_processor` 通过共享挂载读取
+- 当前机器上已验证链路：`mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> backend/api_service`
+- 当前机器上已验证：`edge_processor` 能写入 InfluxDB 缓冲、回读待补发事件，并在写入 `edge_delivery_log` 后不再重复补发
+- 已知风险：Apple `container` 下绑定挂载的 `acl.conf` 保留宿主机所有者和权限，Mosquitto 2.1.2 会给出告警。当前功能可用，但 Linux 生产部署仍需显式权限初始化

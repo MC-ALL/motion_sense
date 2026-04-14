@@ -1,55 +1,69 @@
-# Gateway
+# 网关端
 
-Gateway service stack for `04-网关端`.
+本目录对应 `04-网关端` 的服务栈与部署资产。
 
-## Layout
+## 目录结构
 
-- `edge_processor/`: Python 3.13 async application source and tests.
-- `mosquitto/defaults/`: default broker config templates copied into the runtime mount on first start.
-- `influxdb/defaults/`: default InfluxDB bootstrap assets.
-- `deployment/`: Dockerfiles, entrypoints, and Compose orchestration.
+- `edge_processor/`：Python 3.13 异步应用源码与测试
+- `mosquitto/defaults/`：Broker 默认配置模板，首次启动复制到运行挂载目录
+- `influxdb/defaults/`：InfluxDB 默认初始化模板
+- `deployment/`：Dockerfile、入口脚本、Compose 与本地测试辅助脚本
 
-## Local macOS testing
+## 路由与链路逻辑
 
-Linux deployment remains based on Docker Compose.
+网关当前 HTTP 侧只暴露一个路由：
 
-On macOS with Apple's `container` CLI, use per-image build/run commands instead of Compose. The base image can be switched to a registry mirror at build time, for example:
+- `GET /healthz`
+
+真正的主链路不在 HTTP，而在 MQTT 与后台 HTTP 批量上报：
+
+1. `edge_processor` 订阅 `telemetry / alert / binding / status`
+2. 收到事件后先写入本地 InfluxDB 缓冲
+3. 按批次调用后台 `POST /api/v1/ingest/batch`
+4. 网关侧生成的 `alert/status` 也会先写入缓冲，再发布回 MQTT
+5. 配置更新通过 `gym/{gym_id}/gateway/{gateway_id}/config` 写入本地规则文件并热重载
+
+## macOS 本地测试
+
+Linux 部署仍以 Docker Compose 为主。
+
+在 macOS 上，使用 Apple `container` CLI 按镜像分别构建与运行，而不是直接使用 Compose。例如：
 
 ```bash
 container build \
-  --build-arg PYTHON_BASE=docker.1panel.live/library/python:3.13-slim \
+  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
   -t motion-sense-edge-processor-local \
   -f gateway/deployment/edge_processor/Dockerfile .
 ```
 
-Detailed local test commands are documented in `deployment/container/README.md`.
+详细命令见 `deployment/container/README.md`。
 
-## Runtime mounts
+## 运行时挂载
 
-Compose expects these host-mounted runtime directories under `deployment/compose/runtime/`:
+Compose 约定以下宿主机挂载目录位于 `deployment/compose/runtime/`：
 
 - `config/`
 - `secrets/`
 - `certs/`
 
-Runtime data is stored in named Docker volumes for Mosquitto and InfluxDB.
+运行期数据使用 Docker 命名卷保存 Mosquitto 与 InfluxDB 数据。
 
-## Current Status
+## 当前进展
 
-- `edge_processor` now persists incoming MQTT events into local InfluxDB before upload.
-- Backend replay reads undelivered events from InfluxDB and marks them delivered after successful HTTP batch upload.
-- `rules.yaml` rewrite and reload polling are implemented for gateway config updates.
-- P1 threshold rules are evaluated on telemetry (`EQ_OVERLOAD`, `CO2_HIGH`, `CO2_CRITICAL`, `PM25_HIGH`, `TEMP_HIGH`).
-- `DEVICE_OFFLINE` monitoring publishes MQTT `alert` and retained `status`, and marks recovered devices online.
+- `edge_processor` 已支持 MQTT 事件落地到本地 InfluxDB 后再上传后台
+- 后台成功响应后，会在 InfluxDB 中写入投递标记，避免重复补发
+- `rules.yaml` 改写与重载检测已实现
+- 已支持 P1 规则：`EQ_OVERLOAD`、`CO2_HIGH`、`CO2_CRITICAL`、`PM25_HIGH`、`TEMP_HIGH`
+- 已支持 `DEVICE_OFFLINE` 监控，并发布 MQTT `alert` 与 retained `status`
 
-Current gaps:
+## 当前风险
 
-- Linux production permission initialization for Mosquitto bind-mounted secrets/certs still needs deployment hardening.
+- Linux 生产环境下，Mosquitto 绑定挂载的密钥 / 证书文件权限初始化仍需进一步加固
 
-## Runtime Rules
+## 运行时规则说明
 
-- `/runtime/config/edge_processor/app_settings.yaml`, `rules.yaml`, and `logging.yaml` are generated on first start.
-- `/runtime/config/influxdb/admin_token.txt` is generated on first InfluxDB start and reused by `edge_processor`.
-- Editing `rules.yaml` is hot-reloadable.
-- Editing `app_settings.yaml` requires restarting `edge_processor`.
-- Changing InfluxDB retention or storage settings requires restarting `influxdb`.
+- `/runtime/config/edge_processor/app_settings.yaml`、`rules.yaml`、`logging.yaml` 首次启动自动生成
+- `/runtime/config/influxdb/admin_token.txt` 由 InfluxDB 首次启动生成，`edge_processor` 会复用
+- 编辑 `rules.yaml` 可热重载
+- 编辑 `app_settings.yaml` 需要重启 `edge_processor`
+- 修改 InfluxDB 保留策略或存储参数需要重启 `influxdb`

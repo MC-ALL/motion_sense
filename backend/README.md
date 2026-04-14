@@ -1,36 +1,58 @@
-# Backend
+# 后台端
 
-Current backend work lives under `backend/api_service/` and focuses on the Sprint 1 minimum:
+当前后台实现位于 `backend/api_service/`，聚焦第 1 迭代的最小可用闭环。
+
+## 当前已实现接口
 
 - `POST /api/v1/ingest/batch`
 - `GET /api/v1/devices`
 - `GET /api/v1/devices/{id}`
+- `POST /api/v1/devices/{id}/config`
 - `GET /api/v1/alerts`
 - `GET /api/v1/alerts/{id}`
 - `PATCH /api/v1/alerts/{id}/ack`
+- `POST /api/v1/alerts/batch-ack`
 - `GET /api/v1/telemetry/wristband/{id}`
 - `GET /api/v1/telemetry/equipment/{id}`
 - `GET /api/v1/telemetry/env/{id}`
 - `GET /api/v1/telemetry/env/{id}/aggregate`
 - `GET /api/v1/wristband/{id}/bindings`
-- `POST /api/v1/alerts/batch-ack`
-- `POST /api/v1/devices/{id}/config`
 - `GET /healthz`
 - `GET /api/ws`
 
-The current implementation is an async FastAPI skeleton with two storage modes:
+## 路由逻辑
 
-- `memory`: default for unit tests and minimal local runs
-- `postgres`: async `psycopg` + Timescale/PostgreSQL persistence for `devices`, `alerts`, `equipment_binding_events`, and telemetry hypertables
+后台应用在 [main.py](/Users/circuitx/Work/motion_sense/backend/api_service/app/main.py) 中按以下顺序挂载路由：
 
-Realtime delivery also has two modes:
+1. `health.router`：健康检查 `GET /healthz`
+2. `ingest.router`：网关批量入库 `POST /api/v1/ingest/batch`
+3. `devices.router`：设备查询与配置下发
+4. `alerts.router`：告警查询、确认、批量确认
+5. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
+6. `bindings.router`：手环绑定历史
+7. `websocket.router`：实时推送 `GET /api/ws`
 
-- `local`: in-process WebSocket fan-out for tests and single-instance runs
-- `redis`: Redis Pub/Sub fan-out for multi-instance backend deployment
+主数据流如下：
 
-It is intentionally a transition layer: the API contract is already aligned with `docs/05-后台端.md` and `docs/07-通讯接口定义.md`, while JWT and AI flows are still to be added.
+1. 网关调用 `POST /api/v1/ingest/batch`
+2. `IngestService` 解析批次并写入存储层
+3. 写入成功后通过 `RealtimeService` 推送到 WebSocket
+4. 如启用 `redis`，则经 Redis Pub/Sub 做跨实例广播
+5. 后台调用 `POST /api/v1/devices/{id}/config` 时，通过 MQTT 发布到设备 `config` topic
 
-Build locally:
+## 运行模式
+
+当前后台是异步 FastAPI 服务，支持两类存储模式：
+
+- `memory`：单元测试与最小本地运行默认使用
+- `postgres`：基于异步 `psycopg` 的 PostgreSQL / TimescaleDB 持久化
+
+实时广播支持两类模式：
+
+- `local`：单进程内存广播
+- `redis`：跨实例 Redis Pub/Sub 广播
+
+## 本地构建
 
 ```bash
 container build \
@@ -39,44 +61,32 @@ container build \
   -f backend/deployment/api_service/Dockerfile .
 ```
 
-Backend Linux compose baseline now includes:
+## 已完成验证
 
-- `api_service`
-- `timescaledb`
-- `redis`
+- `POST /api/v1/ingest/batch` 可写入 TimescaleDB / PostgreSQL
+- `GET /api/v1/devices/{id}` 可返回设备快照
+- `PATCH /api/v1/alerts/{id}/ack` 可更新告警确认状态
+- `GET /api/v1/telemetry/equipment/{id}` 可返回历史数据
+- `GET /api/v1/wristband/{id}/bindings` 可返回绑定历史
+- `GET /api/v1/telemetry/env/{id}/aggregate` 可返回环境聚合结果
+- `POST /api/v1/alerts/batch-ack` 可批量确认告警
+- `POST /api/v1/devices/{id}/config` 已具备 MQTT 配置下发基础能力
+- `redis` 实时模式已在 macOS Apple `container` 上验证
 
-Verified locally on this machine:
+## 运行配置
 
-- `POST /api/v1/ingest/batch` can persist into Timescale/PostgreSQL mode
-- `GET /api/v1/devices/{id}` returns the persisted device snapshot
-- `PATCH /api/v1/alerts/{id}/ack` updates persisted alert state
-- `GET /api/v1/telemetry/equipment/{id}` returns persisted history rows
-- `GET /api/v1/wristband/{id}/bindings` returns persisted binding events
-- `GET /api/v1/telemetry/env/{id}/aggregate` returns persisted interval aggregates
-- `POST /api/v1/alerts/batch-ack` updates multiple persisted alerts in one request
-- unit tests pass in `memory + local realtime` mode
-- `redis` realtime mode was verified on macOS Apple `container`: `POST /api/v1/ingest/batch -> Redis Pub/Sub -> /api/ws`
+- `/runtime/config/backend/api_service/app_settings.yaml` 首次启动由 `default_app_settings.yaml` 生成
+- 修改 `app_settings.yaml` 后需重启 `api_service`
+- 修改 Redis 运行参数后需重启 `redis`
+- 修改 TimescaleDB 镜像、初始化 SQL 或持久卷参数后需重启 `timescaledb`
 
-Runtime config behavior:
+## 风险与待补项
 
-- `/runtime/config/backend/api_service/app_settings.yaml` is generated from `default_app_settings.yaml` on first start
-- editing `app_settings.yaml` requires restarting `api_service`
-- editing Redis runtime parameters requires restarting `redis`
-- changing TimescaleDB image, schema bootstrap, or persistent volume settings requires restarting `timescaledb`
+- `redis` 仅验证了单后台实例广播，多实例自动化覆盖尚缺
+- 鉴权、JWT 黑名单与 AI 报告流程仍待实现
+- 设备配置下发目前只有“发布到 MQTT”，尚无设备 ack / 回执追踪
 
-Apple `container` note:
-
-- local test networking does not provide Compose-like service-name DNS by default
-- when testing outside Linux Compose, pass the database container IP to `BACKEND_DATABASE_HOST`
-- if Redis realtime mode is enabled outside Linux Compose, pass the Redis container IP to `BACKEND_REDIS_HOST`
-
-Remaining risks:
-
-- Redis realtime has been verified with a single backend instance; multi-instance fan-out is not yet covered by automated integration tests
-- auth, JWT blacklist, and AI report generation are still pending implementation
-- device config publish currently covers MQTT topic publishing only; downstream device ack/trace flow is not implemented yet
-
-Run unit tests in a one-off container:
+## 单元测试
 
 ```bash
 container run --remove \

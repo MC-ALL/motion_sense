@@ -1,3 +1,3 @@
-# Contract Tests
+# 契约测试
 
-Reserved for checks that keep runtime payloads aligned with `docs/07-通讯接口定义.md`.
+该目录预留给接口契约检查，目标是确保运行时 payload 与 `docs/07-通讯接口定义.md` 保持一致。

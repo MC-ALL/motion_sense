@@ -1,3 +1,3 @@
-# Integration Tests
+# 集成测试
 
-Reserved for end-to-end validation against `mosquitto`, `influxdb`, and a mock backend container.
+该目录预留给端到端联调测试，用于验证 `mosquitto`、`influxdb` 与后台容器之间的完整链路。
