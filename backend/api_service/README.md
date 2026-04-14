@@ -8,6 +8,7 @@
 - 设备、告警、遥测、绑定历史查询接口
 - WebSocket 实时接口：`GET /api/ws`
 - 设备配置下发：`POST /api/v1/devices/{id}/config`
+- 网关基础设施健康汇聚：`POST /api/v1/system/health/report`、`GET /api/v1/system/health*`
 - 存储后端：`memory`、`postgres`
 - 实时广播后端：`local`、`redis`
 
@@ -19,6 +20,7 @@
 - `/api/v1/alerts/*`：告警查询与确认
 - `/api/v1/telemetry/*`：历史遥测与环境聚合
 - `/api/v1/wristband/*`：手环绑定历史
+- `/api/v1/system/health/*`：网关基础设施健康汇聚与查询
 - `/api/ws`：实时推送
 
 ## 配置下发行为

@@ -10,6 +10,13 @@ from app.models.ingest import (
     EnvTelemetryAggregateRecord,
     TelemetryRecord,
 )
+from app.models.system_health import (
+    GatewayHealthComponentRecord,
+    GatewayHealthDetail,
+    GatewayHealthReportRequest,
+    GatewayHealthSummary,
+    derive_overall_status,
+)
 from app.storage.telemetry_aggregate import aggregate_env_records
 
 
@@ -20,6 +27,7 @@ class EventStore:
         self._alerts: list[AlertRecord] = []
         self._bindings: list[BindingEventRecord] = []
         self._telemetry: list[TelemetryRecord] = []
+        self._gateway_health_components: dict[tuple[str, str], GatewayHealthComponentRecord] = {}
         self._next_alert_id = 1
         self._next_binding_id = 1
 
@@ -279,6 +287,118 @@ class EventStore:
             offset=0,
         )
         return aggregate_env_records(records, interval, limit=limit, offset=offset)
+
+    async def upsert_gateway_health_report(
+        self,
+        *,
+        report: GatewayHealthReportRequest,
+    ) -> GatewayHealthDetail:
+        async with self._lock:
+            existing_keys = [
+                key for key in self._gateway_health_components.keys() if key[0] == report.gateway_id
+            ]
+            incoming_keys = {
+                (report.gateway_id, component.component_id) for component in report.components
+            }
+            for key in existing_keys:
+                if key not in incoming_keys:
+                    self._gateway_health_components.pop(key, None)
+
+            for component in report.components:
+                record = GatewayHealthComponentRecord(
+                    gateway_id=report.gateway_id,
+                    gym_id=report.gym_id,
+                    reported_at=report.reported_at,
+                    component_id=component.component_id,
+                    component_type=component.component_type,
+                    display_name=component.display_name,
+                    online=component.online,
+                    health_status=component.health_status,
+                    checked_at=component.checked_at,
+                    endpoint=component.endpoint,
+                    latency_ms=component.latency_ms,
+                    detail=component.detail,
+                    extra=component.extra,
+                )
+                self._gateway_health_components[(report.gateway_id, component.component_id)] = record
+
+            return self._build_gateway_health_detail(report.gateway_id)
+
+    async def list_gateway_health_summaries(
+        self,
+        *,
+        gym_id: str | None = None,
+        gateway_id: str | None = None,
+        component_type: str | None = None,
+        overall_status: str | None = None,
+    ) -> list[GatewayHealthSummary]:
+        async with self._lock:
+            gateway_ids = sorted({key[0] for key in self._gateway_health_components.keys()})
+
+        summaries: list[GatewayHealthSummary] = []
+        for current_gateway_id in gateway_ids:
+            if gateway_id is not None and current_gateway_id != gateway_id:
+                continue
+            detail = await self.get_gateway_health_detail(gateway_id=current_gateway_id)
+            if detail is None:
+                continue
+            if gym_id is not None and detail.gym_id != gym_id:
+                continue
+            if component_type is not None and not any(
+                item.component_type == component_type for item in detail.components
+            ):
+                continue
+            if overall_status is not None and detail.overall_status != overall_status:
+                continue
+            summaries.append(
+                GatewayHealthSummary(
+                    gateway_id=detail.gateway_id,
+                    gym_id=detail.gym_id,
+                    reported_at=detail.reported_at,
+                    component_count=detail.component_count,
+                    online_count=detail.online_count,
+                    unhealthy_count=detail.unhealthy_count,
+                    overall_status=detail.overall_status,
+                )
+            )
+
+        return sorted(summaries, key=lambda item: item.gateway_id)
+
+    async def get_gateway_health_detail(
+        self,
+        *,
+        gateway_id: str,
+    ) -> GatewayHealthDetail | None:
+        async with self._lock:
+            has_gateway = any(key[0] == gateway_id for key in self._gateway_health_components.keys())
+        if not has_gateway:
+            return None
+        return self._build_gateway_health_detail(gateway_id)
+
+    def _build_gateway_health_detail(self, gateway_id: str) -> GatewayHealthDetail:
+        components = sorted(
+            [
+                item
+                for (current_gateway_id, _), item in self._gateway_health_components.items()
+                if current_gateway_id == gateway_id
+            ],
+            key=lambda item: (item.component_type, item.component_id),
+        )
+        latest_reported_at = max((item.reported_at for item in components), default=_isoformat_from_ts(None))
+        online_count = sum(1 for item in components if item.online)
+        unhealthy_count = sum(
+            1 for item in components if (not item.online) or item.health_status != "healthy"
+        )
+        return GatewayHealthDetail(
+            gateway_id=gateway_id,
+            gym_id=components[0].gym_id if components else "",
+            reported_at=latest_reported_at,
+            component_count=len(components),
+            online_count=online_count,
+            unhealthy_count=unhealthy_count,
+            overall_status=derive_overall_status(components),
+            components=components,
+        )
 
 
 def coerce_online(status: str) -> bool:

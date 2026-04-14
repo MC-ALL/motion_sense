@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import alerts, bindings, devices, health, ingest, telemetry, websocket
+from app.api import alerts, bindings, devices, health, ingest, system_health, telemetry, websocket
 from app.services.device_config_service import DeviceConfigService
 from app.services.ingest_service import IngestService
 from app.services.mqtt_config_publisher import MqttConfigPublisher
@@ -60,6 +60,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(telemetry.router)
     app.include_router(bindings.router)
+    app.include_router(system_health.router)
     app.include_router(websocket.router)
     return app
 

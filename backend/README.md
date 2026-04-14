@@ -8,6 +8,9 @@
 - `GET /api/v1/devices`
 - `GET /api/v1/devices/{id}`
 - `POST /api/v1/devices/{id}/config`
+- `GET /api/v1/system/health`
+- `GET /api/v1/system/health/{gateway_id}`
+- `POST /api/v1/system/health/report`
 - `GET /api/v1/alerts`
 - `GET /api/v1/alerts/{id}`
 - `PATCH /api/v1/alerts/{id}/ack`
@@ -30,7 +33,8 @@
 4. `alerts.router`：告警查询、确认、批量确认
 5. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
 6. `bindings.router`：手环绑定历史
-7. `websocket.router`：实时推送 `GET /api/ws`
+7. `system_health.router`：网关基础设施健康上报与查询
+8. `websocket.router`：实时推送 `GET /api/ws`
 
 主数据流如下：
 
@@ -39,6 +43,7 @@
 3. 写入成功后通过 `RealtimeService` 推送到 WebSocket
 4. 如启用 `redis`，则经 Redis Pub/Sub 做跨实例广播
 5. 后台调用 `POST /api/v1/devices/{id}/config` 时，通过 MQTT 发布到设备 `config` topic
+6. 网关可通过 `POST /api/v1/system/health/report` 上报本地基础设施健康快照
 
 ## 运行模式
 
@@ -71,6 +76,7 @@ container build \
 - `GET /api/v1/telemetry/env/{id}/aggregate` 可返回环境聚合结果
 - `POST /api/v1/alerts/batch-ack` 可批量确认告警
 - `POST /api/v1/devices/{id}/config` 已具备 MQTT 配置下发基础能力
+- `POST /api/v1/system/health/report` 与 `GET /api/v1/system/health*` 已具备基础设施健康汇聚能力
 - `redis` 实时模式已在 macOS Apple `container` 上验证
 
 ## 运行配置
