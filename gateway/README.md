@@ -39,11 +39,12 @@ Runtime data is stored in named Docker volumes for Mosquitto and InfluxDB.
 - `edge_processor` now persists incoming MQTT events into local InfluxDB before upload.
 - Backend replay reads undelivered events from InfluxDB and marks them delivered after successful HTTP batch upload.
 - `rules.yaml` rewrite and reload polling are implemented for gateway config updates.
+- P1 threshold rules are evaluated on telemetry (`EQ_OVERLOAD`, `CO2_HIGH`, `CO2_CRITICAL`, `PM25_HIGH`, `TEMP_HIGH`).
+- `DEVICE_OFFLINE` monitoring publishes MQTT `alert` and retained `status`, and marks recovered devices online.
 
 Current gaps:
 
-- P1 threshold evaluation is still pending.
-- `DEVICE_OFFLINE` detection is scaffolded but not yet publishing alerts.
+- Linux production permission initialization for Mosquitto bind-mounted secrets/certs still needs deployment hardening.
 
 ## Runtime Rules
 

@@ -18,6 +18,10 @@ class RuntimeConfigManager:
         self._rules_path = Path("/runtime/config/edge_processor/rules.yaml")
         self._last_rules_mtime_ns: int | None = None
 
+    @property
+    def rules_path(self) -> Path:
+        return self._rules_path
+
     def update_from_gateway_config(self, payload: dict[str, Any]) -> None:
         alert_rules = payload.get("alert_rules")
         if isinstance(alert_rules, dict):
