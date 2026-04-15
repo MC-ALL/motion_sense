@@ -88,6 +88,12 @@ sh gateway/deployment/container/start_local_stack.sh
 sh gateway/deployment/container/verify_system_stack.sh
 ```
 
+执行网关韧性回归验证：
+
+```bash
+sh gateway/deployment/container/verify_gateway_resilience.sh
+```
+
 运行网关单元测试：
 
 ```bash
@@ -112,7 +118,9 @@ sh gateway/deployment/container/stop_local_stack.sh
 - 当前本地栈还会启动 `motion-sense-ops-observer-local`
 - 当前本地栈还会启动 `motion-sense-web-portal-local`
 - `verify_system_stack.sh` 目标验证项包括：设备入库、健康汇聚、配置命令闭环、后台健康汇总视图、`ops_observer` 健康汇总与详情视图，以及网页端入口与运行时配置
-- `start_local_stack.sh` 会解析后台与 Broker 容器 IP，并通过环境变量注入 `edge_processor`
+- `verify_gateway_resilience.sh` 目标验证项包括：Mosquitto 异常重启后的网关自动重连，以及 `rules.yaml` 热重载后的 P1 规则生效
+- 为了覆盖本地 Broker 重连场景，`edge_processor` 在 Apple `container` 联调中会连接宿主机网关地址 `192.168.65.1:1883`，而不是直接连接 `mosquitto` 容器瞬时 IP
+- `start_local_stack.sh` 会解析后台与 InfluxDB 容器 IP，并通过环境变量注入 `edge_processor`；MQTT 入口固定使用宿主机网关地址
 - `start_local_stack.sh` 也会解析 `edge_processor` 与 `backend` 容器 IP，并注入到 `ops_observer`
 - `start_local_stack.sh` 也会注入 `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`
 - 首次启动后，生成的配置文件会出现在挂载的 `runtime/config/...` 目录中

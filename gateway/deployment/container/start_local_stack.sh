@@ -26,6 +26,8 @@ ops_host_port="${OPS_OBSERVER_HOST_PORT:-18090}"
 web_host_port="${WEB_HOST_PORT:-18070}"
 influxdb_host_port="${INFLUXDB_HOST_PORT:-18181}"
 edge_health_interval_s="${EDGE_PROCESSOR_HEALTH_INTERVAL_S:-5}"
+network_subnet="${CONTAINER_NETWORK_SUBNET:-192.168.65.0/24}"
+network_gateway="${CONTAINER_NETWORK_GATEWAY:-192.168.65.1}"
 
 if [ -n "${BACKEND_REALTIME_BACKEND:-}" ]; then
   backend_realtime_backend="${BACKEND_REALTIME_BACKEND}"
@@ -41,7 +43,7 @@ mkdir -p "${backend_config_root}"
 mkdir -p "${ops_config_root}" "${ops_data_root}"
 mkdir -p "${web_config_root}"
 
-container network create "${network_name}" >/dev/null 2>&1 || true
+container network create --subnet "${network_subnet}" "${network_name}" >/dev/null 2>&1 || true
 
 wait_for_tcp() {
   host="$1"
@@ -157,7 +159,6 @@ container run \
   motion-sense-mosquitto-local
 
 backend_ip="$(container inspect backend | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
-mqtt_ip="$(container inspect mosquitto | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
 influxdb_ip="$(container inspect influxdb | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
 
 wait_for_tcp 127.0.0.1 "${influxdb_host_port}" 90
@@ -171,7 +172,7 @@ container run \
   -p "${gateway_host_port}:8080" \
   --env "EDGE_PROCESSOR_BACKEND_BASE_URL=http://${backend_ip}:8000/api/v1" \
   --env "EDGE_PROCESSOR_INFLUXDB_BASE_URL=http://${influxdb_ip}:8181" \
-  --env "EDGE_PROCESSOR_MQTT_HOST=${mqtt_ip}" \
+  --env "EDGE_PROCESSOR_MQTT_HOST=${network_gateway}" \
   --env "EDGE_PROCESSOR_MQTT_USERNAME=${mosquitto_user}" \
   --env "EDGE_PROCESSOR_MQTT_PASSWORD=${mosquitto_password}" \
   --env "EDGE_PROCESSOR_HEALTH_INTERVAL_S=${edge_health_interval_s}" \
