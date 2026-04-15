@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "motion-sense-ops-observer-api-service"
+version = "0.1.0"
+description = "Async ops observer service for the motion_sense platform"
+readme = "README.md"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+  "aiosqlite==0.21.0",
+  "fastapi==0.115.12",
+  "httpx==0.28.1",
+  "pydantic==2.11.4",
+  "PyYAML==6.0.2",
+  "uvicorn[standard]==0.34.2",
+  "websockets==15.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.5",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

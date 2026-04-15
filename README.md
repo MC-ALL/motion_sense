@@ -1,11 +1,12 @@
 # motion_sense
 
-本仓库是 `04-网关端` 与 `05-后台端` 的第 1 迭代工作区，包含需求文档、实现代码、部署文件与本地联调脚本。
+本仓库是 `04-网关端`、`05-后台端` 与 `09-运维观测端` 的第 1 迭代工作区，包含需求文档、实现代码、部署文件与本地联调脚本。
 
 ## 当前状态
 
 - `gateway/`：异步边缘处理服务、Mosquitto、InfluxDB 3 Core 部署资产，以及 Apple `container` 本地测试脚本
 - `backend/`：异步 FastAPI 后台服务、TimescaleDB 持久化、Redis 实时广播
+- `ops_observer/`：独立运维观测服务、SQLite 持久化、基础设施健康聚合
 - `docs/`：系统架构、各子系统规格、接口契约与开发排期
 
 当前机器上已完成并验证：
@@ -21,9 +22,10 @@
 - 网关 P1 规则引擎与规则热重载
 - 网关 `DEVICE_OFFLINE` 告警与 retained 状态发布
 - 网关基础设施健康采集与 `POST /api/v1/system/health/report` 上报
+- `ops_observer` 轮询 + 订阅网关与后台 `/ops/v1/*` / `/ops/ws`，并对外提供 `GET /api/v1/ops/*`、`PATCH /api/v1/ops/alerts/{id}/close`、`WS /api/ws/ops`
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
-  设备入库、健康汇聚、配置命令闭环、健康汇总视图
+  设备入库、健康汇聚、配置命令闭环、健康汇总视图，以及 `ops_observer` 聚合健康视图
 
 当前缺口：
 
@@ -32,6 +34,7 @@
 - 网关仍缺真实 Broker 重连、规则热重载边界场景的端到端覆盖
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
+- `ops_observer` 已实现 REST 轮询、上游 `/ops/ws` 订阅触发刷新与运维告警关闭；仍待 04/05/09 实际联调回归
 - Apple `container build` 直接打包仓库根上下文仍存在归档兼容性问题，当前单测采用 `container run` 挂载代码目录规避
 
 ## 目录结构
@@ -41,6 +44,8 @@
 - `gateway/deployment/`：网关 Dockerfile、入口脚本、Compose 与 Apple `container` 辅助脚本
 - `backend/api_service/`：后台 Python 服务
 - `backend/deployment/`：后台 Dockerfile 与部署基线
+- `ops_observer/api_service/`：运维观测 Python 服务
+- `ops_observer/deployment/`：运维观测 Dockerfile 与默认配置
 
 ## 路由与数据流总览
 
@@ -110,6 +115,35 @@ container run --remove \
   --workdir /workspace/gateway/edge_processor \
   dockerproxy.net/library/python:3.13-slim \
   sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+```
+
+在 Apple `container` 中运行运维观测端单元测试：
+
+```bash
+container run --remove \
+  --volume "$PWD:/workspace" \
+  --workdir /workspace/ops_observer/api_service \
+  dockerproxy.net/library/python:3.13-slim \
+  sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+```
+
+本地单容器启动 `ops_observer`：
+
+```bash
+container build \
+  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  -t motion-sense-ops-observer-local \
+  -f ops_observer/deployment/api_service/Dockerfile .
+```
+
+启动 04/05/09 完整本地联调栈：
+
+```bash
+sh gateway/deployment/container/build_local_images.sh
+sh gateway/deployment/container/prepare_runtime.sh
+sh gateway/deployment/container/start_local_stack.sh
+sh gateway/deployment/container/verify_system_stack.sh
+sh gateway/deployment/container/stop_local_stack.sh
 ```
 
 ## 本地平台说明

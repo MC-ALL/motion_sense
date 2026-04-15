@@ -1,6 +1,7 @@
 # Apple Container 本地测试说明
 
 本目录说明如何在 macOS 上使用 Apple `container` CLI 测试网关栈。
+当前脚本已扩展为同时拉起 `04 网关端`、`05 后台端` 与 `09 运维观测端`。
 
 ## 前置条件
 
@@ -118,8 +119,10 @@ sh gateway/deployment/container/stop_local_stack.sh
 - Apple `container` CLI 支持镜像构建、容器运行、卷、网络、绑定挂载、端口映射和环境文件
 - 当前工具链不提供 Compose 兼容的编排层，因此多服务本地联调需要逐个服务启动，或使用仓库自带辅助脚本
 - 当前本地栈默认启动真实后台 API 镜像 `motion-sense-backend-api-local`，并联动 `timescaledb` 与 `redis`
-- `verify_system_stack.sh` 已在当前机器上验证通过：设备入库、健康汇聚、配置命令闭环、健康汇总视图
+- 当前本地栈还会启动 `motion-sense-ops-observer-local`
+- `verify_system_stack.sh` 目标验证项包括：设备入库、健康汇聚、配置命令闭环、后台健康汇总视图、`ops_observer` 健康汇总与详情视图
 - `start_local_stack.sh` 会解析后台与 Broker 容器 IP，并通过环境变量注入 `edge_processor`
+- `start_local_stack.sh` 也会解析 `edge_processor` 与 `backend` 容器 IP，并注入到 `ops_observer`
 - `start_local_stack.sh` 也会注入 `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`
 - 首次启动后，生成的配置文件会出现在挂载的 `runtime/config/...` 目录中
 - `influxdb` 首次启动还会生成 `runtime/config/influxdb/admin_token.txt`，供 `edge_processor` 通过共享挂载读取

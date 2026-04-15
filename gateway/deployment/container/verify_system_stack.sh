@@ -3,6 +3,7 @@ set -eu
 
 backend_host_port="${BACKEND_HOST_PORT:-18000}"
 gateway_host_port="${GATEWAY_HOST_PORT:-18080}"
+ops_host_port="${OPS_OBSERVER_HOST_PORT:-18090}"
 gateway_id="${EDGE_PROCESSOR_GATEWAY_ID:-gw-001}"
 
 wait_for_json() {
@@ -25,6 +26,7 @@ wait_for_json() {
 
 curl -fsS "http://127.0.0.1:${backend_host_port}/healthz" >/dev/null
 curl -fsS "http://127.0.0.1:${gateway_host_port}/healthz" >/dev/null
+curl -fsS "http://127.0.0.1:${ops_host_port}/healthz" >/dev/null
 
 sample_payload_file="$(mktemp)"
 cleanup() {
@@ -66,7 +68,17 @@ summary_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/system/health" \
   'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert len(body) >= 1; assert body[0]["gateway_id"]')"
 
+ops_health_json="$(wait_for_json \
+  "http://127.0.0.1:${ops_host_port}/api/v1/ops/health" \
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert len(body["items"]) >= 2; assert any(item["module_id"]=="gateway:gw-001" for item in body["items"]); assert any(item["module_id"]=="backend:api-main" for item in body["items"])')"
+
+ops_detail_json="$(wait_for_json \
+  "http://127.0.0.1:${ops_host_port}/api/v1/ops/health/gateway:gw-001" \
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["summary"]["module_id"]=="gateway:gw-001"; assert len(body["components"]) >= 1')"
+
 printf '设备入库验证通过: %s\n' "$device_json"
 printf '健康汇聚验证通过: %s\n' "$health_detail_json"
 printf '配置命令闭环验证通过: %s\n' "$command_detail_json"
 printf '健康汇总视图验证通过: %s\n' "$summary_json"
+printf 'ops_observer 健康汇总验证通过: %s\n' "$ops_health_json"
+printf 'ops_observer 健康详情验证通过: %s\n' "$ops_detail_json"

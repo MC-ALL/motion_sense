@@ -8,6 +8,9 @@ cert_root="${runtime_root}/certs"
 data_root="${runtime_root}/data"
 backend_runtime_root="${PWD}/backend/deployment/compose/runtime"
 backend_config_root="${backend_runtime_root}/config"
+ops_runtime_root="${PWD}/ops_observer/deployment/compose/runtime"
+ops_config_root="${ops_runtime_root}/config"
+ops_data_root="${ops_runtime_root}/data"
 network_name="${CONTAINER_NETWORK:-motion-sense-local}"
 mosquitto_user="${MOSQUITTO_USER:-admin}"
 mosquitto_password="${MOSQUITTO_PASSWORD:-admin123}"
@@ -17,6 +20,7 @@ timescaledb_host_port="${TIMESCALEDB_HOST_PORT:-15432}"
 redis_host_port="${REDIS_HOST_PORT:-16379}"
 backend_host_port="${BACKEND_HOST_PORT:-18000}"
 gateway_host_port="${GATEWAY_HOST_PORT:-18080}"
+ops_host_port="${OPS_OBSERVER_HOST_PORT:-18090}"
 influxdb_host_port="${INFLUXDB_HOST_PORT:-18181}"
 edge_health_interval_s="${EDGE_PROCESSOR_HEALTH_INTERVAL_S:-5}"
 
@@ -31,6 +35,7 @@ fi
 mkdir -p "${config_root}" "${secret_root}" "${cert_root}"
 mkdir -p "${data_root}/mosquitto_data" "${data_root}/mosquitto_log" "${data_root}/influxdb_data"
 mkdir -p "${backend_config_root}"
+mkdir -p "${ops_config_root}" "${ops_data_root}"
 
 container network create "${network_name}" >/dev/null 2>&1 || true
 
@@ -170,3 +175,20 @@ container run \
   motion-sense-edge-processor-local
 
 wait_for_http_ok "http://127.0.0.1:${gateway_host_port}/healthz" 90
+edge_processor_ip="$(container inspect edge_processor | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
+
+container run \
+  --name ops_observer \
+  --remove \
+  -d \
+  --network "${network_name}" \
+  -p "${ops_host_port}:8090" \
+  --env "OPS_OBSERVER_GATEWAY_BASE_URL=http://${edge_processor_ip}:8080" \
+  --env "OPS_OBSERVER_BACKEND_BASE_URL=http://${backend_ip}:8000" \
+  --env "OPS_OBSERVER_GATEWAY_WS_ENABLED=true" \
+  --env "OPS_OBSERVER_BACKEND_WS_ENABLED=true" \
+  --mount "type=bind,source=${ops_config_root},target=/runtime/config" \
+  --mount "type=bind,source=${ops_data_root},target=/runtime/data" \
+  motion-sense-ops-observer-local
+
+wait_for_http_ok "http://127.0.0.1:${ops_host_port}/healthz" 90
