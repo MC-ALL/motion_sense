@@ -1,4 +1,8 @@
 .DS_Store
 ops_observer/api_service/build/
+gateway/deployment/compose/runtime/
+backend/deployment/compose/runtime/
+ops_observer/deployment/compose/runtime/
+web/deployment/compose/runtime/
 web/portal_app/node_modules/
 web/portal_app/dist/

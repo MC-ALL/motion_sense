@@ -11,6 +11,8 @@ backend_config_root="${backend_runtime_root}/config"
 ops_runtime_root="${PWD}/ops_observer/deployment/compose/runtime"
 ops_config_root="${ops_runtime_root}/config"
 ops_data_root="${ops_runtime_root}/data"
+web_runtime_root="${PWD}/web/deployment/compose/runtime"
+web_config_root="${web_runtime_root}/config"
 network_name="${CONTAINER_NETWORK:-motion-sense-local}"
 mosquitto_user="${MOSQUITTO_USER:-admin}"
 mosquitto_password="${MOSQUITTO_PASSWORD:-admin123}"
@@ -21,6 +23,7 @@ redis_host_port="${REDIS_HOST_PORT:-16379}"
 backend_host_port="${BACKEND_HOST_PORT:-18000}"
 gateway_host_port="${GATEWAY_HOST_PORT:-18080}"
 ops_host_port="${OPS_OBSERVER_HOST_PORT:-18090}"
+web_host_port="${WEB_HOST_PORT:-18070}"
 influxdb_host_port="${INFLUXDB_HOST_PORT:-18181}"
 edge_health_interval_s="${EDGE_PROCESSOR_HEALTH_INTERVAL_S:-5}"
 
@@ -36,6 +39,7 @@ mkdir -p "${config_root}" "${secret_root}" "${cert_root}"
 mkdir -p "${data_root}/mosquitto_data" "${data_root}/mosquitto_log" "${data_root}/influxdb_data"
 mkdir -p "${backend_config_root}"
 mkdir -p "${ops_config_root}" "${ops_data_root}"
+mkdir -p "${web_config_root}"
 
 container network create "${network_name}" >/dev/null 2>&1 || true
 
@@ -192,3 +196,25 @@ container run \
   motion-sense-ops-observer-local
 
 wait_for_http_ok "http://127.0.0.1:${ops_host_port}/healthz" 90
+
+cat > "${web_config_root}/runtime_config.js" <<EOF
+window.__motion_sense_runtime__ = {
+  app_name: '粤动智感运维门户',
+  backend_base_url: 'http://127.0.0.1:${backend_host_port}',
+  backend_ws_url: 'ws://127.0.0.1:${backend_host_port}/api/ws',
+  ops_base_url: 'http://127.0.0.1:${ops_host_port}',
+  ops_ws_url: 'ws://127.0.0.1:${ops_host_port}/api/ws/ops',
+  refresh_interval_ms: 15000
+};
+EOF
+
+container run \
+  --name web_portal \
+  --remove \
+  -d \
+  --network "${network_name}" \
+  -p "${web_host_port}:8080" \
+  --mount "type=bind,source=${web_config_root},target=/runtime/config" \
+  motion-sense-web-portal-local
+
+wait_for_http_ok "http://127.0.0.1:${web_host_port}/" 90

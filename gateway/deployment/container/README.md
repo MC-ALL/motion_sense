@@ -1,7 +1,8 @@
 # Apple Container 本地测试说明
 
 本目录说明如何在 macOS 上使用 Apple `container` CLI 测试网关栈。
-当前脚本已扩展为同时拉起 `04 网关端`、`05 后台端` 与 `09 运维观测端`。
+当前脚本已扩展为同时拉起 `04 网关端`、`05 后台端`、`06 网页端` 与 `09 运维观测端`。
+`build_local_images.sh` 会先为每个镜像生成最小临时构建上下文，再调用 Apple `container build`，规避直接打包仓库根目录时偶发的归档失败。
 
 ## 前置条件
 
@@ -29,33 +30,21 @@ mkdir -p gateway/deployment/compose/runtime/certs
 
 当前在 macOS 上直接使用 Docker Hub 官方镜像标签。
 
-构建 `edge_processor`：
+统一构建本地镜像：
 
 ```bash
-container build \
-  --build-arg PYTHON_BASE=python:3.13-slim \
-  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
-  -t motion-sense-edge-processor-local \
-  -f gateway/deployment/edge_processor/Dockerfile .
+sh gateway/deployment/container/build_local_images.sh
 ```
 
-构建 `mosquitto`：
-
-```bash
-container build \
-  --build-arg MOSQUITTO_BASE=eclipse-mosquitto:2.1-alpine \
-  -t motion-sense-mosquitto-local \
-  -f gateway/deployment/mosquitto/Dockerfile .
-```
-
-构建 `influxdb`：
-
-```bash
-container build \
-  --build-arg INFLUXDB_BASE=influxdb:3.9-core \
-  -t motion-sense-influxdb-local \
-  -f gateway/deployment/influxdb/Dockerfile .
-```
+该脚本会统一构建：
+- `motion-sense-edge-processor-local`
+- `motion-sense-mosquitto-local`
+- `motion-sense-influxdb-local`
+- `motion-sense-backend-api-local`
+- `motion-sense-timescaledb-local`
+- `motion-sense-ops-observer-local`
+- `motion-sense-mock-backend-local`
+- `motion-sense-web-portal-local`
 
 ## 单服务运行
 
@@ -118,9 +107,11 @@ sh gateway/deployment/container/stop_local_stack.sh
 
 - Apple `container` CLI 支持镜像构建、容器运行、卷、网络、绑定挂载、端口映射和环境文件
 - 当前工具链不提供 Compose 兼容的编排层，因此多服务本地联调需要逐个服务启动，或使用仓库自带辅助脚本
+- 当前本地镜像构建不再直接使用仓库根目录作为上下文，而是按模块裁剪最小临时上下文，以减少归档失败概率
 - 当前本地栈默认启动真实后台 API 镜像 `motion-sense-backend-api-local`，并联动 `timescaledb` 与 `redis`
 - 当前本地栈还会启动 `motion-sense-ops-observer-local`
-- `verify_system_stack.sh` 目标验证项包括：设备入库、健康汇聚、配置命令闭环、后台健康汇总视图、`ops_observer` 健康汇总与详情视图
+- 当前本地栈还会启动 `motion-sense-web-portal-local`
+- `verify_system_stack.sh` 目标验证项包括：设备入库、健康汇聚、配置命令闭环、后台健康汇总视图、`ops_observer` 健康汇总与详情视图，以及网页端入口与运行时配置
 - `start_local_stack.sh` 会解析后台与 Broker 容器 IP，并通过环境变量注入 `edge_processor`
 - `start_local_stack.sh` 也会解析 `edge_processor` 与 `backend` 容器 IP，并注入到 `ops_observer`
 - `start_local_stack.sh` 也会注入 `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`

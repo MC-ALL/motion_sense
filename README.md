@@ -7,7 +7,7 @@
 - `gateway/`：异步边缘处理服务、Mosquitto、InfluxDB 3 Core 部署资产，以及 Apple `container` 本地测试脚本
 - `backend/`：异步 FastAPI 后台服务、TimescaleDB 持久化、Redis 实时广播
 - `ops_observer/`：独立运维观测服务、SQLite 持久化、基础设施健康聚合
-- `web/`：运维门户前端、健康中心页面与运行时配置注入
+- `web/`：业务与运维一体化门户前端、运行时配置注入
 - `docs/`：系统架构、各子系统规格、接口契约与开发排期
 
 当前机器上已完成并验证：
@@ -25,6 +25,7 @@
 - 网关基础设施健康采集与 `POST /api/v1/system/health/report` 上报
 - `ops_observer` 轮询 + 订阅网关与后台 `/ops/v1/*` / `/ops/ws`，并对外提供 `GET /api/v1/ops/*`、`PATCH /api/v1/ops/alerts/{id}/close`、`WS /api/ws/ops`
 - `web/portal_app` 已落地运维门户骨架、健康中心页面、运行时配置注入与前端构建拆包
+- `web/portal_app` 已接入实时仪表盘、器材管理、环境质量、告警管理，以及后台 JWT 登录与业务 WebSocket
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图，以及 `ops_observer` 聚合健康视图
@@ -36,8 +37,7 @@
 - 网关仍缺真实 Broker 重连、规则热重载边界场景的端到端覆盖
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
-- `ops_observer` 已实现 REST 轮询、上游 `/ops/ws` 订阅触发刷新与运维告警关闭；仍待 04/05/09 实际联调回归
-- Apple `container build` 直接打包仓库根上下文仍存在归档兼容性问题，当前单测采用 `container run` 挂载代码目录规避
+- Apple `container build` 直接打包仓库根上下文仍可能出现归档兼容性问题；当前已由 `build_local_images.sh` 通过最小临时上下文规避
 
 ## 目录结构
 

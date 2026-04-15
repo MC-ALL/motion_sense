@@ -4,6 +4,7 @@ set -eu
 backend_host_port="${BACKEND_HOST_PORT:-18000}"
 gateway_host_port="${GATEWAY_HOST_PORT:-18080}"
 ops_host_port="${OPS_OBSERVER_HOST_PORT:-18090}"
+web_host_port="${WEB_HOST_PORT:-18070}"
 gateway_id="${EDGE_PROCESSOR_GATEWAY_ID:-gw-001}"
 
 wait_for_json() {
@@ -27,6 +28,7 @@ wait_for_json() {
 curl -fsS "http://127.0.0.1:${backend_host_port}/healthz" >/dev/null
 curl -fsS "http://127.0.0.1:${gateway_host_port}/healthz" >/dev/null
 curl -fsS "http://127.0.0.1:${ops_host_port}/healthz" >/dev/null
+curl -fsS "http://127.0.0.1:${web_host_port}/" >/dev/null
 
 sample_payload_file="$(mktemp)"
 cleanup() {
@@ -76,9 +78,19 @@ ops_detail_json="$(wait_for_json \
   "http://127.0.0.1:${ops_host_port}/api/v1/ops/health/gateway:gw-001" \
   'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["summary"]["module_id"]=="gateway:gw-001"; assert len(body["components"]) >= 1')"
 
+web_runtime_config="$(wait_for_json \
+  "http://127.0.0.1:${web_host_port}/runtime_config.js" \
+  "import os; body=os.environ['BODY_JSON']; assert 'backend_base_url' in body; assert 'ops_base_url' in body; assert '${backend_host_port}' in body; assert '${ops_host_port}' in body")"
+
+web_index_html="$(wait_for_json \
+  "http://127.0.0.1:${web_host_port}/" \
+  'import os; body=os.environ["BODY_JSON"]; assert "粤动智感运维门户" in body or "root" in body')"
+
 printf '设备入库验证通过: %s\n' "$device_json"
 printf '健康汇聚验证通过: %s\n' "$health_detail_json"
 printf '配置命令闭环验证通过: %s\n' "$command_detail_json"
 printf '健康汇总视图验证通过: %s\n' "$summary_json"
 printf 'ops_observer 健康汇总验证通过: %s\n' "$ops_health_json"
 printf 'ops_observer 健康详情验证通过: %s\n' "$ops_detail_json"
+printf '网页运行时配置验证通过: %s\n' "$web_runtime_config"
+printf '网页入口验证通过: %s\n' "$web_index_html"
