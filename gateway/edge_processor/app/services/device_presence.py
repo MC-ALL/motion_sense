@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 import time
 
 from app.utils.topic_parser import ParsedTopic
@@ -30,7 +29,12 @@ class DevicePresenceTracker:
     def __init__(self) -> None:
         self._states: dict[DeviceIdentity, _DevicePresenceState] = {}
 
-    def mark_seen(self, parsed_topic: ParsedTopic, payload: dict[str, Any]) -> DeviceTransition | None:
+    def mark_seen(
+        self,
+        parsed_topic: ParsedTopic,
+        payload: dict[str, Any],
+        now_s: int | None = None,
+    ) -> DeviceTransition | None:
         if parsed_topic.device_type == "gateway":
             return None
 
@@ -39,7 +43,7 @@ class DevicePresenceTracker:
             device_type=parsed_topic.device_type,
             device_id=parsed_topic.device_id,
         )
-        observed_at_s = _to_unix_seconds(payload.get("ts"))
+        observed_at_s = int(now_s if now_s is not None else time.time())
         state = self._states.get(identity)
         if state is None:
             self._states[identity] = _DevicePresenceState(last_seen_s=observed_at_s, is_offline=False)
@@ -70,11 +74,3 @@ class DevicePresenceTracker:
             transitions.append(DeviceTransition(identity=identity, observed_at_s=current))
 
         return transitions
-
-
-def _to_unix_seconds(raw: Any) -> int:
-    if isinstance(raw, bool):
-        return int(time.time())
-    if isinstance(raw, (int, float)):
-        return int(raw)
-    return int(time.time())
