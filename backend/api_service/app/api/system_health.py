@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_event_store
+from app.api.deps import get_event_store, require_rest_user
 from app.models.system_health import GatewayHealthDetail, GatewayHealthReportRequest, GatewayHealthSummary
 from app.storage.store import Store
 
@@ -24,6 +24,7 @@ async def list_gateway_health(
     gateway_id: str | None = Query(default=None),
     component_type: str | None = Query(default=None),
     overall_status: str | None = Query(default=None),
+    _: object = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> list[GatewayHealthSummary]:
     return await store.list_gateway_health_summaries(
@@ -37,6 +38,7 @@ async def list_gateway_health(
 @router.get("/{gateway_id}", response_model=GatewayHealthDetail)
 async def get_gateway_health(
     gateway_id: str,
+    _: object = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> GatewayHealthDetail:
     detail = await store.get_gateway_health_detail(gateway_id=gateway_id)

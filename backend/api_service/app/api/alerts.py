@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_event_store
+from app.api.deps import get_event_store, require_rest_user
 from app.models.ingest import AlertBatchAckRequest, AlertBatchAckResult, AlertRecord
 from app.storage.store import Store
 
 
-router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
+router = APIRouter(
+    prefix="/api/v1/alerts",
+    tags=["alerts"],
+    dependencies=[Depends(require_rest_user)],
+)
 
 
 @router.get("", response_model=list[AlertRecord])

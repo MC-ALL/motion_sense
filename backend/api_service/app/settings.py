@@ -48,6 +48,27 @@ class DeviceCommandSettings(BaseModel):
     expire_after_s: int = 300
 
 
+class AuthAdminSettings(BaseModel):
+    username: str = "admin"
+    password_hash: str = ""
+
+
+class AuthJwtSettings(BaseModel):
+    access_secret: str = ""
+    refresh_secret: str = ""
+
+
+class AuthSettings(BaseModel):
+    enforce_rest: bool = False
+    enforce_ws: bool = False
+    issuer: str = "motion_sense_backend"
+    audience: str = "motion_sense_api"
+    access_token_ttl_s: int = 900
+    refresh_token_ttl_s: int = 604800
+    admin: AuthAdminSettings = Field(default_factory=AuthAdminSettings)
+    jwt: AuthJwtSettings = Field(default_factory=AuthJwtSettings)
+
+
 class RuntimeSettings(BaseModel):
     app_name: str = "motion-sense-backend-api-service"
     host: str = "0.0.0.0"
@@ -60,6 +81,7 @@ class RuntimeSettings(BaseModel):
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     device_command: DeviceCommandSettings = Field(default_factory=DeviceCommandSettings)
+    auth: AuthSettings = Field(default_factory=AuthSettings)
 
 
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSettings:
@@ -80,6 +102,9 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
     database = raw.setdefault("database", {})
     redis = raw.setdefault("redis", {})
     device_command = raw.setdefault("device_command", {})
+    auth = raw.setdefault("auth", {})
+    auth_admin = auth.setdefault("admin", {})
+    auth_jwt = auth.setdefault("jwt", {})
 
     if value := os.environ.get("BACKEND_API_HOST"):
         raw["host"] = value
@@ -129,3 +154,23 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         device_command["delivery_lease_s"] = int(value)
     if value := os.environ.get("BACKEND_COMMAND_EXPIRE_AFTER_S"):
         device_command["expire_after_s"] = int(value)
+    if value := os.environ.get("BACKEND_AUTH_ENFORCE_REST"):
+        auth["enforce_rest"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("BACKEND_AUTH_ENFORCE_WS"):
+        auth["enforce_ws"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("BACKEND_AUTH_ISSUER"):
+        auth["issuer"] = value
+    if value := os.environ.get("BACKEND_AUTH_AUDIENCE"):
+        auth["audience"] = value
+    if value := os.environ.get("BACKEND_AUTH_ACCESS_TOKEN_TTL_S"):
+        auth["access_token_ttl_s"] = int(value)
+    if value := os.environ.get("BACKEND_AUTH_REFRESH_TOKEN_TTL_S"):
+        auth["refresh_token_ttl_s"] = int(value)
+    if value := os.environ.get("BACKEND_AUTH_ADMIN_USERNAME"):
+        auth_admin["username"] = value
+    if value := os.environ.get("BACKEND_AUTH_ADMIN_PASSWORD_HASH"):
+        auth_admin["password_hash"] = value
+    if value := os.environ.get("BACKEND_AUTH_ACCESS_SECRET"):
+        auth_jwt["access_secret"] = value
+    if value := os.environ.get("BACKEND_AUTH_REFRESH_SECRET"):
+        auth_jwt["refresh_secret"] = value

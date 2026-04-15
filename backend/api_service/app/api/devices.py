@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_device_config_service, get_event_store
+from app.api.deps import get_device_config_service, get_event_store, require_rest_user
 from app.models.device_config import DeviceConfigPublishRequest, DeviceConfigPublishResult
 from app.models.ingest import DeviceSummary
 from app.services.device_config_service import (
@@ -13,7 +13,11 @@ from app.services.device_config_service import (
 from app.storage.store import Store
 
 
-router = APIRouter(prefix="/api/v1/devices", tags=["devices"])
+router = APIRouter(
+    prefix="/api/v1/devices",
+    tags=["devices"],
+    dependencies=[Depends(require_rest_user)],
+)
 
 
 @router.get("", response_model=list[DeviceSummary])

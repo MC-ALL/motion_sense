@@ -1,11 +1,16 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.deps import require_rest_user
 from app.models.ai import AiAnalyzeRequest, ReservedApiResponse
 
 
-router = APIRouter(prefix="/api/v1/ai", tags=["ai"])
+router = APIRouter(
+    prefix="/api/v1/ai",
+    tags=["ai"],
+    dependencies=[Depends(require_rest_user)],
+)
 
 
 def _reserved_error(detail: str) -> HTTPException:

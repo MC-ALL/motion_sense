@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.deps import require_rest_user
 from app.models.ai import ReservedApiResponse
 from app.models.ota import DeviceOtaRequest
 
 
-router = APIRouter(prefix="/api/v1", tags=["ota"])
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["ota"],
+    dependencies=[Depends(require_rest_user)],
+)
 
 
 def _reserved_error(detail: str) -> HTTPException:

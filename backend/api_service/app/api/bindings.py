@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_event_store
+from app.api.deps import get_event_store, require_rest_user
 from app.models.ingest import BindingEventRecord
 from app.storage.store import Store
 
 
-router = APIRouter(prefix="/api/v1/wristband", tags=["bindings"])
+router = APIRouter(
+    prefix="/api/v1/wristband",
+    tags=["bindings"],
+    dependencies=[Depends(require_rest_user)],
+)
 
 
 @router.get("/{device_id}/bindings", response_model=list[BindingEventRecord])

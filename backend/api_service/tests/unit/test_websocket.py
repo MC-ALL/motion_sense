@@ -1,6 +1,11 @@
+from __future__ import annotations
+
+import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.main import create_app
+from app.services.auth_service import generate_password_hash
 from app.settings import RuntimeSettings
 
 
@@ -71,3 +76,35 @@ def test_websocket_alert_broadcast_in_local_realtime_mode() -> None:
             assert pushed["type"] == "alert"
             assert pushed["data"]["device_id"] == "wb-009"
             assert pushed["data"]["code"] == "FALL_DETECTED"
+
+
+def test_websocket_requires_token_when_enabled() -> None:
+    settings = RuntimeSettings(
+        auth={
+            "enforce_ws": True,
+            "admin": {
+                "username": "admin",
+                "password_hash": generate_password_hash("admin123"),
+            },
+            "jwt": {
+                "access_secret": "access-secret-for-ws-tests",
+                "refresh_secret": "refresh-secret-for-ws-tests",
+            },
+        }
+    )
+
+    with TestClient(create_app(settings)) as client:
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/api/ws"):
+                pass
+
+        login = client.post(
+            "/api/v1/auth/login",
+            json={"username": "admin", "password": "admin123"},
+        )
+        assert login.status_code == 200
+        access_token = login.json()["access_token"]
+
+        with client.websocket_connect(f"/api/ws?token={access_token}") as websocket:
+            websocket.send_json({"type": "ping"})
+            assert websocket.receive_json() == {"type": "pong"}

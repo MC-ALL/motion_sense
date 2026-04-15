@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import get_device_config_service
+from app.api.deps import get_device_config_service, require_rest_user
 from app.models.device_config import (
     DeviceConfigCommandRecord,
     GatewayCommandResultRequest,
@@ -30,6 +30,7 @@ async def list_pending_gateway_commands(
 @router.get("/commands/{command_id}", response_model=DeviceConfigCommandRecord)
 async def get_gateway_command(
     command_id: str,
+    _: object = Depends(require_rest_user),
     service: DeviceConfigService = Depends(get_device_config_service),
 ) -> DeviceConfigCommandRecord:
     try:

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_event_store
+from app.api.deps import get_event_store, require_rest_user
 from app.models.ingest import EnvTelemetryAggregateRecord, TelemetryRecord
 from app.storage.store import Store
 
 
-router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
+router = APIRouter(
+    prefix="/api/v1/telemetry",
+    tags=["telemetry"],
+    dependencies=[Depends(require_rest_user)],
+)
 
 
 @router.get("/wristband/{device_id}", response_model=list[TelemetryRecord])

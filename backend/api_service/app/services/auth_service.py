@@ -1,0 +1,249 @@
+from __future__ import annotations
+
+import base64
+import binascii
+import hashlib
+import hmac
+import json
+import secrets
+import time
+from dataclasses import dataclass
+from typing import Any
+from uuid import uuid4
+
+from app.models.auth import AuthTokenPair, AuthUser
+from app.settings import AuthSettings
+
+
+class AuthError(Exception):
+    pass
+
+
+@dataclass(slots=True)
+class RefreshSession:
+    username: str
+    refresh_jti: str
+    expires_at_s: int
+
+
+class AuthService:
+    def __init__(self, settings: AuthSettings) -> None:
+        self._settings = settings
+        self._refresh_sessions: dict[str, RefreshSession] = {}
+
+    @property
+    def rest_auth_required(self) -> bool:
+        return self._settings.enforce_rest
+
+    @property
+    def ws_auth_required(self) -> bool:
+        return self._settings.enforce_ws
+
+    def issue_token_pair(self, username: str) -> AuthTokenPair:
+        now_s = int(time.time())
+        session_id = str(uuid4())
+        refresh_jti = str(uuid4())
+        self._refresh_sessions[session_id] = RefreshSession(
+            username=username,
+            refresh_jti=refresh_jti,
+            expires_at_s=now_s + self._settings.refresh_token_ttl_s,
+        )
+        return self._build_token_pair(username=username, session_id=session_id, refresh_jti=refresh_jti, now_s=now_s)
+
+    def login(self, username: str, password: str) -> AuthTokenPair:
+        if username != self._settings.admin.username:
+            raise AuthError("invalid username or password")
+        if not verify_password(password=password, encoded=self._settings.admin.password_hash):
+            raise AuthError("invalid username or password")
+        return self.issue_token_pair(username=username)
+
+    def refresh(self, refresh_token: str) -> AuthTokenPair:
+        claims = self._decode_token(
+            token=refresh_token,
+            secret=self._settings.jwt.refresh_secret,
+            expected_type="refresh",
+        )
+        session_id = _require_str_claim(claims, "sid")
+        session = self._refresh_sessions.get(session_id)
+        if session is None:
+            raise AuthError("refresh session expired or revoked")
+        now_s = int(time.time())
+        if session.expires_at_s <= now_s:
+            self._refresh_sessions.pop(session_id, None)
+            raise AuthError("refresh session expired or revoked")
+        if session.username != _require_str_claim(claims, "sub"):
+            self._refresh_sessions.pop(session_id, None)
+            raise AuthError("refresh session mismatch")
+        if session.refresh_jti != _require_str_claim(claims, "jti"):
+            self._refresh_sessions.pop(session_id, None)
+            raise AuthError("refresh token has been rotated")
+
+        refresh_jti = str(uuid4())
+        session.refresh_jti = refresh_jti
+        session.expires_at_s = now_s + self._settings.refresh_token_ttl_s
+        return self._build_token_pair(
+            username=session.username,
+            session_id=session_id,
+            refresh_jti=refresh_jti,
+            now_s=now_s,
+        )
+
+    def logout(self, refresh_token: str) -> None:
+        claims = self._decode_token(
+            token=refresh_token,
+            secret=self._settings.jwt.refresh_secret,
+            expected_type="refresh",
+        )
+        session_id = _require_str_claim(claims, "sid")
+        self._refresh_sessions.pop(session_id, None)
+
+    def verify_access_token(self, token: str) -> AuthUser:
+        claims = self._decode_token(
+            token=token,
+            secret=self._settings.jwt.access_secret,
+            expected_type="access",
+        )
+        username = _require_str_claim(claims, "sub")
+        role = _require_str_claim(claims, "role")
+        return AuthUser(username=username, role=role)  # type: ignore[arg-type]
+
+    def anonymous_user(self) -> AuthUser:
+        return AuthUser(username="anonymous", role="anonymous")
+
+    def _build_token_pair(
+        self,
+        *,
+        username: str,
+        session_id: str,
+        refresh_jti: str,
+        now_s: int,
+    ) -> AuthTokenPair:
+        access_token = self._encode_token(
+            secret=self._settings.jwt.access_secret,
+            payload={
+                "sub": username,
+                "role": "admin",
+                "typ": "access",
+                "iat": now_s,
+                "exp": now_s + self._settings.access_token_ttl_s,
+                "iss": self._settings.issuer,
+                "aud": self._settings.audience,
+                "jti": str(uuid4()),
+            },
+        )
+        refresh_token = self._encode_token(
+            secret=self._settings.jwt.refresh_secret,
+            payload={
+                "sub": username,
+                "role": "admin",
+                "typ": "refresh",
+                "iat": now_s,
+                "exp": now_s + self._settings.refresh_token_ttl_s,
+                "iss": self._settings.issuer,
+                "aud": self._settings.audience,
+                "sid": session_id,
+                "jti": refresh_jti,
+            },
+        )
+        return AuthTokenPair(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=self._settings.access_token_ttl_s,
+            refresh_expires_in=self._settings.refresh_token_ttl_s,
+            user=AuthUser(username=username),
+        )
+
+    def _encode_token(self, *, secret: str, payload: dict[str, Any]) -> str:
+        header = {"alg": "HS256", "typ": "JWT"}
+        encoded_header = _b64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+        encoded_payload = _b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+        signing_input = f"{encoded_header}.{encoded_payload}"
+        signature = hmac.new(secret.encode("utf-8"), signing_input.encode("utf-8"), hashlib.sha256).digest()
+        return f"{signing_input}.{_b64url_encode(signature)}"
+
+    def _decode_token(self, *, token: str, secret: str, expected_type: str) -> dict[str, Any]:
+        try:
+            encoded_header, encoded_payload, encoded_signature = token.split(".")
+        except ValueError as exc:
+            raise AuthError("invalid token format") from exc
+
+        signing_input = f"{encoded_header}.{encoded_payload}"
+        expected_signature = hmac.new(
+            secret.encode("utf-8"),
+            signing_input.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        try:
+            actual_signature = _b64url_decode(encoded_signature)
+        except (ValueError, binascii.Error) as exc:
+            raise AuthError("invalid token signature") from exc
+        if not hmac.compare_digest(actual_signature, expected_signature):
+            raise AuthError("invalid token signature")
+
+        try:
+            header = json.loads(_b64url_decode(encoded_header))
+            payload = json.loads(_b64url_decode(encoded_payload))
+        except (json.JSONDecodeError, ValueError, binascii.Error) as exc:
+            raise AuthError("invalid token payload") from exc
+
+        if header.get("alg") != "HS256":
+            raise AuthError("unsupported token algorithm")
+        if payload.get("typ") != expected_type:
+            raise AuthError("unexpected token type")
+        if payload.get("iss") != self._settings.issuer:
+            raise AuthError("invalid token issuer")
+        if payload.get("aud") != self._settings.audience:
+            raise AuthError("invalid token audience")
+        if int(payload.get("exp", 0)) <= int(time.time()):
+            raise AuthError("token expired")
+        return payload
+
+
+def generate_password_hash(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=16384, r=8, p=1)
+    return "scrypt$16384$8$1$%s$%s" % (
+        _b64url_encode(salt),
+        _b64url_encode(digest),
+    )
+
+
+def verify_password(*, password: str, encoded: str) -> bool:
+    try:
+        algorithm, n_raw, r_raw, p_raw, salt_raw, digest_raw = encoded.split("$", 5)
+    except ValueError:
+        return False
+    if algorithm != "scrypt":
+        return False
+    digest = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=_b64url_decode(salt_raw),
+        n=int(n_raw),
+        r=int(r_raw),
+        p=int(p_raw),
+    )
+    return hmac.compare_digest(digest, _b64url_decode(digest_raw))
+
+
+def generate_runtime_secret() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def generate_bootstrap_password() -> str:
+    return secrets.token_urlsafe(12)
+
+
+def _b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("utf-8")
+
+
+def _b64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def _require_str_claim(claims: dict[str, Any], key: str) -> str:
+    value = claims.get(key)
+    if not isinstance(value, str) or not value:
+        raise AuthError(f"invalid token claim: {key}")
+    return value
