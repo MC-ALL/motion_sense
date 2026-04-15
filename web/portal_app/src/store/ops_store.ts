@@ -26,6 +26,7 @@ interface OpsStoreState {
   ws_state: 'idle' | 'connecting' | 'open' | 'closed';
   error: string | null;
   bootstrap: () => Promise<void>;
+  refresh_snapshot: (options?: { include_alerts?: boolean }) => Promise<void>;
   select_module: (module_id: string) => Promise<void>;
   refresh_alerts: (status?: 'open' | 'closed') => Promise<void>;
   close_alert: (alert_id: number) => Promise<void>;
@@ -34,6 +35,34 @@ interface OpsStoreState {
 
 let websocket: WebSocket | null = null;
 let reconnect_timer: number | null = null;
+
+async function load_ops_snapshot(
+  selected_module_id: string | null,
+  options?: { include_alerts?: boolean }
+): Promise<{
+  summaries: ModuleHealthSummary[];
+  detail: OpsHealthDetailResponse | null;
+  alerts: OpsAlertRecord[] | null;
+  stats: OpsStatsResponse['items'];
+  selected_module_id: string | null;
+}> {
+  const include_alerts = options?.include_alerts ?? true;
+  const [health, alerts, stats] = await Promise.all([
+    fetch_ops_health(),
+    include_alerts ? fetch_ops_alerts('open') : Promise.resolve(null),
+    fetch_ops_stats()
+  ]);
+  const next_selected_module_id = selected_module_id ?? health.items[0]?.module_id ?? null;
+  const detail = next_selected_module_id ? await fetch_ops_health_detail(next_selected_module_id) : null;
+
+  return {
+    summaries: health.items,
+    detail,
+    alerts: alerts ? alerts.items : null,
+    stats: stats.items,
+    selected_module_id: next_selected_module_id
+  };
+}
 
 export const use_ops_store = create<OpsStoreState>((set, get) => ({
   loading: false,
@@ -47,25 +76,36 @@ export const use_ops_store = create<OpsStoreState>((set, get) => ({
   bootstrap: async () => {
     set({ loading: true, error: null });
     try {
-      const [health, alerts, stats] = await Promise.all([
-        fetch_ops_health(),
-        fetch_ops_alerts('open'),
-        fetch_ops_stats()
-      ]);
-      const selected_module_id = get().selected_module_id ?? health.items[0]?.module_id ?? null;
-      const detail = selected_module_id ? await fetch_ops_health_detail(selected_module_id) : null;
+      const snapshot = await load_ops_snapshot(get().selected_module_id, { include_alerts: true });
       set({
         loading: false,
-        summaries: health.items,
-        alerts: alerts.items,
-        stats: stats.items,
-        selected_module_id,
-        detail
+        summaries: snapshot.summaries,
+        alerts: snapshot.alerts ?? [],
+        stats: snapshot.stats,
+        selected_module_id: snapshot.selected_module_id,
+        detail: snapshot.detail
       });
     } catch (error) {
       set({
         loading: false,
         error: error instanceof Error ? error.message : 'load failed'
+      });
+    }
+  },
+  refresh_snapshot: async (options = { include_alerts: false }) => {
+    try {
+      const snapshot = await load_ops_snapshot(get().selected_module_id, options);
+      set((state) => ({
+        error: null,
+        summaries: snapshot.summaries,
+        stats: snapshot.stats,
+        selected_module_id: snapshot.selected_module_id,
+        detail: snapshot.detail,
+        alerts: snapshot.alerts ?? state.alerts
+      }));
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : 'refresh failed'
       });
     }
   },
@@ -109,10 +149,10 @@ export const use_ops_store = create<OpsStoreState>((set, get) => ({
     websocket.onmessage = async (event) => {
       const message = JSON.parse(event.data) as OpsMessage;
       if (message.type === 'ops_snapshot') {
-        await get().bootstrap();
+        await get().refresh_snapshot({ include_alerts: false });
       }
       if (message.type === 'ops_alert') {
-        await get().refresh_alerts('open');
+        await Promise.all([get().refresh_snapshot({ include_alerts: false }), get().refresh_alerts('open')]);
       }
     };
 

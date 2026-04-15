@@ -8,6 +8,8 @@ import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, TelemetryRecord } from '../types/backend';
 import { format_time } from '../utils/time';
 
+const empty_realtime_points: Array<Record<string, unknown>> = [];
+
 function to_number(value: unknown): number | null {
   return typeof value === 'number' ? value : null;
 }
@@ -28,7 +30,7 @@ export function EquipmentPage() {
   const [form] = Form.useForm<{ target_reps: number }>();
 
   const realtime_points = use_business_realtime_store((state) =>
-    selected_device_id ? state.telemetry_by_device[selected_device_id] ?? [] : []
+    selected_device_id ? state.telemetry_by_device[selected_device_id] ?? empty_realtime_points : empty_realtime_points
   );
   const connect = use_business_realtime_store((state) => state.connect);
 

@@ -31,6 +31,9 @@ code {
 }
 
 .app_layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-items: start;
   min-height: 100vh;
   background: transparent;
 }
@@ -41,7 +44,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 2rem;
-  width: 280px;
+  width: 100%;
   min-height: 100vh;
   padding: 2rem 1.5rem;
   background: rgba(24, 46, 42, 0.92);
@@ -106,14 +109,16 @@ code {
 }
 
 .app_main {
-  flex: 1;
+  min-width: 0;
   padding: 2rem;
+  overflow-x: hidden;
 }
 
 .page_shell {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
   background: transparent;
 }
 
@@ -342,7 +347,7 @@ code {
 
 @media (max-width: 960px) {
   .app_layout {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .app_sidebar {
