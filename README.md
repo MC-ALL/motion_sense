@@ -15,7 +15,7 @@
 - 后台 `POST /api/v1/devices/{id}/config` 配置命令入库
 - 网关 `GET /api/v1/gateway/{gateway_id}/commands/pending` 轮询执行与结果回报
 - 配置命令失败重试、租约领取与 `timed_out` 超时收敛
-- 后台 `POST /api/v1/auth/login`、`POST /api/v1/auth/refresh` 认证接口已预留
+- 后台 JWT 登录、刷新、退出接口已实现
 - 后台 AI / OTA 预留接口已占位，当前返回 `501 reserved`
 - 网关基于 InfluxDB 的本地缓存与补发链路
 - 网关 P1 规则引擎与规则热重载
@@ -27,7 +27,7 @@
 
 当前缺口：
 
-- 后台 JWT 鉴权 / AI 报告流程尚未实现，`auth` 路由当前仅预留
+- 后台 JWT 已实现，但默认仍关闭 REST / WebSocket 强制拦截，以保持第 1 迭代内网联调链路稳定
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - 网关仍缺真实 Broker 重连、规则热重载边界场景的端到端覆盖
 - OTA 当前仅保留接口预留，不纳入后续开发计划

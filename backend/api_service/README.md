@@ -5,7 +5,7 @@
 ## 当前实现范围
 
 - 批量入库：`POST /api/v1/ingest/batch`
-- 认证接口预留：`POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`
+- JWT 认证：`POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`
 - 设备、告警、遥测、绑定历史查询接口
 - WebSocket 实时接口：`GET /api/ws`
 - 设备配置下发：`POST /api/v1/devices/{id}/config`
@@ -21,7 +21,7 @@
 
 - `/healthz`：健康检查
 - `/api/v1/ingest/*`：网关批量上报入口
-- `/api/v1/auth/*`：认证接口预留
+- `/api/v1/auth/*`：JWT 登录、刷新、退出
 - `/api/v1/devices/*`：设备查询与配置下发
 - `/api/v1/ota/*`：OTA 预留接口
 - `/api/v1/gateway/*`：配置命令轮询与状态回报
@@ -47,4 +47,17 @@
 
 - 首次启动会将 `backend/deployment/api_service/defaults/default_app_settings.yaml`
   复制到 `/runtime/config/backend/api_service/app_settings.yaml`
+- 首次启动会补齐后台管理员密码哈希、JWT 密钥，并生成
+  `/runtime/config/backend/api_service/bootstrap_admin.txt`
+- `bootstrap_admin.txt` 仅用于首次取回后台管理员用户名/密码，后续应自行轮换
 - 后续修改在下次 `api_service` 重启后生效
+
+## 当前鉴权边界
+
+- 第 1 迭代默认 `auth.enforce_rest = false`、`auth.enforce_ws = false`
+- 打开后，设备查询、告警、遥测、绑定历史、配置下发、健康查询、AI 预留接口、OTA 预留接口、`/api/ws` 会要求 Bearer JWT
+- 网关内网链路暂不加 JWT：
+  `POST /api/v1/ingest/batch`、
+  `GET /api/v1/gateway/{gateway_id}/commands/pending`、
+  `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`、
+  `POST /api/v1/system/health/report`
