@@ -79,6 +79,18 @@ code {
   gap: 0.75rem;
 }
 
+.auth_panel {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(247, 169, 75, 0.14);
+  border-radius: 18px;
+  background: rgba(247, 169, 75, 0.08);
+  color: #fff3df;
+}
+
 .nav_link {
   padding: 0.95rem 1rem;
   border-radius: 16px;
@@ -141,7 +153,8 @@ code {
 }
 
 .metric_grid,
-.content_grid {
+.content_grid,
+.dashboard_grid {
   display: grid;
   gap: 1rem;
 }
@@ -152,6 +165,11 @@ code {
 
 .content_grid {
   grid-template-columns: minmax(320px, 0.92fr) minmax(420px, 1.3fr);
+  align-items: start;
+}
+
+.dashboard_grid {
+  grid-template-columns: minmax(320px, 1.1fr) minmax(320px, 0.9fr);
   align-items: start;
 }
 
@@ -178,6 +196,19 @@ code {
   margin-bottom: 1rem;
 }
 
+.compact_panel_header {
+  margin-bottom: 0.75rem;
+}
+
+.compact_hero_banner {
+  align-items: center;
+}
+
+.panel_meta_text {
+  color: #617974;
+  font-size: 0.9rem;
+}
+
 .panel_header h3,
 .placeholder_page h2 {
   margin: 0.3rem 0 0;
@@ -195,6 +226,14 @@ code {
 .chart_shell {
   width: 100%;
   height: 280px;
+}
+
+.wide_chart_shell {
+  height: 320px;
+}
+
+.chart_panel_surface {
+  padding: 0;
 }
 
 .module_list {
@@ -279,6 +318,10 @@ code {
   display: grid;
   place-items: center;
   min-height: 240px;
+}
+
+.inline_alert {
+  margin-top: 1rem;
 }
 
 @media (max-width: 1180px) {

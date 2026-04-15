@@ -11,8 +11,12 @@ export default defineConfig({
             return undefined;
           }
 
-          if (id.includes('/echarts/')) {
-            return 'echarts_vendor';
+          if (id.includes('/echarts/charts/') || id.includes('/echarts/components/')) {
+            return 'echarts_feature_vendor';
+          }
+
+          if (id.includes('/echarts/core/') || id.includes('/echarts/renderers/') || id.includes('/zrender/')) {
+            return 'echarts_runtime_vendor';
           }
 
           if (

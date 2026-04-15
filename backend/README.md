@@ -8,8 +8,9 @@
 - `GET /api/v1/devices`
 - `GET /api/v1/devices/{id}`
 - `POST /api/v1/devices/{id}/config`
-- `POST /api/v1/auth/login`（预留，当前返回 `501`）
-- `POST /api/v1/auth/refresh`（预留，当前返回 `501`）
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
 - `POST /api/v1/devices/{id}/ota`（预留，当前返回 `501`）
 - `GET /api/v1/ota/tasks`（预留，当前返回 `501`）
 - `GET /api/v1/ota/tasks/{task_id}`（预留，当前返回 `501`）
@@ -44,7 +45,7 @@
 
 1. `health.router`：健康检查 `GET /healthz`
 2. `ingest.router`：网关批量入库 `POST /api/v1/ingest/batch`
-3. `auth.router`：认证接口预留
+3. `auth.router`：JWT 登录、刷新、退出
 4. `devices.router`：设备查询与配置下发
 5. `alerts.router`：告警查询、确认、批量确认
 6. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
@@ -113,7 +114,7 @@ container build \
 ## 风险与待补项
 
 - `redis` 仅验证了单后台实例广播，多实例自动化覆盖尚缺
-- JWT 黑名单与 AI 报告流程仍待实现；`auth` 路由当前仅预留
+- JWT refresh session 当前先用内存轮换，黑名单与持久化会话仍待实现
 - 设备侧当前未预留 ACK 机制，配置命令成功只代表网关已本地执行或已转发 MQTT
 - AI 实际集成仍待实现
 - OTA 当前仅保留接口预留，不纳入后续开发计划

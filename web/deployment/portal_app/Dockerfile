@@ -4,8 +4,8 @@ ARG NPM_REGISTRY=https://registry.npmmirror.com
 
 FROM ${BUILD_BASE} AS build
 WORKDIR /opt/motion_sense/web/portal_app
-COPY web/portal_app/package.json ./
-RUN npm config set registry ${NPM_REGISTRY} && npm install
+COPY web/portal_app/package.json web/portal_app/package-lock.json ./
+RUN npm config set registry ${NPM_REGISTRY} && npm ci
 COPY web/portal_app/ ./
 RUN npm run build
 
