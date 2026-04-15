@@ -57,10 +57,16 @@ Compose 约定以下宿主机挂载目录位于 `deployment/compose/runtime/`：
 - 已支持 `DEVICE_OFFLINE` 监控，并发布 MQTT `alert` 与 retained `status`
 - 已支持后台配置命令轮询、失败回报、重试领取与超时收敛
 - 已支持基础设施健康采集并上报后台 `/api/v1/system/health/report`
+- 在 macOS + Apple `container` 上已验证完整链路：
+  `mosquitto -> edge_processor -> InfluxDB 缓冲 -> backend/api_service -> TimescaleDB`
+- 在 macOS + Apple `container` 上已验证：
+  设备入库、健康汇聚、配置命令闭环、健康汇总视图
+- 设备在线/离线检测改为使用网关接收时间，避免设备时钟漂移导致瞬时误判离线
 
 ## 当前风险
 
 - Linux 生产环境下，Mosquitto 绑定挂载的密钥 / 证书文件权限初始化仍需进一步加固
+- 设备侧仍未提供 ACK 机制，当前“配置成功”仅表示网关已执行本地处理或已转发到局域网 MQTT
 
 ## 运行时规则说明
 

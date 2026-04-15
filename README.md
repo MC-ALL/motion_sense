@@ -21,7 +21,9 @@
 - 网关 P1 规则引擎与规则热重载
 - 网关 `DEVICE_OFFLINE` 告警与 retained 状态发布
 - 网关基础设施健康采集与 `POST /api/v1/system/health/report` 上报
-- 本地链路 `mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> backend/api_service`
+- 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
+- Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
+  设备入库、健康汇聚、配置命令闭环、健康汇总视图
 
 当前缺口：
 
@@ -29,6 +31,7 @@
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - 网关仍缺真实 Broker 重连、规则热重载边界场景的端到端覆盖
 - OTA 当前仅保留接口预留，不纳入后续开发计划
+- AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
 - Apple `container build` 直接打包仓库根上下文仍存在归档兼容性问题，当前单测采用 `container run` 挂载代码目录规避
 
 ## 目录结构

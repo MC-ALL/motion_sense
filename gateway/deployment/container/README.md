@@ -33,6 +33,7 @@ mkdir -p gateway/deployment/compose/runtime/certs
 ```bash
 container build \
   --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
   -t motion-sense-edge-processor-local \
   -f gateway/deployment/edge_processor/Dockerfile .
 ```
@@ -91,10 +92,10 @@ sh gateway/deployment/container/prepare_runtime.sh
 sh gateway/deployment/container/start_local_stack.sh
 ```
 
-发送一条示例 telemetry：
+执行完整联调验证：
 
 ```bash
-sh gateway/deployment/container/publish_sample_telemetry.sh
+sh gateway/deployment/container/verify_system_stack.sh
 ```
 
 运行网关单元测试：
@@ -116,11 +117,12 @@ sh gateway/deployment/container/stop_local_stack.sh
 
 - Apple `container` CLI 支持镜像构建、容器运行、卷、网络、绑定挂载、端口映射和环境文件
 - 当前工具链不提供 Compose 兼容的编排层，因此多服务本地联调需要逐个服务启动，或使用仓库自带辅助脚本
-- 当前本地栈默认启动真实后台 API 镜像 `motion-sense-backend-api-local`，不再默认使用 mock 后台
+- 当前本地栈默认启动真实后台 API 镜像 `motion-sense-backend-api-local`，并联动 `timescaledb` 与 `redis`
+- `verify_system_stack.sh` 已在当前机器上验证通过：设备入库、健康汇聚、配置命令闭环、健康汇总视图
 - `start_local_stack.sh` 会解析后台与 Broker 容器 IP，并通过环境变量注入 `edge_processor`
 - `start_local_stack.sh` 也会注入 `MOSQUITTO_USER` / `MOSQUITTO_PASSWORD`
 - 首次启动后，生成的配置文件会出现在挂载的 `runtime/config/...` 目录中
 - `influxdb` 首次启动还会生成 `runtime/config/influxdb/admin_token.txt`，供 `edge_processor` 通过共享挂载读取
-- 当前机器上已验证链路：`mosquitto -> edge_processor -> POST /api/v1/ingest/batch -> backend/api_service`
+- 当前机器上已验证链路：`mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - 当前机器上已验证：`edge_processor` 能写入 InfluxDB 缓冲、回读待补发事件，并在写入 `edge_delivery_log` 后不再重复补发
 - 已知风险：Apple `container` 下绑定挂载的 `acl.conf` 保留宿主机所有者和权限，Mosquitto 2.1.2 会给出告警。当前功能可用，但 Linux 生产部署仍需显式权限初始化
