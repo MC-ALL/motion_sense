@@ -75,12 +75,12 @@ class InfluxEventBuffer:
 
     async def list_pending(self, limit: int) -> list[BufferedEvent]:
         response = await self._query_sql(_pending_events_query(limit * 4))
-        if response.status_code >= 500:
+        if response.status_code >= 500 or _is_missing_table_response(response):
             return []
         response.raise_for_status()
 
         delivered_response = await self._query_sql(_delivered_events_query(limit * 8))
-        if delivered_response.status_code >= 500:
+        if delivered_response.status_code >= 500 or _is_missing_table_response(delivered_response):
             delivered_event_ids: set[str] = set()
         else:
             delivered_response.raise_for_status()
@@ -181,6 +181,13 @@ def _parse_jsonl_rows(payload: str) -> list[dict[str, object]]:
             continue
         rows.append(json.loads(line))
     return rows
+
+
+def _is_missing_table_response(response: httpx.Response) -> bool:
+    if response.status_code != 400:
+        return False
+    body = response.text.lower()
+    return "not found" in body and "table" in body
 
 
 def _build_headers(settings: RuntimeSettings) -> dict[str, str]:

@@ -91,3 +91,86 @@ def test_influx_event_buffer_uses_write_and_query_endpoints() -> None:
     ack_body = write_requests[1].content.decode("utf-8")
     assert ack_body.startswith("edge_delivery_log,")
     assert "delivered=true" in ack_body
+
+
+def test_influx_event_buffer_treats_missing_tables_as_empty_pending() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+
+        if request.url.path == "/api/v3/query_sql":
+            query_payload = json.loads(request.content.decode("utf-8"))
+            if query_payload["q"] == "SELECT 1 AS ready":
+                return httpx.Response(200, text=json.dumps({"ready": 1}))
+            return httpx.Response(400, text="Error during planning: table 'public.iox.edge_ingest_events' not found")
+
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    transport = httpx.MockTransport(handler)
+    settings = RuntimeSettings(influxdb={"base_url": "http://influxdb.test:8181"})
+    buffer = InfluxEventBuffer(settings)
+    original_client = buffer._client
+    buffer._client = httpx.AsyncClient(
+        base_url=settings.influxdb.base_url,
+        transport=transport,
+        headers={},
+    )
+
+    async def scenario() -> None:
+        await original_client.aclose()
+        await buffer.initialize()
+        pending = await buffer.list_pending(10)
+        await buffer.close()
+        assert pending == []
+
+    asyncio.run(scenario())
+
+
+def test_influx_event_buffer_treats_missing_delivery_log_as_empty_ack_set() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+
+        if request.url.path == "/api/v3/query_sql":
+            query_payload = json.loads(request.content.decode("utf-8"))
+            if query_payload["q"] == "SELECT 1 AS ready":
+                return httpx.Response(200, text=json.dumps({"ready": 1}))
+            if "FROM edge_delivery_log" in query_payload["q"]:
+                return httpx.Response(400, text="Error during planning: table 'public.iox.edge_delivery_log' not found")
+            body = json.dumps(
+                {
+                    "event_id": "evt-002",
+                    "kind": "telemetry",
+                    "topic": "gym/gym-gz-01/equipment/eq-002/telemetry",
+                    "payload_json": json.dumps(
+                        {"ts": 1712345678, "power_w": 318.2},
+                        separators=(",", ":"),
+                    ),
+                    "first_seen": "2026-04-14T18:00:00Z",
+                }
+            )
+            return httpx.Response(200, text=body)
+
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    transport = httpx.MockTransport(handler)
+    settings = RuntimeSettings(influxdb={"base_url": "http://influxdb.test:8181"})
+    buffer = InfluxEventBuffer(settings)
+    original_client = buffer._client
+    buffer._client = httpx.AsyncClient(
+        base_url=settings.influxdb.base_url,
+        transport=transport,
+        headers={},
+    )
+
+    async def scenario() -> None:
+        await original_client.aclose()
+        await buffer.initialize()
+        pending = await buffer.list_pending(10)
+        await buffer.close()
+        assert len(pending) == 1
+        assert pending[0].event_id == "evt-002"
+
+    asyncio.run(scenario())

@@ -23,18 +23,20 @@
 - 网关 P1 规则引擎与规则热重载
 - 网关 `DEVICE_OFFLINE` 告警与 retained 状态发布
 - 网关基础设施健康采集与 `POST /api/v1/system/health/report` 上报
+- 网关真实 Broker 重启后的自动重连回归，以及规则热重载端到端回归
 - `ops_observer` 轮询 + 订阅网关与后台 `/ops/v1/*` / `/ops/ws`，并对外提供 `GET /api/v1/ops/*`、`PATCH /api/v1/ops/alerts/{id}/close`、`WS /api/ws/ops`
 - `web/portal_app` 已落地运维门户骨架、健康中心页面、运行时配置注入与前端构建拆包
 - `web/portal_app` 已接入实时仪表盘、器材管理、环境质量、告警管理，以及后台 JWT 登录与业务 WebSocket
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图、`ops_observer` 聚合健康视图，以及网页端入口与运行时配置
+- Apple `container` 本地脚本 `verify_gateway_resilience.sh` 已验证通过：
+  Mosquitto 异常重启后的网关自动重连、InfluxDB 本地缓冲补发、规则热重载后 `CO2_HIGH` 生效
 
 当前缺口：
 
 - 后台 JWT 已实现，但默认仍关闭 REST / WebSocket 强制拦截，以保持第 1 迭代内网联调链路稳定
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
-- 网关仍缺真实 Broker 重连、规则热重载边界场景的端到端覆盖
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
 - Apple `container build` 直接打包仓库根上下文仍可能出现归档兼容性问题；当前已由 `build_local_images.sh` 通过最小临时上下文规避

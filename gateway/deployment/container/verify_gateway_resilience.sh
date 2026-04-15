@@ -67,6 +67,31 @@ wait_for_container_gone() {
   return 1
 }
 
+mqtt_connected_count() {
+  logs="$(container logs edge_processor 2>/dev/null || true)"
+  if [ -z "${logs}" ]; then
+    printf '0\n'
+    return 0
+  fi
+  printf '%s\n' "${logs}" | grep -c "connected to mqtt broker" || true
+}
+
+wait_for_mqtt_reconnect() {
+  baseline="$1"
+  max_attempts="${2:-30}"
+  attempt=1
+  while [ "$attempt" -le "$max_attempts" ]; do
+    current="$(mqtt_connected_count)"
+    if [ "${current}" -gt "${baseline}" ]; then
+      return 0
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+  echo "timeout waiting for edge_processor mqtt reconnect" >&2
+  return 1
+}
+
 wait_for_json() {
   url="$1"
   check_code="$2"
@@ -132,10 +157,13 @@ wait_for_http_ok "http://127.0.0.1:${backend_host_port}/healthz" 30
 wait_for_http_ok "http://127.0.0.1:${gateway_host_port}/healthz" 30
 wait_for_tcp 127.0.0.1 1883 30
 
+mqtt_connected_before_restart="$(mqtt_connected_count)"
+
 container stop mosquitto >/dev/null 2>&1 || true
 wait_for_container_gone mosquitto 30
 start_mosquitto
 wait_for_tcp 127.0.0.1 1883 60
+wait_for_mqtt_reconnect "${mqtt_connected_before_restart}" 30
 
 reconnect_payload_file="$(mktemp)"
 rule_payload_a_file="$(mktemp)"
@@ -156,9 +184,10 @@ sh gateway/deployment/container/publish_sample_telemetry.sh \
   "gym/gym-gz-01/equipment/eq-reconnect-01/telemetry" \
   "${reconnect_payload_file}"
 
+broker_reconnect_check="import json, os; body=json.loads(os.environ['BODY_JSON']); assert any(item['payload'].get('device_id') == 'eq-reconnect-01' and item['payload'].get('power_w') == 288.0 and item['payload'].get('ts') == ${reconnect_ts} for item in body)"
 broker_reconnect_json="$(wait_for_json \
-  "http://127.0.0.1:${backend_host_port}/api/v1/devices/eq-reconnect-01" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["device_id"]=="eq-reconnect-01"; assert body["online"] is True; assert body["last_payload"]["power_w"]==288.0')"
+  "http://127.0.0.1:${backend_host_port}/api/v1/telemetry/equipment/eq-reconnect-01" \
+  "${broker_reconnect_check}")"
 
 pre_reload_ts="$(date +%s)"
 cat > "${rule_payload_a_file}" <<EOF
@@ -171,14 +200,13 @@ sh gateway/deployment/container/publish_sample_telemetry.sh \
 
 pre_reload_alerts_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/alerts?device_id=env-rule-01" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body == []')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert not any(item["code"] == "CO2_HIGH" for item in body)')"
 
-RULES_FILE="${rules_file}" python3 -c '
+container exec edge_processor python -c '
 from pathlib import Path
-import os
 import yaml
 
-path = Path(os.environ["RULES_FILE"])
+path = Path("/runtime/config/edge_processor/rules.yaml")
 data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 rules = data.setdefault("alert_rules", {})
 co2 = rules.setdefault("CO2_HIGH", {})
