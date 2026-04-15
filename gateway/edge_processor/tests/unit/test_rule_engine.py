@@ -66,3 +66,66 @@ def test_rule_engine_reads_device_offline_timeout(tmp_path: Path) -> None:
     assert offline_rule.enabled is True
     assert offline_rule.timeout_s == 45
     assert engine.check_interval_s() == 3
+
+
+def test_rule_engine_clears_window_state_after_rule_disabled(tmp_path: Path) -> None:
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text(
+        "\n".join(
+            [
+                "alert_rules:",
+                "  CO2_HIGH:",
+                "    enabled: true",
+                "    threshold_ppm: 1000",
+                "    window_s: 2",
+                "    level: warning",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    engine = RuleEngine(rules_path)
+    engine.reload_rules()
+    topic = parse_topic("gym/gym-gz-01/env/env-zone-a/telemetry")
+
+    assert engine.evaluate_telemetry(topic, {"ts": 100, "co2_ppm": 1200}) == []
+
+    rules_path.write_text(
+        "\n".join(
+            [
+                "alert_rules:",
+                "  CO2_HIGH:",
+                "    enabled: false",
+                "    threshold_ppm: 1000",
+                "    window_s: 2",
+                "    level: warning",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    engine.reload_rules()
+    assert engine.evaluate_telemetry(topic, {"ts": 101, "co2_ppm": 1300}) == []
+
+    rules_path.write_text(
+        "\n".join(
+            [
+                "alert_rules:",
+                "  CO2_HIGH:",
+                "    enabled: true",
+                "    threshold_ppm: 1000",
+                "    window_s: 2",
+                "    level: warning",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    engine.reload_rules()
+
+    assert engine.evaluate_telemetry(topic, {"ts": 102, "co2_ppm": 1400}) == []
+    assert engine.evaluate_telemetry(topic, {"ts": 103, "co2_ppm": 1500}) == []
+    alerts = engine.evaluate_telemetry(topic, {"ts": 104, "co2_ppm": 1600})
+    assert len(alerts) == 1
+    assert alerts[0].code == "CO2_HIGH"
