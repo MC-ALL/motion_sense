@@ -2,11 +2,11 @@
 
 ## 项目结构与模块组织
 仓库同时包含需求文档与第 1 迭代实现代码：
-- `docs/`：系统总览、01-06 子系统规格、07 接口契约、08 排期。
+- `docs/`：系统总览、01-06 子系统规格、07 接口契约、08 排期、09 运维观测端设计。
 - `gateway/edge_processor/app/`：04 网关端异步服务源码；部署文件在 `gateway/deployment/`。
 - `backend/api_service/app/`：05 后台端异步 FastAPI 服务；部署文件在 `backend/deployment/`。
 
-修改实现时，至少同步检查 `docs/04-网关端.md`、`docs/05-后台端.md`、`docs/07-通讯接口定义.md`。
+修改实现时，至少同步检查 `docs/04-网关端.md`、`docs/05-后台端.md`、`docs/07-通讯接口定义.md`，涉及运维健康时还要同步 `docs/09-运维观测端.md`。
 
 ## 构建、测试与开发命令
 - `rg -n "TODO|FIXME|待补充" docs gateway backend`：扫描待补项。
