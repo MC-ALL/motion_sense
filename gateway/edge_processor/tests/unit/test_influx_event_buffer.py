@@ -19,6 +19,8 @@ def test_influx_event_buffer_uses_write_and_query_endpoints() -> None:
             query_payload = json.loads(request.content.decode("utf-8"))
             if query_payload["q"] == "SELECT 1 AS ready":
                 return httpx.Response(200, text=json.dumps({"ready": 1}))
+            if "FROM edge_delivery_log" in query_payload["q"]:
+                return httpx.Response(200, text="")
             body = json.dumps(
                 {
                     "event_id": "evt-001",
@@ -83,7 +85,8 @@ def test_influx_event_buffer_uses_write_and_query_endpoints() -> None:
         if request.url.path == "/api/v3/query_sql"
     ]
     assert all(payload["db"] == "gym_local" for payload in query_payloads)
-    assert any("edge_delivery_log" in payload["q"] for payload in query_payloads)
+    assert any("FROM edge_ingest_events" in payload["q"] for payload in query_payloads)
+    assert any("FROM edge_delivery_log" in payload["q"] for payload in query_payloads)
 
     ack_body = write_requests[1].content.decode("utf-8")
     assert ack_body.startswith("edge_delivery_log,")

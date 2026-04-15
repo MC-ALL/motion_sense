@@ -1,7 +1,9 @@
 ARG PYTHON_BASE=python:3.13-slim
 FROM ${PYTHON_BASE}
 
-RUN pip install --no-cache-dir fastapi==0.115.12 uvicorn[standard]==0.34.2
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
+RUN pip install --no-cache-dir --index-url "${PIP_INDEX_URL}" fastapi==0.115.12 uvicorn[standard]==0.34.2
 
 WORKDIR /opt/mock_backend
 

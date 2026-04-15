@@ -74,23 +74,33 @@ class InfluxEventBuffer:
         return event_id
 
     async def list_pending(self, limit: int) -> list[BufferedEvent]:
-        response = await self._query_sql(_pending_query(limit, with_delivery_log=True))
+        response = await self._query_sql(_pending_events_query(limit * 4))
         if response.status_code >= 500:
-            response = await self._query_sql(_pending_query(limit, with_delivery_log=False))
-
+            return []
         response.raise_for_status()
 
+        delivered_response = await self._query_sql(_delivered_events_query(limit * 8))
+        if delivered_response.status_code >= 500:
+            delivered_event_ids: set[str] = set()
+        else:
+            delivered_response.raise_for_status()
+            delivered_event_ids = {
+                str(row["event_id"])
+                for row in _parse_jsonl_rows(delivered_response.text)
+                if row.get("event_id")
+            }
+
         events: list[BufferedEvent] = []
-        for line in response.text.splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
+        for row in _parse_jsonl_rows(response.text):
             payload_json = row.get("payload_json")
             if not isinstance(payload_json, str):
                 continue
+            event_id = str(row["event_id"])
+            if event_id in delivered_event_ids:
+                continue
             events.append(
                 BufferedEvent(
-                    event_id=str(row["event_id"]),
+                    event_id=event_id,
                     item=IngestItem(
                         kind=str(row["kind"]),
                         topic=str(row["topic"]),
@@ -98,6 +108,8 @@ class InfluxEventBuffer:
                     ),
                 )
             )
+            if len(events) >= limit:
+                break
         return events
 
     async def ack_delivered(self, event_ids: list[str]) -> None:
@@ -138,34 +150,37 @@ class InfluxEventBuffer:
         response.raise_for_status()
 
 
-def _pending_query(limit: int, *, with_delivery_log: bool) -> str:
-    if with_delivery_log:
-        return f"""
-SELECT
-  e.event_id,
-  e.kind,
-  MIN(e.topic) AS topic,
-  MIN(e.payload_json) AS payload_json,
-  MIN(e.time) AS first_seen
-FROM edge_ingest_events e
-LEFT JOIN edge_delivery_log d ON e.event_id = d.event_id
-WHERE d.event_id IS NULL
-GROUP BY e.event_id, e.kind
-ORDER BY first_seen
-LIMIT {int(limit)}
-""".strip()
+def _pending_events_query(limit: int) -> str:
     return f"""
 SELECT
-  e.event_id,
-  e.kind,
-  MIN(e.topic) AS topic,
-  MIN(e.payload_json) AS payload_json,
-  MIN(e.time) AS first_seen
-FROM edge_ingest_events e
-GROUP BY e.event_id, e.kind
+  event_id,
+  kind,
+  topic,
+  payload_json,
+  time AS first_seen
+FROM edge_ingest_events
 ORDER BY first_seen
 LIMIT {int(limit)}
 """.strip()
+
+
+def _delivered_events_query(limit: int) -> str:
+    return f"""
+SELECT
+  event_id
+FROM edge_delivery_log
+ORDER BY time DESC
+LIMIT {int(limit)}
+""".strip()
+
+
+def _parse_jsonl_rows(payload: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for line in payload.splitlines():
+        if not line.strip():
+            continue
+        rows.append(json.loads(line))
+    return rows
 
 
 def _build_headers(settings: RuntimeSettings) -> dict[str, str]:
