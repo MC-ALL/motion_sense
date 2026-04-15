@@ -83,7 +83,7 @@
 
 ```bash
 container build \
-  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-backend-api-local \
   -f backend/deployment/api_service/Dockerfile .
 ```
@@ -124,6 +124,6 @@ container build \
 container run --remove \
   --volume "$PWD:/workspace" \
   --workdir /workspace/backend/api_service \
-  dockerproxy.net/library/python:3.13-slim \
+  python:3.13-slim \
   sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```

@@ -25,15 +25,15 @@ mkdir -p gateway/deployment/compose/runtime/certs
 4. `mosquitto` 首次启动会从镜像模板生成 `runtime/config/mosquitto/acl.conf`
    如果之后修改了 `MOSQUITTO_USER`，需要在重启前删除或更新该 ACL 文件
 
-## 使用镜像源构建
+## 使用官方镜像构建
 
-当前在 macOS 上已验证可用的镜像源基线为 `dockerproxy.net`，镜像引用中不要带 `https://` 前缀。
+当前在 macOS 上直接使用 Docker Hub 官方镜像标签。
 
 构建 `edge_processor`：
 
 ```bash
 container build \
-  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  --build-arg PYTHON_BASE=python:3.13-slim \
   --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
   -t motion-sense-edge-processor-local \
   -f gateway/deployment/edge_processor/Dockerfile .
@@ -43,7 +43,7 @@ container build \
 
 ```bash
 container build \
-  --build-arg MOSQUITTO_BASE=dockerproxy.net/library/eclipse-mosquitto:2.1.2-alpine \
+  --build-arg MOSQUITTO_BASE=eclipse-mosquitto:2.1-alpine \
   -t motion-sense-mosquitto-local \
   -f gateway/deployment/mosquitto/Dockerfile .
 ```
@@ -52,7 +52,7 @@ container build \
 
 ```bash
 container build \
-  --build-arg INFLUXDB_BASE=dockerproxy.net/library/influxdb:3.8.0-core \
+  --build-arg INFLUXDB_BASE=influxdb:3.9-core \
   -t motion-sense-influxdb-local \
   -f gateway/deployment/influxdb/Dockerfile .
 ```

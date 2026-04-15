@@ -35,7 +35,7 @@ Linux 部署仍以 Docker Compose 为主。
 
 ```bash
 container build \
-  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-edge-processor-local \
   -f gateway/deployment/edge_processor/Dockerfile .
 ```

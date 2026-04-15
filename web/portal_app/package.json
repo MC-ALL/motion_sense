@@ -1,0 +1,28 @@
+{
+  "name": "motion-sense-web-portal-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "antd": "5.27.3",
+    "axios": "1.15.0",
+    "dayjs": "1.11.18",
+    "echarts": "6.0.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "react-router-dom": "7.14.1",
+    "zustand": "5.0.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "5.0.2",
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
+    "typescript": "5.9.2",
+    "vite": "7.3.2"
+  }
+}

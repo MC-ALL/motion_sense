@@ -1,2 +1,4 @@
 .DS_Store
 ops_observer/api_service/build/
+web/portal_app/node_modules/
+web/portal_app/dist/

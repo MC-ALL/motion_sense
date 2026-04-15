@@ -7,6 +7,7 @@
 - `gateway/`：异步边缘处理服务、Mosquitto、InfluxDB 3 Core 部署资产，以及 Apple `container` 本地测试脚本
 - `backend/`：异步 FastAPI 后台服务、TimescaleDB 持久化、Redis 实时广播
 - `ops_observer/`：独立运维观测服务、SQLite 持久化、基础设施健康聚合
+- `web/`：运维门户前端、健康中心页面与运行时配置注入
 - `docs/`：系统架构、各子系统规格、接口契约与开发排期
 
 当前机器上已完成并验证：
@@ -23,6 +24,7 @@
 - 网关 `DEVICE_OFFLINE` 告警与 retained 状态发布
 - 网关基础设施健康采集与 `POST /api/v1/system/health/report` 上报
 - `ops_observer` 轮询 + 订阅网关与后台 `/ops/v1/*` / `/ops/ws`，并对外提供 `GET /api/v1/ops/*`、`PATCH /api/v1/ops/alerts/{id}/close`、`WS /api/ws/ops`
+- `web/portal_app` 已落地运维门户骨架、健康中心页面、运行时配置注入与前端构建拆包
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图，以及 `ops_observer` 聚合健康视图
@@ -46,6 +48,8 @@
 - `backend/deployment/`：后台 Dockerfile 与部署基线
 - `ops_observer/api_service/`：运维观测 Python 服务
 - `ops_observer/deployment/`：运维观测 Dockerfile 与默认配置
+- `web/portal_app/`：网页端前端源码
+- `web/deployment/`：网页端 Dockerfile、Nginx 配置与默认运行时配置
 
 ## 路由与数据流总览
 
@@ -83,7 +87,7 @@ Linux / Docker 目标镜像构建：
 
 ```bash
 container build \
-  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-backend-api-local \
   -f backend/deployment/api_service/Dockerfile .
 ```
@@ -92,7 +96,7 @@ container build \
 
 ```bash
 container build \
-  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-edge-processor-local \
   -f gateway/deployment/edge_processor/Dockerfile .
 ```
@@ -103,7 +107,7 @@ container build \
 container run --remove \
   --volume "$PWD:/workspace" \
   --workdir /workspace/backend/api_service \
-  dockerproxy.net/library/python:3.13-slim \
+  python:3.13-slim \
   sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```
 
@@ -113,7 +117,7 @@ container run --remove \
 container run --remove \
   --volume "$PWD:/workspace" \
   --workdir /workspace/gateway/edge_processor \
-  dockerproxy.net/library/python:3.13-slim \
+  python:3.13-slim \
   sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```
 
@@ -123,7 +127,7 @@ container run --remove \
 container run --remove \
   --volume "$PWD:/workspace" \
   --workdir /workspace/ops_observer/api_service \
-  dockerproxy.net/library/python:3.13-slim \
+  python:3.13-slim \
   sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```
 
@@ -131,9 +135,19 @@ container run --remove \
 
 ```bash
 container build \
-  --build-arg PYTHON_BASE=dockerproxy.net/library/python:3.13-slim \
+  --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-ops-observer-local \
   -f ops_observer/deployment/api_service/Dockerfile .
+```
+
+本地构建网页端镜像：
+
+```bash
+container build \
+  --build-arg BUILD_BASE=node:24-alpine \
+  --build-arg NGINX_BASE=nginx:1.29-alpine \
+  -t motion-sense-web-portal-local \
+  -f web/deployment/portal_app/Dockerfile .
 ```
 
 启动 04/05/09 完整本地联调栈：
@@ -151,4 +165,4 @@ sh gateway/deployment/container/stop_local_stack.sh
 - 开发平台：macOS + Apple `container`
 - 目标部署平台：Linux + Docker
 - 本地 ad hoc 栈不提供 Compose 风格的服务名 DNS，脚本会显式解析容器 IP
-- 当前镜像源基线：`dockerproxy.net`
+- 当前基础镜像基线：`python:3.13-slim`、`eclipse-mosquitto:2.1-alpine`、`influxdb:3.9-core`、`redis:8.6-alpine`、`timescale/timescaledb:latest-pg17`、`node:24-alpine`、`nginx:1.29-alpine`

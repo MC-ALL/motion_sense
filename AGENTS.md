@@ -6,15 +6,17 @@
 - `gateway/edge_processor/app/`：04 网关端异步服务源码；部署文件在 `gateway/deployment/`。
 - `backend/api_service/app/`：05 后台端异步 FastAPI 服务；部署文件在 `backend/deployment/`。
 - `ops_observer/api_service/app/`：09 运维观测端异步 FastAPI 服务；部署文件在 `ops_observer/deployment/`。
+- `web/portal_app/`：06 网页端 React + Vite 前端；部署文件在 `web/deployment/`。
 
 修改实现时，至少同步检查 `docs/04-网关端.md`、`docs/05-后台端.md`、`docs/07-通讯接口定义.md`；涉及运维健康时还要同步 `docs/09-运维观测端.md` 与 `docs/06-网页端.md`。
 
 ## 构建、测试与开发命令
-- `rg -n "TODO|FIXME|待补充" docs gateway backend ops_observer`：扫描待补项。
+- `rg -n "TODO|FIXME|待补充" docs gateway backend ops_observer web`：扫描待补项。
 - `python3 -m compileall backend/api_service/app gateway/edge_processor/app ops_observer/api_service/app`：快速做语法检查。
-- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/backend/api_service dockerproxy.net/library/python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行后台单测。
-- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/edge_processor dockerproxy.net/library/python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行网关单测。
-- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/ops_observer/api_service dockerproxy.net/library/python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行运维观测端单测。
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/backend/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行后台单测。
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行网关单测。
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/ops_observer/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行运维观测端单测。
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/web/portal_app node:24-alpine sh -lc "npm ci && npm run build"`：按锁文件构建网页端。
 - `sh ops_observer/deployment/container/verify_ops_observer_api.sh`：校验运行中的运维观测端基础 REST 接口。
 
 ## 代码风格与命名规范
