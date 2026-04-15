@@ -1,6 +1,6 @@
 # motion_sense
 
-本仓库是 `04-网关端`、`05-后台端` 与 `09-运维观测端` 的第 1 迭代工作区，包含需求文档、实现代码、部署文件与本地联调脚本。
+本仓库是 `04-网关端`、`05-后台端`、`06-网页端` 与 `09-运维观测端` 的第 1 迭代工作区，包含需求文档、实现代码、部署文件与本地联调脚本。
 
 ## 当前状态
 
@@ -152,7 +152,7 @@ container build \
   -f web/deployment/portal_app/Dockerfile .
 ```
 
-启动 04/05/09 完整本地联调栈：
+启动 `04 / 05 / 06 / 09` 完整本地联调栈：
 
 ```bash
 sh gateway/deployment/container/build_local_images.sh
