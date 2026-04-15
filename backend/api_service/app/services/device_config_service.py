@@ -11,6 +11,7 @@ from app.models.device_config import (
     DeviceType,
     GatewayCommandResultRequest,
 )
+from app.services.ops_service import BackendOpsService
 from app.storage.store import Store
 
 
@@ -45,6 +46,7 @@ class DeviceConfigService:
         retry_backoff_s: int = 5,
         delivery_lease_s: int = 15,
         expire_after_s: int = 300,
+        ops_service: BackendOpsService | None = None,
     ) -> None:
         self._store = store
         self._topic_prefix = topic_prefix
@@ -55,6 +57,7 @@ class DeviceConfigService:
         self._retry_backoff_s = retry_backoff_s
         self._delivery_lease_s = delivery_lease_s
         self._expire_after_s = expire_after_s
+        self._ops_service = ops_service
 
     async def publish_config(
         self,
@@ -90,6 +93,8 @@ class DeviceConfigService:
             next_retry_at=created_at,
             expires_at=_advance_iso(created_at, self._expire_after_s),
         )
+        if self._ops_service is not None:
+            self._ops_service.record_config_command_created()
         return DeviceConfigPublishResult.model_validate(record.model_dump())
 
     async def list_pending_commands(
@@ -135,6 +140,8 @@ class DeviceConfigService:
         )
         if updated is None:
             raise DeviceConfigCommandNotFoundError("device config command not found")
+        if self._ops_service is not None:
+            self._ops_service.record_command_result(updated.status)
         return updated
 
     async def _resolve_target(
@@ -217,4 +224,3 @@ def _advance_iso(value: str, seconds: int) -> str:
     return (
         datetime.fromisoformat(value.replace("Z", "+00:00")) + timedelta(seconds=seconds)
     ).isoformat()
-

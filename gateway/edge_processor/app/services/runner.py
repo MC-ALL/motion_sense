@@ -8,6 +8,7 @@ from typing import Any
 
 from app.models.device_command import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest_item import IngestItem
+from app.models.ops import GatewayOpsHealthSummary, GatewayOpsStats
 from app.services.backend_client import BackendClient
 from app.services.batch_uploader import batch_uploader_loop
 from app.services.device_presence import DeviceTransition, DevicePresenceTracker
@@ -15,6 +16,7 @@ from app.services.health_reporter import GatewayHealthReporter
 from app.services.influx_event_buffer import InfluxEventBuffer
 from app.services.mqtt_ingest import mqtt_ingest_loop
 from app.services.mqtt_publisher import MqttPublisher
+from app.services.ops_websocket_manager import OpsWebSocketManager
 from app.services.rule_engine import DeviceOfflineRule, EmittedAlert, RuleEngine
 from app.services.runtime_config import RuntimeConfigManager
 from app.settings import RuntimeSettings
@@ -36,6 +38,31 @@ class EdgeProcessorRunner:
         self._rule_engine = RuleEngine(self._runtime_config_manager.rules_path)
         self._device_presence_tracker = DevicePresenceTracker()
         self._command_result_cache: dict[str, GatewayCommandResultRequest] = {}
+        self._ops_websocket_manager: OpsWebSocketManager | None = None
+        self._started_at = datetime.now(UTC)
+        self._latest_health_report = None
+        self._latest_health_report_error: str | None = None
+        self._last_health_checked_at: str | None = None
+        self._mqtt_events_received_total = 0
+        self._telemetry_events_total = 0
+        self._alert_events_total = 0
+        self._binding_events_total = 0
+        self._status_events_total = 0
+        self._generated_alerts_total = 0
+        self._generated_status_total = 0
+        self._command_polls_total = 0
+        self._commands_executed_total = 0
+        self._command_failures_total = 0
+        self._batch_upload_success_total = 0
+        self._batch_upload_failure_total = 0
+        self._last_batch_size = 0
+        self._last_batch_uploaded_at: str | None = None
+        self._last_batch_error: str | None = None
+        self._health_report_success_total = 0
+        self._health_report_failure_total = 0
+
+    def set_ops_websocket_manager(self, manager: OpsWebSocketManager) -> None:
+        self._ops_websocket_manager = manager
 
     async def start(self) -> None:
         if self._supervisor_task is not None:
@@ -72,7 +99,12 @@ class EdgeProcessorRunner:
                 name="mqtt-ingest-loop",
             )
             task_group.create_task(
-                batch_uploader_loop(self._settings, self._backend_client, self._event_buffer),
+                batch_uploader_loop(
+                    self._settings,
+                    self._backend_client,
+                    self._event_buffer,
+                    on_batch_result=self._on_batch_result,
+                ),
                 name="batch-uploader-loop",
             )
             task_group.create_task(self._device_offline_monitor_loop(), name="device-offline-loop")
@@ -98,6 +130,7 @@ class EdgeProcessorRunner:
         while True:
             await self._flush_command_results()
             try:
+                self._command_polls_total += 1
                 commands = await self._backend_client.fetch_pending_commands()
             except Exception:
                 LOGGER.exception(
@@ -121,9 +154,14 @@ class EdgeProcessorRunner:
         while True:
             try:
                 report = await self._health_reporter.collect_report()
+                await self._cache_health_report(report)
                 response = await self._backend_client.post_system_health(report)
                 response.raise_for_status()
+                self._health_report_success_total += 1
+                self._latest_health_report_error = None
             except Exception:
+                self._health_report_failure_total += 1
+                self._latest_health_report_error = "failed to post system health report"
                 LOGGER.exception(
                     "failed to report gateway infrastructure health",
                     extra={"gateway_id": self._settings.gateway_id},
@@ -131,6 +169,16 @@ class EdgeProcessorRunner:
             await asyncio.sleep(self._settings.health_interval_s)
 
     async def _on_ingest_event(self, parsed_topic: ParsedTopic, payload: dict[str, Any]) -> None:
+        self._mqtt_events_received_total += 1
+        if parsed_topic.action == "telemetry":
+            self._telemetry_events_total += 1
+        elif parsed_topic.action == "alert":
+            self._alert_events_total += 1
+        elif parsed_topic.action == "binding":
+            self._binding_events_total += 1
+        elif parsed_topic.action == "status":
+            self._status_events_total += 1
+
         recovered = self._device_presence_tracker.mark_seen(parsed_topic, payload)
         if recovered is not None:
             await self._emit_status_event(recovered, online=True)
@@ -142,6 +190,7 @@ class EdgeProcessorRunner:
             await self._emit_rule_alert(alert)
 
     async def _emit_rule_alert(self, alert: EmittedAlert) -> None:
+        self._generated_alerts_total += 1
         topic = f"gym/{alert.gym_id}/{alert.device_type}/{alert.device_id}/alert"
         payload = {
             "ts": alert.observed_at_s,
@@ -174,6 +223,7 @@ class EdgeProcessorRunner:
         await self._emit_status_event(transition, online=False)
 
     async def _emit_status_event(self, transition: DeviceTransition, online: bool) -> None:
+        self._generated_status_total += 1
         identity = transition.identity
         status_topic = f"gym/{identity.gym_id}/{identity.device_type}/{identity.device_id}/status"
         status_payload = {
@@ -217,12 +267,14 @@ class EdgeProcessorRunner:
     ) -> GatewayCommandResultRequest:
         try:
             detail = await self._apply_command(command)
+            self._commands_executed_total += 1
             return GatewayCommandResultRequest(
                 status="succeeded",
                 reported_at=datetime.now(UTC).isoformat(),
                 detail=detail,
             )
         except Exception as exc:
+            self._command_failures_total += 1
             LOGGER.exception(
                 "failed to execute gateway command",
                 extra={
@@ -236,6 +288,121 @@ class EdgeProcessorRunner:
                 reported_at=datetime.now(UTC).isoformat(),
                 detail=str(exc),
             )
+
+    async def _on_batch_result(
+        self,
+        item_count: int,
+        succeeded: bool,
+        status_code: int | None,
+        error: str | None,
+    ) -> None:
+        del status_code
+        self._last_batch_size = item_count
+        if succeeded:
+            self._batch_upload_success_total += 1
+            self._last_batch_uploaded_at = datetime.now(UTC).isoformat()
+            self._last_batch_error = None
+        else:
+            self._batch_upload_failure_total += 1
+            self._last_batch_error = error or "upload failed"
+
+    async def _cache_health_report(self, report) -> None:
+        self._latest_health_report = report
+        self._last_health_checked_at = report.reported_at
+        if self._ops_websocket_manager is not None:
+            summary = self._build_health_summary(report)
+            await self._ops_websocket_manager.broadcast(
+                {"type": "ops_snapshot", "data": summary.model_dump()}
+            )
+
+    async def get_ops_health_summary(self) -> GatewayOpsHealthSummary:
+        report = await self._latest_or_collect_health_report()
+        return self._build_health_summary(report)
+
+    async def get_ops_components(self):
+        report = await self._latest_or_collect_health_report()
+        return report.components
+
+    async def get_ops_stats(self) -> GatewayOpsStats:
+        active_connections = 0
+        if self._ops_websocket_manager is not None:
+            active_connections = await self._ops_websocket_manager.connection_count()
+
+        last_known_health_status = "unknown"
+        if self._latest_health_report is not None:
+            last_known_health_status = self._build_health_summary(self._latest_health_report).health_status
+
+        return GatewayOpsStats(
+            module_id=f"gateway:{self._settings.gateway_id}",
+            gateway_id=self._settings.gateway_id,
+            gym_id=self._settings.gym_id,
+            started_at=self._started_at.isoformat(),
+            uptime_s=max(int((datetime.now(UTC) - self._started_at).total_seconds()), 0),
+            active_ops_ws_connections=active_connections,
+            mqtt_events_received_total=self._mqtt_events_received_total,
+            telemetry_events_total=self._telemetry_events_total,
+            alert_events_total=self._alert_events_total,
+            binding_events_total=self._binding_events_total,
+            status_events_total=self._status_events_total,
+            generated_alerts_total=self._generated_alerts_total,
+            generated_status_total=self._generated_status_total,
+            command_polls_total=self._command_polls_total,
+            commands_executed_total=self._commands_executed_total,
+            command_failures_total=self._command_failures_total,
+            batch_upload_success_total=self._batch_upload_success_total,
+            batch_upload_failure_total=self._batch_upload_failure_total,
+            last_batch_size=self._last_batch_size,
+            last_batch_uploaded_at=self._last_batch_uploaded_at,
+            last_batch_error=self._last_batch_error,
+            health_report_success_total=self._health_report_success_total,
+            health_report_failure_total=self._health_report_failure_total,
+            last_health_checked_at=self._last_health_checked_at,
+            last_health_report_error=self._latest_health_report_error,
+            last_known_health_status=last_known_health_status,
+            batch_interval_s=self._settings.batch_interval_s,
+            command_poll_interval_s=self._settings.command_poll_interval_s,
+            health_interval_s=self._settings.health_interval_s,
+            replay_batch_size=self._settings.influxdb.replay_batch_size,
+        )
+
+    async def _latest_or_collect_health_report(self):
+        if self._latest_health_report is None:
+            report = await self._health_reporter.collect_report()
+            await self._cache_health_report(report)
+        assert self._latest_health_report is not None
+        return self._latest_health_report
+
+    def _build_health_summary(self, report) -> GatewayOpsHealthSummary:
+        component_total = len(report.components)
+        healthy_components = sum(1 for item in report.components if item.online and item.health_status == "healthy")
+        degraded_components = sum(1 for item in report.components if item.online and item.health_status == "degraded")
+        offline_components = sum(1 for item in report.components if (not item.online) or item.health_status == "offline")
+
+        if component_total == 0:
+            health_status = "unknown"
+            online = False
+        elif offline_components > 0:
+            health_status = "offline"
+            online = False
+        elif degraded_components > 0:
+            health_status = "degraded"
+            online = True
+        else:
+            health_status = "healthy"
+            online = True
+
+        return GatewayOpsHealthSummary(
+            module_id=f"gateway:{self._settings.gateway_id}",
+            gateway_id=self._settings.gateway_id,
+            gym_id=self._settings.gym_id,
+            online=online,
+            health_status=health_status,
+            checked_at=report.reported_at,
+            component_total=component_total,
+            healthy_components=healthy_components,
+            degraded_components=degraded_components,
+            offline_components=offline_components,
+        )
 
     async def _apply_command(self, command: DeviceConfigCommandRecord) -> str:
         if command.device_type == "gateway":

@@ -56,6 +56,10 @@ class WebSocketManager:
         for websocket in stale:
             await self.disconnect(websocket)
 
+    async def connection_count(self) -> int:
+        async with self._lock:
+            return len(self._connections)
+
 
 def _should_deliver(message_type: str | None, device_id: str | None, subscribed_ids: set[str]) -> bool:
     if not subscribed_ids or message_type == "alert":

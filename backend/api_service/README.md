@@ -8,6 +8,7 @@
 - JWT 认证：`POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`
 - 设备、告警、遥测、绑定历史查询接口
 - WebSocket 实时接口：`GET /api/ws`
+- 自观测接口：`GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`
 - 设备配置下发：`POST /api/v1/devices/{id}/config`
 - OTA 预留接口：`POST /api/v1/devices/{id}/ota`、`GET /api/v1/ota/tasks*`
 - 网关命令轮询：`GET /api/v1/gateway/{gateway_id}/commands/pending`
@@ -31,6 +32,7 @@
 - `/api/v1/system/health/*`：网关基础设施健康汇聚与查询
 - `/api/v1/ai/*`：AI 预留接口
 - `/api/ws`：实时推送
+- `/ops/v1/*`、`/ops/ws`：后台自观测接口
 
 ## 配置下发行为
 

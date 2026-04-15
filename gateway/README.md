@@ -11,9 +11,13 @@
 
 ## 路由与链路逻辑
 
-网关当前 HTTP 侧只暴露一个路由：
+网关当前 HTTP / WebSocket 侧暴露以下路由：
 
 - `GET /healthz`
+- `GET /ops/v1/health`
+- `GET /ops/v1/health/components`
+- `GET /ops/v1/stats`
+- `WS /ops/ws`
 
 真正的主链路不在 HTTP，而在 MQTT 与后台 HTTP 批量上报：
 
@@ -57,6 +61,7 @@ Compose 约定以下宿主机挂载目录位于 `deployment/compose/runtime/`：
 - 已支持 `DEVICE_OFFLINE` 监控，并发布 MQTT `alert` 与 retained `status`
 - 已支持后台配置命令轮询、失败回报、重试领取与超时收敛
 - 已支持基础设施健康采集并上报后台 `/api/v1/system/health/report`
+- 已支持网关自观测接口 `/ops/v1/*` 与 `/ops/ws`
 - 在 macOS + Apple `container` 上已验证完整链路：
   `mosquitto -> edge_processor -> InfluxDB 缓冲 -> backend/api_service -> TimescaleDB`
 - 在 macOS + Apple `container` 上已验证：

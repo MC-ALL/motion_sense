@@ -31,6 +31,10 @@
 - `GET /api/v1/telemetry/env/{id}`
 - `GET /api/v1/telemetry/env/{id}/aggregate`
 - `GET /api/v1/wristband/{id}/bindings`
+- `GET /ops/v1/health`
+- `GET /ops/v1/health/components`
+- `GET /ops/v1/stats`
+- `WS /ops/ws`
 - `GET /healthz`
 - `GET /api/ws`
 
@@ -50,6 +54,7 @@
 10. `ota.router`：OTA 预留接口
 11. `ai.router`：AI 预留接口
 12. `websocket.router`：实时推送 `GET /api/ws`
+13. `ops.router`：后台自观测接口 `GET /ops/v1/*`、`WS /ops/ws`
 
 主数据流如下：
 
@@ -95,6 +100,7 @@ container build \
 - `POST /api/v1/devices/{id}/config` 与 `/api/v1/gateway/*/commands/*` 已具备配置命令闭环
 - 配置命令已具备领取租约、失败重试与超时收敛能力
 - `POST /api/v1/system/health/report` 与 `GET /api/v1/system/health*` 已具备基础设施健康汇聚能力
+- `GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws` 已具备后台自观测能力
 - `redis` 实时模式已在 macOS Apple `container` 上验证
 
 ## 运行配置

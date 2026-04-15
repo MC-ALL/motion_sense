@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.ingest import IngestBatch
+from app.services.ops_service import BackendOpsService
 from app.services.realtime_service import RealtimeService
 from app.services.topic_parser import parse_topic
 from app.storage.memory_store import coerce_online, payload_triggered_at, payload_ts
@@ -8,11 +9,20 @@ from app.storage.store import Store
 
 
 class IngestService:
-    def __init__(self, store: Store, realtime_service: RealtimeService) -> None:
+    def __init__(
+        self,
+        store: Store,
+        realtime_service: RealtimeService,
+        ops_service: BackendOpsService | None = None,
+    ) -> None:
         self._store = store
         self._realtime_service = realtime_service
+        self._ops_service = ops_service
 
     async def ingest_batch(self, batch: IngestBatch) -> int:
+        if self._ops_service is not None:
+            self._ops_service.record_ingest_batch(len(batch.items))
+
         for item in batch.items:
             parsed = parse_topic(item.topic)
 
@@ -29,6 +39,8 @@ class IngestService:
                     payload=item.payload,
                 )
                 await self._realtime_service.publish({"type": "alert", "data": alert.model_dump()})
+                if self._ops_service is not None:
+                    self._ops_service.record_realtime_message("alert")
                 continue
 
             if item.kind in {"telemetry", "status", "binding"}:
@@ -72,6 +84,8 @@ class IngestService:
                             },
                         }
                     )
+                    if self._ops_service is not None:
+                        self._ops_service.record_realtime_message("telemetry")
                 elif item.kind == "status":
                     await self._realtime_service.publish(
                         {
@@ -84,5 +98,7 @@ class IngestService:
                             },
                         }
                     )
+                    if self._ops_service is not None:
+                        self._ops_service.record_realtime_message("device_status")
 
         return len(batch.items)

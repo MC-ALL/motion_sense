@@ -8,6 +8,8 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from app.api.health import build_health_router
+from app.api.ops import router as ops_router
+from app.services.ops_websocket_manager import OpsWebSocketManager
 from app.services.runner import EdgeProcessorRunner
 from app.settings import DEFAULT_CONFIG_PATH, RuntimeSettings, load_settings
 
@@ -27,6 +29,8 @@ def build_app(settings: RuntimeSettings | None = None) -> FastAPI:
     runtime_settings = settings or load_settings(get_config_path())
     configure_logging(runtime_settings)
     runner = EdgeProcessorRunner(runtime_settings)
+    ops_websocket_manager = OpsWebSocketManager()
+    runner.set_ops_websocket_manager(ops_websocket_manager)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -37,7 +41,10 @@ def build_app(settings: RuntimeSettings | None = None) -> FastAPI:
             await runner.stop()
 
     app = FastAPI(title=runtime_settings.app_name, lifespan=lifespan)
+    app.state.runner = runner
+    app.state.ops_websocket_manager = ops_websocket_manager
     app.include_router(build_health_router(runtime_settings))
+    app.include_router(ops_router)
     return app
 
 
