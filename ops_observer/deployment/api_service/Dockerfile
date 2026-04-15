@@ -1,4 +1,4 @@
-ARG PYTHON_BASE=dockerproxy.net/library/python:3.13-slim
+ARG PYTHON_BASE=python:3.13-slim
 FROM ${PYTHON_BASE}
 
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple

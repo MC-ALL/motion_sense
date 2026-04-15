@@ -1,4 +1,4 @@
-ARG INFLUXDB_BASE=influxdb:3.8.0-core
+ARG INFLUXDB_BASE=influxdb:3.9-core
 FROM ${INFLUXDB_BASE}
 
 COPY gateway/influxdb/defaults /opt/motion_sense/influxdb/defaults

@@ -88,7 +88,7 @@ if [ "${backend_storage_backend}" = "postgres" ]; then
     -d \
     --network "${network_name}" \
     -p "${redis_host_port}:6379" \
-    dockerproxy.net/library/redis:8.2.2-alpine \
+    redis:8.6-alpine \
     redis-server --save "" --appendonly no
 
   wait_for_tcp 127.0.0.1 "${timescaledb_host_port}" 90
