@@ -309,6 +309,7 @@ class PostgresStore:
         self,
         level: str | None = None,
         is_ack: bool | None = None,
+        device_id: str | None = None,
     ) -> list[AlertRecord]:
         clauses: list[str] = []
         params: list[Any] = []
@@ -319,6 +320,9 @@ class PostgresStore:
         if is_ack is not None:
             clauses.append("is_ack = %s")
             params.append(is_ack)
+        if device_id is not None:
+            clauses.append("device_id = %s")
+            params.append(device_id)
 
         where_clause = ""
         if clauses:

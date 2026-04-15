@@ -80,6 +80,7 @@ class Store(Protocol):
         self,
         level: str | None = None,
         is_ack: bool | None = None,
+        device_id: str | None = None,
     ) -> list[AlertRecord]: ...
 
     async def get_alert(

@@ -28,7 +28,7 @@
 - `web/portal_app` 已接入实时仪表盘、器材管理、环境质量、告警管理，以及后台 JWT 登录与业务 WebSocket
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
-  设备入库、健康汇聚、配置命令闭环、健康汇总视图，以及 `ops_observer` 聚合健康视图
+  设备入库、健康汇聚、配置命令闭环、健康汇总视图、`ops_observer` 聚合健康视图，以及网页端入口与运行时配置
 
 当前缺口：
 

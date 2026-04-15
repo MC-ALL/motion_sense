@@ -17,6 +17,7 @@
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行网关单测。
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/ops_observer/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行运维观测端单测。
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/web/portal_app node:24-alpine sh -lc "npm ci && npm run build"`：按锁文件构建网页端。
+- `sh gateway/deployment/container/build_local_images.sh && sh gateway/deployment/container/prepare_runtime.sh && sh gateway/deployment/container/start_local_stack.sh && sh gateway/deployment/container/verify_system_stack.sh && sh gateway/deployment/container/stop_local_stack.sh`：运行 Apple `container` 本地整栈联调。
 - `sh ops_observer/deployment/container/verify_ops_observer_api.sh`：校验运行中的运维观测端基础 REST 接口。
 
 ## 代码风格与命名规范

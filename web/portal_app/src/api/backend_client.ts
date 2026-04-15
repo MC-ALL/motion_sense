@@ -115,6 +115,7 @@ export async function fetch_device(device_id: string): Promise<DeviceSummary> {
 export async function fetch_business_alerts(params?: {
   level?: string;
   is_ack?: boolean;
+  device_id?: string;
 }): Promise<BusinessAlertRecord[]> {
   const response = await backend_client.get<BusinessAlertRecord[]>('/api/v1/alerts', { params });
   return response.data;

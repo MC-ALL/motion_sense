@@ -51,6 +51,14 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
 
         devices_response = client.get("/api/v1/devices")
         alerts_response = client.get("/api/v1/alerts")
+        filtered_alerts_response = client.get(
+            "/api/v1/alerts",
+            params={"device_id": "wb-001"},
+        )
+        empty_filtered_alerts_response = client.get(
+            "/api/v1/alerts",
+            params={"device_id": "eq-999"},
+        )
 
         assert devices_response.status_code == 200
         assert devices_response.json() == [
@@ -88,6 +96,11 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
         assert alerts_response.json()[0]["device_id"] == "wb-001"
         assert alerts_response.json()[0]["code"] == "HR_HIGH"
         assert alerts_response.json()[0]["priority"] == "P0"
+        assert filtered_alerts_response.status_code == 200
+        assert len(filtered_alerts_response.json()) == 1
+        assert filtered_alerts_response.json()[0]["device_id"] == "wb-001"
+        assert empty_filtered_alerts_response.status_code == 200
+        assert empty_filtered_alerts_response.json() == []
 
         device_detail_response = client.get("/api/v1/devices/eq-001")
         alert_detail_response = client.get("/api/v1/alerts/1")

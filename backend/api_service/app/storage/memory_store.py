@@ -184,6 +184,7 @@ class EventStore:
         self,
         level: str | None = None,
         is_ack: bool | None = None,
+        device_id: str | None = None,
     ) -> list[AlertRecord]:
         async with self._lock:
             alerts = list(self._alerts)
@@ -192,6 +193,8 @@ class EventStore:
             alerts = [item for item in alerts if item.level == level]
         if is_ack is not None:
             alerts = [item for item in alerts if item.is_ack == is_ack]
+        if device_id is not None:
+            alerts = [item for item in alerts if item.device_id == device_id]
 
         return alerts
 

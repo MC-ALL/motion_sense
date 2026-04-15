@@ -18,9 +18,10 @@ router = APIRouter(
 async def list_alerts(
     level: str | None = Query(default=None),
     is_ack: bool | None = Query(default=None),
+    device_id: str | None = Query(default=None),
     store: Store = Depends(get_event_store),
 ) -> list[AlertRecord]:
-    return await store.list_alerts(level=level, is_ack=is_ack)
+    return await store.list_alerts(level=level, is_ack=is_ack, device_id=device_id)
 
 
 @router.get("/{alert_id}", response_model=AlertRecord)
