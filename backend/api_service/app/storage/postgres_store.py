@@ -1013,7 +1013,7 @@ class PostgresStore:
                 await cursor.execute(
                     """
                     ALTER TABLE device_config_commands
-                    ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    ADD COLUMN IF NOT EXISTS next_retry_at TIMESTAMPTZ DEFAULT NOW()
                     """
                 )
                 await cursor.execute(
@@ -1026,6 +1026,12 @@ class PostgresStore:
                     """
                     ALTER TABLE device_config_commands
                     ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '5 minutes')
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE device_config_commands
+                    ALTER COLUMN next_retry_at DROP NOT NULL
                     """
                 )
                 await cursor.execute(
