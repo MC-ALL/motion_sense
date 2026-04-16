@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { ack_business_alert, batch_ack_business_alerts, fetch_business_alerts, fetch_devices } from '../api/backend_client';
 import { use_auth_store } from '../store/auth_store';
 import type { BusinessAlertRecord, DeviceSummary } from '../types/backend';
+import { describe_user_scope } from '../utils/user_scope';
 import { format_time } from '../utils/time';
 
 export function AlertsPage() {
@@ -20,6 +21,7 @@ export function AlertsPage() {
   const [selected_ids, set_selected_ids] = useState<number[]>([]);
   const session = use_auth_store((state) => state.session);
   const can_ack_alerts = session?.user.role === 'admin' || session?.user.role === 'teacher';
+  const scope_description = describe_user_scope(session?.user);
 
   async function load() {
     set_loading(true);
@@ -193,7 +195,14 @@ export function AlertsPage() {
       </section>
 
       {error ? <Alert type="error" message="告警管理异常" description={error} showIcon /> : null}
-      {!can_ack_alerts ? <Alert type="info" message="当前角色为只读模式" description="学生当前只能查看告警，不能执行确认操作。" showIcon /> : null}
+      {!can_ack_alerts ? (
+        <Alert
+          type="info"
+          message="当前角色为只读模式"
+          description={`学生当前只能查看告警，不能执行确认操作。当前数据范围：${scope_description}`}
+          showIcon
+        />
+      ) : null}
 
       <section className="metric_grid">
         <div className="panel_surface metric_card"><Statistic title="当前结果数" value={summary.total} /></div>

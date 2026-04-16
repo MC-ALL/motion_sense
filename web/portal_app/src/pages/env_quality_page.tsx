@@ -7,6 +7,7 @@ import { TimeSeriesChart } from '../components/time_series_chart';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, EnvTelemetryAggregateRecord, TelemetryRecord } from '../types/backend';
+import { describe_user_scope } from '../utils/user_scope';
 
 const range_options = [
   { label: '1 小时', value: '1h', interval: '10m' },
@@ -52,6 +53,7 @@ export function EnvQualityPage() {
   const connect = use_business_realtime_store((state) => state.connect);
   const session = use_auth_store((state) => state.session);
   const can_publish_config = session?.user.role === 'admin';
+  const scope_description = describe_user_scope(session?.user);
 
   useEffect(() => {
     connect();
@@ -265,7 +267,12 @@ export function EnvQualityPage() {
                     ) : null}
                   </>
                 ) : (
-                  <Alert type="info" message="当前角色为只读模式" description="教师和学生当前不能从网页端下发环境节点配置。" showIcon />
+                  <Alert
+                    type="info"
+                    message="当前角色为只读模式"
+                    description={`教师和学生当前不能从网页端下发环境节点配置。当前数据范围：${scope_description}`}
+                    showIcon
+                  />
                 )}
               </div>
 
