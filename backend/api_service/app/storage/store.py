@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from app.models.auth import StoredRefreshSession
 from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
     AlertRecord,
@@ -52,6 +53,41 @@ class Store(Protocol):
         *,
         username: str,
     ) -> bool: ...
+
+    async def create_refresh_session(
+        self,
+        *,
+        session_id: str,
+        username: str,
+        refresh_jti: str,
+        expires_at_s: int,
+    ) -> StoredRefreshSession: ...
+
+    async def get_refresh_session(
+        self,
+        *,
+        session_id: str,
+    ) -> StoredRefreshSession | None: ...
+
+    async def update_refresh_session(
+        self,
+        *,
+        session_id: str,
+        refresh_jti: str,
+        expires_at_s: int,
+    ) -> StoredRefreshSession | None: ...
+
+    async def delete_refresh_session(
+        self,
+        *,
+        session_id: str,
+    ) -> bool: ...
+
+    async def delete_expired_refresh_sessions(
+        self,
+        *,
+        now_s: int,
+    ) -> int: ...
 
     async def upsert_device(
         self,

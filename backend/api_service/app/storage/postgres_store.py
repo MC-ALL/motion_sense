@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
+from app.models.auth import StoredRefreshSession
 from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
     AlertRecord,
@@ -149,6 +150,110 @@ class PostgresStore:
             await connection.commit()
 
         return row is not None
+
+    async def create_refresh_session(
+        self,
+        *,
+        session_id: str,
+        username: str,
+        refresh_jti: str,
+        expires_at_s: int,
+    ) -> StoredRefreshSession:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO refresh_sessions (session_id, username, refresh_jti, expires_at)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (session_id)
+                    DO UPDATE SET
+                        username = EXCLUDED.username,
+                        refresh_jti = EXCLUDED.refresh_jti,
+                        expires_at = EXCLUDED.expires_at,
+                        updated_at = NOW()
+                    RETURNING session_id, username, refresh_jti, expires_at
+                    """,
+                    (session_id, username, refresh_jti, _from_epoch_s(expires_at_s)),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return _refresh_session_from_row(row)
+
+    async def get_refresh_session(self, *, session_id: str) -> StoredRefreshSession | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT session_id, username, refresh_jti, expires_at
+                    FROM refresh_sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                row = await cursor.fetchone()
+
+        if row is None:
+            return None
+        return _refresh_session_from_row(row)
+
+    async def update_refresh_session(
+        self,
+        *,
+        session_id: str,
+        refresh_jti: str,
+        expires_at_s: int,
+    ) -> StoredRefreshSession | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE refresh_sessions
+                    SET refresh_jti = %s,
+                        expires_at = %s,
+                        updated_at = NOW()
+                    WHERE session_id = %s
+                    RETURNING session_id, username, refresh_jti, expires_at
+                    """,
+                    (refresh_jti, _from_epoch_s(expires_at_s), session_id),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            return None
+        return _refresh_session_from_row(row)
+
+    async def delete_refresh_session(self, *, session_id: str) -> bool:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    DELETE FROM refresh_sessions
+                    WHERE session_id = %s
+                    RETURNING 1
+                    """,
+                    (session_id,),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return row is not None
+
+    async def delete_expired_refresh_sessions(self, *, now_s: int) -> int:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    DELETE FROM refresh_sessions
+                    WHERE expires_at <= %s
+                    """,
+                    (_from_epoch_s(now_s),),
+                )
+                deleted = cursor.rowcount
+            await connection.commit()
+
+        return deleted
 
     async def upsert_device(
         self,
@@ -1172,6 +1277,18 @@ class PostgresStore:
                 )
                 await cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS refresh_sessions (
+                        session_id TEXT PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        refresh_jti TEXT NOT NULL,
+                        expires_at TIMESTAMPTZ NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                await cursor.execute(
+                    """
                     ALTER TABLE users
                     ADD COLUMN IF NOT EXISTS gym_ids JSONB NOT NULL DEFAULT '[]'::jsonb
                     """
@@ -1402,6 +1519,18 @@ class PostgresStore:
                 )
                 await cursor.execute(
                     """
+                    CREATE INDEX IF NOT EXISTS idx_refresh_sessions_username
+                    ON refresh_sessions (username, expires_at DESC)
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_refresh_sessions_expires_at
+                    ON refresh_sessions (expires_at ASC)
+                    """
+                )
+                await cursor.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_alerts_triggered_at
                     ON alerts (triggered_at DESC)
                     """
@@ -1473,6 +1602,10 @@ def _coerce_timestamptz(value: str | int | None) -> datetime:
     return datetime.now(UTC)
 
 
+def _from_epoch_s(value: int) -> datetime:
+    return datetime.fromtimestamp(value, tz=UTC)
+
+
 def _device_summary_from_row(row: dict[str, Any]) -> DeviceSummary:
     return DeviceSummary(
         gym_id=row["gym_id"],
@@ -1521,6 +1654,18 @@ def _user_summary_from_row(row: dict[str, Any]) -> UserSummary:
         device_ids=list(row.get("device_ids") or []),
         created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
         updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
+    )
+
+
+def _refresh_session_from_row(row: dict[str, Any]) -> StoredRefreshSession:
+    expires_at = row["expires_at"]
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return StoredRefreshSession(
+        session_id=row["session_id"],
+        username=row["username"],
+        refresh_jti=row["refresh_jti"],
+        expires_at_s=int(expires_at.timestamp()),
     )
 
 

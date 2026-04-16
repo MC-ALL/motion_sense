@@ -50,7 +50,7 @@ async def logout(
     auth_service: AuthService = Depends(get_auth_service),
 ) -> AuthLogoutResponse:
     try:
-        auth_service.logout(payload.refresh_token)
+        await auth_service.logout(payload.refresh_token)
     except AuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

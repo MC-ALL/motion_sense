@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from app.models.auth import StoredRefreshSession
 from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
     AlertRecord,
@@ -28,6 +29,7 @@ class EventStore:
         self._lock = asyncio.Lock()
         self._devices: dict[str, DeviceSummary] = {}
         self._users: dict[str, StoredUser] = {}
+        self._refresh_sessions: dict[str, StoredRefreshSession] = {}
         self._alerts: list[AlertRecord] = []
         self._bindings: list[BindingEventRecord] = []
         self._telemetry: list[TelemetryRecord] = []
@@ -107,6 +109,63 @@ class EventStore:
     async def delete_user(self, *, username: str) -> bool:
         async with self._lock:
             return self._users.pop(username, None) is not None
+
+    async def create_refresh_session(
+        self,
+        *,
+        session_id: str,
+        username: str,
+        refresh_jti: str,
+        expires_at_s: int,
+    ) -> StoredRefreshSession:
+        session = StoredRefreshSession(
+            session_id=session_id,
+            username=username,
+            refresh_jti=refresh_jti,
+            expires_at_s=expires_at_s,
+        )
+        async with self._lock:
+            self._refresh_sessions[session_id] = session
+        return session
+
+    async def get_refresh_session(self, *, session_id: str) -> StoredRefreshSession | None:
+        async with self._lock:
+            return self._refresh_sessions.get(session_id)
+
+    async def update_refresh_session(
+        self,
+        *,
+        session_id: str,
+        refresh_jti: str,
+        expires_at_s: int,
+    ) -> StoredRefreshSession | None:
+        async with self._lock:
+            existing = self._refresh_sessions.get(session_id)
+            if existing is None:
+                return None
+            updated = existing.model_copy(
+                update={
+                    "refresh_jti": refresh_jti,
+                    "expires_at_s": expires_at_s,
+                }
+            )
+            self._refresh_sessions[session_id] = updated
+            return updated
+
+    async def delete_refresh_session(self, *, session_id: str) -> bool:
+        async with self._lock:
+            return self._refresh_sessions.pop(session_id, None) is not None
+
+    async def delete_expired_refresh_sessions(self, *, now_s: int) -> int:
+        async with self._lock:
+            expired_ids = [
+                session_id
+                for session_id, session in self._refresh_sessions.items()
+                if session.expires_at_s <= now_s
+            ]
+            for session_id in expired_ids:
+                self._refresh_sessions.pop(session_id, None)
+            return len(expired_ids)
 
     async def upsert_device(
         self,

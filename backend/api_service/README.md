@@ -53,6 +53,7 @@
   复制到 `/runtime/config/backend/api_service/app_settings.yaml`
 - 首次启动会补齐后台管理员密码哈希、JWT 密钥，并生成
   `/runtime/config/backend/api_service/bootstrap_admin.txt`
+- refresh session 当前已落地到存储层；在 `memory` 存储模式下随进程生命周期存在，在 `postgres` 存储模式下可跨进程重建继续使用
 - `bootstrap_admin.txt` 仅用于首次取回后台管理员用户名/密码，后续应自行轮换
 - 当前 bootstrap admin 仍由部署配置托管：可用它登录并创建业务账号，但不允许通过 `/api/v1/users` 直接改密、降权或删除
 - 后续修改在下次 `api_service` 重启后生效

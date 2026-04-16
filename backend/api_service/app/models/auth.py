@@ -28,6 +28,13 @@ class AuthUser(BaseModel):
     device_ids: list[str] = Field(default_factory=list)
 
 
+class StoredRefreshSession(BaseModel):
+    session_id: str
+    username: str
+    refresh_jti: str
+    expires_at_s: int
+
+
 class AuthTokenPair(BaseModel):
     access_token: str
     refresh_token: str

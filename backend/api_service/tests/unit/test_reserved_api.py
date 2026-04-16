@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.services.auth_service import generate_password_hash
+from app.services.auth_service import AuthService, generate_password_hash
 from app.settings import RuntimeSettings
+from app.storage.memory_store import EventStore
 
 
 def _build_auth_settings() -> dict:
@@ -170,6 +173,28 @@ def test_gateway_internal_routes_remain_available_when_rest_auth_enabled() -> No
         )
         assert authorized_health_query.status_code == 200
         assert authorized_health_query.json()[0]["gateway_id"] == "gw-001"
+
+
+def test_refresh_session_survives_auth_service_recreation() -> None:
+    settings = RuntimeSettings(auth=_build_auth_settings())
+
+    async def scenario() -> None:
+        store = EventStore()
+        await store.initialize()
+
+        first_service = AuthService(settings.auth, store)
+        await first_service.initialize()
+        token_pair = await first_service.login("admin", "admin123")
+
+        second_service = AuthService(settings.auth, store)
+        refreshed = await second_service.refresh(token_pair.refresh_token)
+        assert refreshed.user.username == "admin"
+        assert refreshed.refresh_token != token_pair.refresh_token
+
+        await second_service.logout(refreshed.refresh_token)
+        await store.close()
+
+    asyncio.run(scenario())
 
 
 def test_ai_reserved_routes_return_501() -> None:

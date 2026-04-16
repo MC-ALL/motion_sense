@@ -7,7 +7,6 @@ import hmac
 import json
 import secrets
 import time
-from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
@@ -20,19 +19,10 @@ from app.storage.store import Store
 class AuthError(Exception):
     pass
 
-
-@dataclass(slots=True)
-class RefreshSession:
-    username: str
-    refresh_jti: str
-    expires_at_s: int
-
-
 class AuthService:
     def __init__(self, settings: AuthSettings, store: Store) -> None:
         self._settings = settings
         self._store = store
-        self._refresh_sessions: dict[str, RefreshSession] = {}
 
     @property
     def rest_auth_required(self) -> bool:
@@ -47,6 +37,7 @@ class AuthService:
         return self._settings.admin.username
 
     async def initialize(self) -> None:
+        await self._store.delete_expired_refresh_sessions(now_s=int(time.time()))
         if not self._settings.admin.username or not self._settings.admin.password_hash:
             return
         existing = await self._store.get_user(username=self._settings.admin.username)
@@ -64,7 +55,8 @@ class AuthService:
         now_s = int(time.time())
         session_id = str(uuid4())
         refresh_jti = str(uuid4())
-        self._refresh_sessions[session_id] = RefreshSession(
+        await self._store.create_refresh_session(
+            session_id=session_id,
             username=username,
             refresh_jti=refresh_jti,
             expires_at_s=now_s + self._settings.refresh_token_ttl_s,
@@ -91,24 +83,29 @@ class AuthService:
             expected_type="refresh",
         )
         session_id = _require_str_claim(claims, "sid")
-        session = self._refresh_sessions.get(session_id)
+        session = await self._store.get_refresh_session(session_id=session_id)
         if session is None:
             raise AuthError("refresh session expired or revoked")
         now_s = int(time.time())
         if session.expires_at_s <= now_s:
-            self._refresh_sessions.pop(session_id, None)
+            await self._store.delete_refresh_session(session_id=session_id)
             raise AuthError("refresh session expired or revoked")
         if session.username != _require_str_claim(claims, "sub"):
-            self._refresh_sessions.pop(session_id, None)
+            await self._store.delete_refresh_session(session_id=session_id)
             raise AuthError("refresh session mismatch")
         if session.refresh_jti != _require_str_claim(claims, "jti"):
-            self._refresh_sessions.pop(session_id, None)
+            await self._store.delete_refresh_session(session_id=session_id)
             raise AuthError("refresh token has been rotated")
 
         user = await self._require_user(session.username)
         refresh_jti = str(uuid4())
-        session.refresh_jti = refresh_jti
-        session.expires_at_s = now_s + self._settings.refresh_token_ttl_s
+        updated_session = await self._store.update_refresh_session(
+            session_id=session_id,
+            refresh_jti=refresh_jti,
+            expires_at_s=now_s + self._settings.refresh_token_ttl_s,
+        )
+        if updated_session is None:
+            raise AuthError("refresh session expired or revoked")
         return self._build_token_pair(
             user=user,
             session_id=session_id,
@@ -116,14 +113,14 @@ class AuthService:
             now_s=now_s,
         )
 
-    def logout(self, refresh_token: str) -> None:
+    async def logout(self, refresh_token: str) -> None:
         claims = self._decode_token(
             token=refresh_token,
             secret=self._settings.jwt.refresh_secret,
             expected_type="refresh",
         )
         session_id = _require_str_claim(claims, "sid")
-        self._refresh_sessions.pop(session_id, None)
+        await self._store.delete_refresh_session(session_id=session_id)
 
     def verify_access_token(self, token: str) -> AuthUser:
         claims = self._decode_token(
