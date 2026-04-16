@@ -12,7 +12,10 @@ import type {
   DeviceSummary,
   EnvTelemetryAggregateRecord,
   LoginRequest,
-  TelemetryRecord
+  TelemetryRecord,
+  UserCreateRequest,
+  UserSummary,
+  UserUpdateRequest
 } from '../types/backend';
 import { clear_auth_session, get_auth_session, save_auth_session } from '../utils/auth_session';
 
@@ -97,6 +100,25 @@ export async function logout_backend(): Promise<void> {
   } finally {
     clear_auth_session();
   }
+}
+
+export async function fetch_users(): Promise<UserSummary[]> {
+  const response = await backend_client.get<UserSummary[]>('/api/v1/users');
+  return response.data;
+}
+
+export async function create_user(payload: UserCreateRequest): Promise<UserSummary> {
+  const response = await backend_client.post<UserSummary>('/api/v1/users', payload);
+  return response.data;
+}
+
+export async function update_user(username: string, payload: UserUpdateRequest): Promise<UserSummary> {
+  const response = await backend_client.patch<UserSummary>(`/api/v1/users/${username}`, payload);
+  return response.data;
+}
+
+export async function delete_user(username: string): Promise<void> {
+  await backend_client.delete(`/api/v1/users/${username}`);
 }
 
 export async function fetch_devices(params?: {

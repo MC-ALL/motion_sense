@@ -5,6 +5,7 @@ import { Layout, Spin } from 'antd';
 
 import { AuthSessionPanel } from '../components/auth_session_panel';
 import { get_runtime_config } from '../config/runtime_config';
+import { use_auth_store } from '../store/auth_store';
 
 const HealthCenterPage = lazy(async () =>
   import('../pages/health_center_page').then((module) => ({
@@ -36,6 +37,12 @@ const AlertsPage = lazy(async () =>
   }))
 );
 
+const UserManagementPage = lazy(async () =>
+  import('../pages/user_management_page').then((module) => ({
+    default: module.UserManagementPage
+  }))
+);
+
 function RouteFallback() {
   return (
     <section className="panel_surface loading_surface">
@@ -54,6 +61,8 @@ function render_lazy_page(PageComponent: LazyExoticComponent<ComponentType>) {
 
 function AppLayout() {
   const runtime_config = get_runtime_config();
+  const session = use_auth_store((state) => state.session);
+  const is_admin = session?.user.role === 'admin';
 
   return (
     <Layout className="app_layout">
@@ -78,6 +87,11 @@ function AppLayout() {
           <NavLink to="/alerts" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
             告警管理
           </NavLink>
+          {is_admin ? (
+            <NavLink to="/user-management" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
+              用户管理
+            </NavLink>
+          ) : null}
           <NavLink
             to="/health-center"
             className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}
@@ -104,6 +118,7 @@ export const router = createBrowserRouter([
       { path: 'equipment', element: render_lazy_page(EquipmentPage) },
       { path: 'env-quality', element: render_lazy_page(EnvQualityPage) },
       { path: 'alerts', element: render_lazy_page(AlertsPage) },
+      { path: 'user-management', element: render_lazy_page(UserManagementPage) },
       { path: 'health-center', element: render_lazy_page(HealthCenterPage) }
     ]
   }
