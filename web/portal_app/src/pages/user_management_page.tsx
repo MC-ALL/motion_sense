@@ -35,7 +35,38 @@ type UserFormValues = {
   username: string;
   password?: string;
   role: UserRole;
+  gym_ids: string;
+  device_ids: string;
 };
+
+function parse_scope_input(value?: string): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(/[\s,，]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function format_scope_input(items?: string[]): string {
+  return (items ?? []).join('\n');
+}
+
+function render_scope_tags(items: string[], empty_text: string) {
+  if (items.length === 0) {
+    return <span>{empty_text}</span>;
+  }
+
+  return (
+    <Space size={[4, 4]} wrap>
+      {items.map((item) => (
+        <Tag key={item}>{item}</Tag>
+      ))}
+    </Space>
+  );
+}
 
 export function UserManagementPage() {
   const session = use_auth_store((state) => state.session);
@@ -85,6 +116,18 @@ export function UserManagementPage() {
         render: (role: UserRole) => <Tag color={role === 'admin' ? 'gold' : role === 'teacher' ? 'blue' : 'green'}>{role}</Tag>
       },
       {
+        title: '场馆归属',
+        dataIndex: 'gym_ids',
+        key: 'gym_ids',
+        render: (gym_ids: string[]) => render_scope_tags(gym_ids, '仅设备归属生效')
+      },
+      {
+        title: '设备归属',
+        dataIndex: 'device_ids',
+        key: 'device_ids',
+        render: (device_ids: string[]) => render_scope_tags(device_ids, '未绑定具体设备')
+      },
+      {
         title: '创建时间',
         dataIndex: 'created_at',
         key: 'created_at',
@@ -104,7 +147,13 @@ export function UserManagementPage() {
             <Button
               size="small"
               onClick={() => {
-                edit_form.setFieldsValue({ username: record.username, role: record.role, password: '' });
+                edit_form.setFieldsValue({
+                  username: record.username,
+                  role: record.role,
+                  password: '',
+                  gym_ids: format_scope_input(record.gym_ids),
+                  device_ids: format_scope_input(record.device_ids)
+                });
                 set_edit_target(record);
               }}
             >
@@ -135,7 +184,9 @@ export function UserManagementPage() {
       const payload: UserCreateRequest = {
         username: values.username,
         password: values.password ?? '',
-        role: values.role
+        role: values.role,
+        gym_ids: parse_scope_input(values.gym_ids),
+        device_ids: parse_scope_input(values.device_ids)
       };
       await create_user(payload);
       set_create_open(false);
@@ -156,7 +207,9 @@ export function UserManagementPage() {
     set_error(null);
     try {
       const payload: UserUpdateRequest = {
-        role: values.role
+        role: values.role,
+        gym_ids: parse_scope_input(values.gym_ids),
+        device_ids: parse_scope_input(values.device_ids)
       };
       if (values.password) {
         payload.password = values.password;
@@ -252,7 +305,7 @@ export function UserManagementPage() {
                 dataSource={users}
                 columns={columns}
                 pagination={false}
-                scroll={{ x: 760 }}
+                scroll={{ x: 1100 }}
               />
             )}
           </div>
@@ -263,12 +316,13 @@ export function UserManagementPage() {
             <div className="panel_header compact_panel_header">
               <div>
                 <div className="eyebrow">角色说明</div>
-                <h3>当前实现边界</h3>
+                <h3>当前权限边界</h3>
               </div>
             </div>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Alert type="info" showIcon message="admin" description="可访问全部现有后台接口，并管理 `/api/v1/users`。" />
-              <Alert type="info" showIcon message="teacher / student" description="当前可登录并访问现有业务接口，但细粒度 RBAC 仍待后续补齐。" />
+              <Alert type="info" showIcon message="admin" description="不受场馆与设备归属限制，可访问全部现有后台接口，并管理 `/api/v1/users`。" />
+              <Alert type="info" showIcon message="teacher" description="可访问 `gym_ids` 归属场馆下的业务数据，也可访问 `device_ids` 明确绑定的设备。" />
+              <Alert type="info" showIcon message="student" description="仅可访问 `device_ids` 明确绑定的设备数据；`gym_ids` 不会自动放开全馆数据。" />
               <Alert type="warning" showIcon message="bootstrap admin" description="部署生成的 bootstrap admin 不能在这里改密、降权或删除。" />
             </Space>
           </div>
@@ -297,6 +351,22 @@ export function UserManagementPage() {
           <Form.Item name="role" label="角色" initialValue="teacher" rules={[{ required: true, message: '请选择角色' }]}> 
             <Select options={role_options} />
           </Form.Item>
+          <Form.Item
+            name="gym_ids"
+            label="场馆归属"
+            tooltip="每行一个 gym_id，也支持逗号或空格分隔"
+            initialValue=""
+          >
+            <Input.TextArea rows={4} placeholder={'gym-gz-01\ngym-sz-02'} />
+          </Form.Item>
+          <Form.Item
+            name="device_ids"
+            label="设备归属"
+            tooltip="每行一个 device_id，也支持逗号或空格分隔"
+            initialValue=""
+          >
+            <Input.TextArea rows={4} placeholder={'wb-001\neq-001\nenv-zone-a'} />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -321,6 +391,20 @@ export function UserManagementPage() {
           </Form.Item>
           <Form.Item name="role" label="角色" rules={[{ required: true, message: '请选择角色' }]}> 
             <Select options={role_options} />
+          </Form.Item>
+          <Form.Item
+            name="gym_ids"
+            label="场馆归属"
+            tooltip="每行一个 gym_id，也支持逗号或空格分隔"
+          >
+            <Input.TextArea rows={4} placeholder={'gym-gz-01\ngym-sz-02'} />
+          </Form.Item>
+          <Form.Item
+            name="device_ids"
+            label="设备归属"
+            tooltip="每行一个 device_id，也支持逗号或空格分隔"
+          >
+            <Input.TextArea rows={4} placeholder={'wb-001\neq-001\nenv-zone-a'} />
           </Form.Item>
         </Form>
       </Modal>

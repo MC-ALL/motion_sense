@@ -19,7 +19,7 @@
 - 网关 `GET /api/v1/gateway/{gateway_id}/commands/pending` 轮询执行与结果回报
 - 配置命令失败重试、租约领取与 `timed_out` 超时收敛
 - 后台 JWT 登录、刷新、退出接口已实现
-- 后台 `GET/POST/PATCH/DELETE /api/v1/users` 用户管理接口已实现，支持 `admin` / `teacher` / `student`
+- 后台 `GET/POST/PATCH/DELETE /api/v1/users` 用户管理接口已实现，支持 `admin` / `teacher` / `student`，并支持 `gym_ids` / `device_ids` 归属映射
 - 后台 AI / OTA 预留接口已占位，当前返回 `501 reserved`
 - 网关基于 InfluxDB 的本地缓存与补发链路
 - 网关 P1 规则引擎与规则热重载
@@ -38,7 +38,7 @@
 当前缺口：
 
 - 后台部署默认已开启 REST / WebSocket 鉴权；仅网关内网链路 `POST /api/v1/ingest/batch`、`GET /api/v1/gateway/{gateway_id}/commands/pending`、`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`、`POST /api/v1/system/health/report` 保持免 JWT
-- 当前已收紧角色边界：`admin` 负责用户管理、设备注册写操作、配置下发与运维健康；`teacher` 可读业务数据并确认告警；`student` 暂保留共享读权限。个人数据范围与归属映射仍未实现
+- 当前已收紧角色边界：`admin` 负责用户管理、设备注册写操作、配置下发与运维健康；`teacher` 可访问 `gym_ids` 对应场馆及 `device_ids` 明确绑定的业务数据，并允许确认告警；`student` 仅可访问 `device_ids` 明确绑定的业务数据
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
@@ -88,6 +88,7 @@
 - `GET /api/ws?token={access_token}` 与 `WS /ops/ws?token={access_token}` 需要 JWT
 - 业务查询、设备管理、后台自观测查询都需要 `Authorization: Bearer {access_token}`
 - 仅网关采集、命令轮询 / 结果回报、健康上报这四类内网接口保留免鉴权
+- 业务 `WS /api/ws?token={access_token}` 会继续按用户归属过滤，只推送已授权的 `gym_id` / `device_id` 数据
 
 网关 HTTP 侧目前仅暴露：
 

@@ -117,6 +117,8 @@ export interface DeviceConfigPublishResult {
 export interface AuthUser {
   username: string;
   role: UserRole | 'anonymous';
+  gym_ids: string[];
+  device_ids: string[];
 }
 
 export interface AuthTokenPair {
@@ -148,6 +150,8 @@ export interface LogoutRequest {
 export interface UserSummary {
   username: string;
   role: UserRole;
+  gym_ids: string[];
+  device_ids: string[];
   created_at?: string | null;
   updated_at?: string | null;
 }
@@ -156,11 +160,15 @@ export interface UserCreateRequest {
   username: string;
   password: string;
   role: UserRole;
+  gym_ids: string[];
+  device_ids: string[];
 }
 
 export interface UserUpdateRequest {
   password?: string | null;
   role?: UserRole | null;
+  gym_ids?: string[] | null;
+  device_ids?: string[] | null;
 }
 
 export interface BatchAckResult {
@@ -169,6 +177,8 @@ export interface BatchAckResult {
 }
 
 export interface DeviceStatusMessage {
+  gym_id?: string;
+  device_type?: DeviceType;
   device_id: string;
   online: boolean;
   ts?: number | string | null;
@@ -178,6 +188,7 @@ export interface DeviceStatusMessage {
 export interface TelemetryMessage {
   type: 'telemetry';
   data: {
+    gym_id: string;
     device_type: DeviceType;
     device_id: string;
     ts?: number | string;
