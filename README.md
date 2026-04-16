@@ -32,8 +32,12 @@
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图、`ops_observer` 聚合健康视图，以及网页端入口与运行时配置
+- Apple `container` 本地脚本 `verify_user_scope_stack.sh` 已验证通过：
+  `teacher` / `student` 的 `gym_ids` / `device_ids` 权限边界、越权 `403`、告警确认角色边界
 - Apple `container` 本地脚本 `verify_gateway_resilience.sh` 已验证通过：
   Mosquitto 异常重启后的网关自动重连、InfluxDB 本地缓冲补发、规则热重载后 `CO2_HIGH` 生效
+- Apple `container` 本地脚本 `verify_regression_stack.sh` 已验证通过：
+  串行覆盖基础链路、权限隔离与网关韧性三类回归
 
 当前缺口：
 
