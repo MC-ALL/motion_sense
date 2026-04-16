@@ -10,13 +10,17 @@ from app.settings import MqttSettings
 
 
 class SimulatorMqttPublisher:
-    def __init__(self, settings: MqttSettings) -> None:
+    def __init__(self, settings: MqttSettings, *, client_id_suffix: str | None = None) -> None:
         self._settings = settings
+        self._client_id_suffix = client_id_suffix
         self._client_context: AsyncIterator[Client] | None = None
         self._client: Client | None = None
 
     async def __aenter__(self) -> "SimulatorMqttPublisher":
-        self._client_context = _build_client_context(self._settings)
+        self._client_context = _build_client_context(
+            self._settings,
+            client_id_suffix=self._client_id_suffix,
+        )
         self._client = await self._client_context.__aenter__()
         return self
 
@@ -34,12 +38,22 @@ class SimulatorMqttPublisher:
         await self._client.publish(topic, payload=encoded_payload, qos=self._settings.qos, retain=retain)
 
 
+def _build_client_id(settings: MqttSettings, client_id_suffix: str | None) -> str:
+    if not client_id_suffix:
+        return settings.client_id
+    return f"{settings.client_id}-{client_id_suffix}"
+
+
 @asynccontextmanager
-async def _build_client_context(settings: MqttSettings) -> AsyncIterator[Client]:
+async def _build_client_context(
+    settings: MqttSettings,
+    *,
+    client_id_suffix: str | None = None,
+) -> AsyncIterator[Client]:
     async with Client(
         hostname=settings.host,
         port=settings.port,
-        identifier=settings.client_id,
+        identifier=_build_client_id(settings, client_id_suffix),
         username=settings.username,
         password=settings.password,
         keepalive=settings.keepalive_s,

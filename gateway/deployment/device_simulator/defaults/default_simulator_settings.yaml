@@ -8,6 +8,7 @@ mqtt:
   client_id: device-simulator
   keepalive_s: 60
   qos: 1
+  publish_queue_size: 4096
 
 intervals:
   equipment_telemetry_ms: 1000

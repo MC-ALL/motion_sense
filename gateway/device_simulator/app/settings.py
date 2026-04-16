@@ -18,6 +18,7 @@ class MqttSettings(BaseModel):
     client_id: str = "device-simulator"
     keepalive_s: int = 60
     qos: int = Field(default=1, ge=0, le=2)
+    publish_queue_size: int = Field(default=4096, ge=128, le=65536)
 
 
 class IntervalSettings(BaseModel):

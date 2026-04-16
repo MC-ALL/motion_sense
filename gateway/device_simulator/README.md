@@ -4,7 +4,8 @@
 
 ## 当前能力
 
-- 单镜像、单进程、单 MQTT 连接
+- 单镜像、单进程、多 MQTT client 分组发布
+- 发布路径按 `equipment / wristband / env` 拆成独立 client 与独立发送队列，避免低频环境节点被高频器材/手环流量饿死
 - 默认模拟：
   - 10 台器材 `eq-001` ~ `eq-010`
   - 10 个手环 `wb-001` ~ `wb-010`
@@ -30,6 +31,11 @@
 - 首次启动自动生成：`/runtime/config/device_simulator/simulator_settings.yaml`
 - 默认模板来源：`gateway/deployment/device_simulator/defaults/default_simulator_settings.yaml`
 - 修改配置后需要重启容器
+- 当前通过 `mqtt.client_id` 自动派生三个连接标识：
+  - `device-simulator-equipment`
+  - `device-simulator-wristband`
+  - `device-simulator-env`
+- `mqtt.publish_queue_size` 控制每个设备组自己的发送队列容量
 
 ## 兼容说明
 
