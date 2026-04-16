@@ -160,6 +160,8 @@ container run \
 
 backend_ip="$(container inspect backend | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
 influxdb_ip="$(container inspect influxdb | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
+backend_admin_username="$(sed -n 's/^username: //p' "${backend_config_root}/backend/api_service/bootstrap_admin.txt" | head -n 1)"
+backend_admin_password="$(sed -n 's/^password: //p' "${backend_config_root}/backend/api_service/bootstrap_admin.txt" | head -n 1)"
 
 wait_for_tcp 127.0.0.1 "${influxdb_host_port}" 90
 wait_for_tcp 127.0.0.1 1883 30
@@ -190,6 +192,8 @@ container run \
   -p "${ops_host_port}:8090" \
   --env "OPS_OBSERVER_GATEWAY_BASE_URL=http://${edge_processor_ip}:8080" \
   --env "OPS_OBSERVER_BACKEND_BASE_URL=http://${backend_ip}:8000" \
+  --env "OPS_OBSERVER_BACKEND_AUTH_USERNAME=${backend_admin_username}" \
+  --env "OPS_OBSERVER_BACKEND_AUTH_PASSWORD=${backend_admin_password}" \
   --env "OPS_OBSERVER_GATEWAY_WS_ENABLED=true" \
   --env "OPS_OBSERVER_BACKEND_WS_ENABLED=true" \
   --mount "type=bind,source=${ops_config_root},target=/runtime/config" \

@@ -16,6 +16,8 @@ upstream_modules:
     display_name: 网关 gw-001
     base_url: http://gateway-edge-processor:8080
     timeout_s: 5.0
+    auth_username: null
+    auth_password: null
     ws_enabled: true
     ws_path: /ops/ws
   - module_id: backend:api-main
@@ -23,5 +25,7 @@ upstream_modules:
     display_name: 后台 API
     base_url: http://backend-api-service:8000
     timeout_s: 5.0
+    auth_username: null
+    auth_password: null
     ws_enabled: true
     ws_path: /ops/ws

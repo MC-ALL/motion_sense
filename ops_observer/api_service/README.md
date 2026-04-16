@@ -25,3 +25,4 @@
 
 - 默认通过 REST 拉取网关与后台的 `/ops/v1/*`
 - 若 `upstream_modules[].ws_enabled = true`，同时订阅 `/ops/ws`，在上游推送 `ops_snapshot` 时立即刷新本地聚合结果
+- 若上游启用 JWT，可在 `upstream_modules[]` 中配置 `auth_username` / `auth_password`，服务会自动登录并在轮询与上游 WebSocket 连接时携带 token

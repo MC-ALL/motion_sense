@@ -18,6 +18,8 @@ def build_settings(
     *,
     ws_enabled: bool = False,
     auth_token: str | None = None,
+    auth_username: str | None = None,
+    auth_password: str | None = None,
 ) -> RuntimeSettings:
     return RuntimeSettings(
         database_path=str(database_path),
@@ -34,6 +36,8 @@ def build_settings(
                 base_url="http://gateway.local",
                 ws_enabled=ws_enabled,
                 auth_token=auth_token,
+                auth_username=auth_username,
+                auth_password=auth_password,
             ),
             UpstreamModuleSettings(
                 module_id="backend:api-main",
@@ -42,6 +46,8 @@ def build_settings(
                 base_url="http://backend.local",
                 ws_enabled=ws_enabled,
                 auth_token=auth_token,
+                auth_username=auth_username,
+                auth_password=auth_password,
             ),
         ],
     )
@@ -216,7 +222,7 @@ def test_ops_alert_close_flow(tmp_path: Path) -> None:
                         "module_type": "gateway",
                         "online": True,
                         "health_status": "healthy",
-                        "checked_at": "2026-04-15T09:00:00+00:00",
+                        "checked_at": "2026-04-16T00:26:00+00:00",
                         "component_total": 1,
                         "healthy_components": 1,
                         "degraded_components": 0,
@@ -233,7 +239,7 @@ def test_ops_alert_close_flow(tmp_path: Path) -> None:
                             "display_name": "边缘处理主服务",
                             "online": True,
                             "health_status": "healthy",
-                            "checked_at": "2026-04-15T09:00:00+00:00",
+                            "checked_at": "2026-04-16T00:26:00+00:00",
                         }
                     ],
                 )
@@ -269,6 +275,128 @@ def test_ops_alert_close_flow(tmp_path: Path) -> None:
     asyncio.run(client.aclose())
 
 
+def test_ops_observer_logs_in_before_polling_protected_backend(tmp_path: Path) -> None:
+    requests_seen: list[tuple[str, str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests_seen.append(
+            (
+                request.method,
+                f"{request.url.host}{request.url.path}",
+                request.headers.get("Authorization"),
+            )
+        )
+        if request.url.host == "gateway.local":
+            if request.url.path == "/ops/v1/health":
+                return httpx.Response(
+                    200,
+                    json={
+                        "module_id": "gateway:gw-001",
+                        "module_type": "gateway",
+                        "online": True,
+                        "health_status": "healthy",
+                        "checked_at": "2026-04-15T09:00:00+00:00",
+                        "component_total": 1,
+                        "healthy_components": 1,
+                        "degraded_components": 0,
+                        "offline_components": 0,
+                    },
+                )
+            if request.url.path == "/ops/v1/health/components":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "component_id": "edge_processor",
+                            "component_type": "edge_processor",
+                            "display_name": "边缘处理主服务",
+                            "online": True,
+                            "health_status": "healthy",
+                            "checked_at": "2026-04-15T09:00:00+00:00",
+                        }
+                    ],
+                )
+            if request.url.path == "/ops/v1/stats":
+                return httpx.Response(200, json={"module_id": "gateway:gw-001", "module_type": "gateway"})
+
+        if request.url.host == "backend.local":
+            if request.url.path == "/api/v1/auth/login":
+                assert request.content == b'{"username":"ops_bot","password":"secret-123"}'
+                return httpx.Response(
+                    200,
+                    json={
+                        "access_token": "access-123",
+                        "refresh_token": "refresh-123",
+                        "token_type": "bearer",
+                        "expires_in": 900,
+                        "refresh_expires_in": 604800,
+                        "user": {"username": "ops_bot", "role": "admin"},
+                    },
+                )
+            if request.headers.get("Authorization") != "Bearer access-123":
+                return httpx.Response(401, json={"detail": "missing bearer token"})
+            if request.url.path == "/ops/v1/health":
+                return httpx.Response(
+                    200,
+                    json={
+                        "module_id": "backend:api-main",
+                        "module_type": "backend",
+                        "online": True,
+                        "health_status": "healthy",
+                        "checked_at": "2026-04-15T09:00:02+00:00",
+                        "component_total": 1,
+                        "healthy_components": 1,
+                        "degraded_components": 0,
+                        "offline_components": 0,
+                    },
+                )
+            if request.url.path == "/ops/v1/health/components":
+                return httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "component_id": "api_service",
+                            "component_type": "api_service",
+                            "display_name": "后台 API",
+                            "online": True,
+                            "health_status": "healthy",
+                            "checked_at": "2026-04-15T09:00:02+00:00",
+                        }
+                    ],
+                )
+            if request.url.path == "/ops/v1/stats":
+                return httpx.Response(
+                    200,
+                    json={"module_id": "backend:api-main", "module_type": "backend", "rest_auth_enabled": True},
+                )
+
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    settings = build_settings(
+        tmp_path / "ops_auth.sqlite3",
+        auth_username="ops_bot",
+        auth_password="secret-123",
+    )
+    app = create_app(settings, http_client=client)
+
+    with TestClient(app) as test_client:
+        response = test_client.get("/api/v1/ops/health")
+        assert response.status_code == 200
+        payload = response.json()
+        assert len(payload["items"]) == 2
+        assert any(
+            method == "POST" and path == "backend.local/api/v1/auth/login"
+            for method, path, _ in requests_seen
+        )
+        assert any(
+            method == "GET" and path == "backend.local/ops/v1/health" and auth == "Bearer access-123"
+            for method, path, auth in requests_seen
+        )
+
+    asyncio.run(client.aclose())
+
+
 def test_upstream_ws_message_triggers_refresh(tmp_path: Path) -> None:
     settings = build_settings(tmp_path / "ops_ws.sqlite3", ws_enabled=True, auth_token="token-123")
     store = OpsSqliteStore(str(tmp_path / "ops_ws.sqlite3"))
@@ -289,6 +417,6 @@ def test_upstream_ws_message_triggers_refresh(tmp_path: Path) -> None:
     asyncio.run(service._handle_upstream_ws_message(settings.upstream_modules[0], '{"type":"ops_snapshot","data":{}}'))
 
     assert called == ["refresh:gateway:gw-001", "broadcast"]
-    assert service._build_ws_url(settings.upstream_modules[0]) == "ws://gateway.local/ops/ws?token=token-123"
+    assert asyncio.run(service._build_ws_url(settings.upstream_modules[0])) == "ws://gateway.local/ops/ws?token=token-123"
 
     asyncio.run(service._http_client.aclose())

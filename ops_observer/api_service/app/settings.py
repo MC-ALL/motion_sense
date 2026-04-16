@@ -18,6 +18,8 @@ class UpstreamModuleSettings(BaseModel):
     base_url: str
     timeout_s: float = Field(default=5.0, gt=0)
     auth_token: str | None = None
+    auth_username: str | None = None
+    auth_password: str | None = None
     ws_enabled: bool = True
     ws_path: str = "/ops/ws"
 
@@ -77,6 +79,10 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
     _apply_upstream_override(upstream_modules, "backend", "base_url", os.environ.get("OPS_OBSERVER_BACKEND_BASE_URL"))
     _apply_upstream_override(upstream_modules, "gateway", "auth_token", os.environ.get("OPS_OBSERVER_GATEWAY_AUTH_TOKEN"))
     _apply_upstream_override(upstream_modules, "backend", "auth_token", os.environ.get("OPS_OBSERVER_BACKEND_AUTH_TOKEN"))
+    _apply_upstream_override(upstream_modules, "gateway", "auth_username", os.environ.get("OPS_OBSERVER_GATEWAY_AUTH_USERNAME"))
+    _apply_upstream_override(upstream_modules, "backend", "auth_username", os.environ.get("OPS_OBSERVER_BACKEND_AUTH_USERNAME"))
+    _apply_upstream_override(upstream_modules, "gateway", "auth_password", os.environ.get("OPS_OBSERVER_GATEWAY_AUTH_PASSWORD"))
+    _apply_upstream_override(upstream_modules, "backend", "auth_password", os.environ.get("OPS_OBSERVER_BACKEND_AUTH_PASSWORD"))
     _apply_upstream_override(upstream_modules, "gateway", "ws_enabled", _parse_optional_bool(os.environ.get("OPS_OBSERVER_GATEWAY_WS_ENABLED")))
     _apply_upstream_override(upstream_modules, "backend", "ws_enabled", _parse_optional_bool(os.environ.get("OPS_OBSERVER_BACKEND_WS_ENABLED")))
     _apply_upstream_override(upstream_modules, "gateway", "ws_path", os.environ.get("OPS_OBSERVER_GATEWAY_WS_PATH"))

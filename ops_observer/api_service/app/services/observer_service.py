@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -34,6 +34,14 @@ class _ModuleState:
     health_status: str
 
 
+@dataclass
+class _UpstreamAuthSession:
+    access_token: str
+    refresh_token: str
+    access_expires_at: datetime
+    refresh_expires_at: datetime
+
+
 class OpsObserverService:
     def __init__(
         self,
@@ -51,6 +59,7 @@ class OpsObserverService:
         self._snapshot_task: asyncio.Task[None] | None = None
         self._module_ws_tasks: dict[str, asyncio.Task[None]] = {}
         self._last_states: dict[str, _ModuleState] = {}
+        self._module_auth_sessions: dict[str, _UpstreamAuthSession] = {}
         self._refresh_lock = asyncio.Lock()
 
     async def start(self) -> None:
@@ -135,9 +144,9 @@ class OpsObserverService:
             await self.broadcast_snapshot()
 
     async def _module_ops_ws_loop(self, module: UpstreamModuleSettings) -> None:
-        ws_url = self._build_ws_url(module)
         while True:
             try:
+                ws_url = await self._build_ws_url(module)
                 async with websockets.connect(ws_url) as websocket:
                     ping_task = asyncio.create_task(
                         self._upstream_ping_loop(websocket),
@@ -153,6 +162,7 @@ class OpsObserverService:
             except asyncio.CancelledError:
                 raise
             except (ConnectionClosedOK, ConnectionClosedError, OSError, websockets.WebSocketException):
+                self._invalidate_module_access_token(module)
                 await asyncio.sleep(self._settings.upstream_ws_retry_interval_s)
 
     async def _upstream_ping_loop(self, websocket) -> None:
@@ -232,16 +242,121 @@ class OpsObserverService:
         return summary, components, stats
 
     async def _get_json(self, module: UpstreamModuleSettings, path: str) -> Any:
-        headers = {}
-        if module.auth_token:
-            headers["Authorization"] = f"Bearer {module.auth_token}"
-        response = await self._http_client.get(
+        response = await self._authorized_request(module, "GET", path)
+        response.raise_for_status()
+        return response.json()
+
+    async def _authorized_request(
+        self,
+        module: UpstreamModuleSettings,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+    ) -> httpx.Response:
+        response = await self._http_client.request(
+            method,
             f"{module.base_url.rstrip('/')}{path}",
-            headers=headers,
+            headers=await self._build_auth_headers(module),
+            json=json_body,
+            timeout=module.timeout_s,
+        )
+        if response.status_code != 401 or not self._module_uses_dynamic_auth(module):
+            return response
+
+        self._invalidate_module_access_token(module)
+        return await self._http_client.request(
+            method,
+            f"{module.base_url.rstrip('/')}{path}",
+            headers=await self._build_auth_headers(module),
+            json=json_body,
+            timeout=module.timeout_s,
+        )
+
+    async def _build_auth_headers(self, module: UpstreamModuleSettings) -> dict[str, str]:
+        token = await self._get_access_token(module)
+        if token is None:
+            return {}
+        return {"Authorization": f"Bearer {token}"}
+
+    async def _get_access_token(self, module: UpstreamModuleSettings) -> str | None:
+        if module.auth_token:
+            return module.auth_token
+        if not self._module_uses_dynamic_auth(module):
+            return None
+
+        now = datetime.now(UTC)
+        session = self._module_auth_sessions.get(module.module_id)
+        if session is not None and session.access_expires_at - timedelta(seconds=30) > now:
+            return session.access_token
+
+        if session is not None and session.refresh_expires_at - timedelta(seconds=30) > now:
+            refreshed = await self._refresh_upstream_session(module, session.refresh_token)
+            if refreshed is not None:
+                self._module_auth_sessions[module.module_id] = refreshed
+                return refreshed.access_token
+
+        logged_in = await self._login_upstream(module)
+        if logged_in is None:
+            return None
+
+        self._module_auth_sessions[module.module_id] = logged_in
+        return logged_in.access_token
+
+    def _module_uses_dynamic_auth(self, module: UpstreamModuleSettings) -> bool:
+        return bool(module.auth_username and module.auth_password)
+
+    def _invalidate_module_access_token(self, module: UpstreamModuleSettings) -> None:
+        session = self._module_auth_sessions.get(module.module_id)
+        if session is None:
+            return
+        self._module_auth_sessions[module.module_id] = _UpstreamAuthSession(
+            access_token="",
+            refresh_token=session.refresh_token,
+            access_expires_at=datetime.now(UTC),
+            refresh_expires_at=session.refresh_expires_at,
+        )
+
+    async def _login_upstream(
+        self,
+        module: UpstreamModuleSettings,
+    ) -> _UpstreamAuthSession | None:
+        if not self._module_uses_dynamic_auth(module):
+            return None
+        response = await self._http_client.post(
+            f"{module.base_url.rstrip('/')}/api/v1/auth/login",
+            json={
+                "username": module.auth_username,
+                "password": module.auth_password,
+            },
             timeout=module.timeout_s,
         )
         response.raise_for_status()
-        return response.json()
+        return self._build_auth_session(response.json())
+
+    async def _refresh_upstream_session(
+        self,
+        module: UpstreamModuleSettings,
+        refresh_token: str,
+    ) -> _UpstreamAuthSession | None:
+        response = await self._http_client.post(
+            f"{module.base_url.rstrip('/')}/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+            timeout=module.timeout_s,
+        )
+        if response.status_code == 401:
+            return None
+        response.raise_for_status()
+        return self._build_auth_session(response.json())
+
+    def _build_auth_session(self, payload: dict[str, Any]) -> _UpstreamAuthSession:
+        now = datetime.now(UTC)
+        return _UpstreamAuthSession(
+            access_token=str(payload["access_token"]),
+            refresh_token=str(payload["refresh_token"]),
+            access_expires_at=now + timedelta(seconds=int(payload.get("expires_in", 0))),
+            refresh_expires_at=now + timedelta(seconds=int(payload.get("refresh_expires_in", 0))),
+        )
 
     def _build_unreachable_snapshot(
         self,
@@ -378,10 +493,11 @@ class OpsObserverService:
         except ValueError:
             return None
 
-    def _build_ws_url(self, module: UpstreamModuleSettings) -> str:
+    async def _build_ws_url(self, module: UpstreamModuleSettings) -> str:
         parsed = urlsplit(module.base_url)
         scheme = "wss" if parsed.scheme == "https" else "ws"
-        query = urlencode({"token": module.auth_token}) if module.auth_token else ""
+        access_token = await self._get_access_token(module)
+        query = urlencode({"token": access_token}) if access_token else ""
         path = module.ws_path if module.ws_path.startswith("/") else f"/{module.ws_path}"
         return urlunsplit((scheme, parsed.netloc, path, query, ""))
 

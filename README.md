@@ -35,7 +35,7 @@
 
 当前缺口：
 
-- 后台 JWT 已实现，但默认仍关闭 REST / WebSocket 强制拦截，以保持第 1 迭代内网联调链路稳定
+- 后台部署默认已开启 REST / WebSocket 鉴权；仅网关内网链路 `POST /api/v1/ingest/batch`、`GET /api/v1/gateway/{gateway_id}/commands/pending`、`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`、`POST /api/v1/system/health/report` 保持免 JWT
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
@@ -78,6 +78,13 @@
 - `GET /api/v1/wristband/{id}/bindings`
 - `POST /api/v1/system/health/report`、`GET /api/v1/system/health*`
 - `GET /api/ws`
+- `GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`
+
+默认部署配置下：
+
+- `GET /api/ws?token={access_token}` 与 `WS /ops/ws?token={access_token}` 需要 JWT
+- 业务查询、设备管理、后台自观测查询都需要 `Authorization: Bearer {access_token}`
+- 仅网关采集、命令轮询 / 结果回报、健康上报这四类内网接口保留免鉴权
 
 网关 HTTP 侧目前仅暴露：
 
@@ -160,6 +167,13 @@ sh gateway/deployment/container/prepare_runtime.sh
 sh gateway/deployment/container/start_local_stack.sh
 sh gateway/deployment/container/verify_system_stack.sh
 sh gateway/deployment/container/stop_local_stack.sh
+```
+
+联调脚本默认读取 `backend/deployment/compose/runtime/config/backend/api_service/bootstrap_admin.txt` 中首次生成的后台管理员账号；如需覆盖，可在执行前传入：
+
+```bash
+BACKEND_ADMIN_USERNAME=admin BACKEND_ADMIN_PASSWORD='<your-password>' \
+  sh gateway/deployment/container/verify_system_stack.sh
 ```
 
 ## 本地平台说明

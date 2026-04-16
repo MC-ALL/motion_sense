@@ -6,14 +6,22 @@ gateway_host_port="${GATEWAY_HOST_PORT:-18080}"
 ops_host_port="${OPS_OBSERVER_HOST_PORT:-18090}"
 web_host_port="${WEB_HOST_PORT:-18070}"
 gateway_id="${EDGE_PROCESSOR_GATEWAY_ID:-gw-001}"
+backend_bootstrap_admin_path="${BACKEND_BOOTSTRAP_ADMIN_PATH:-${PWD}/backend/deployment/compose/runtime/config/backend/api_service/bootstrap_admin.txt}"
+backend_admin_username="${BACKEND_ADMIN_USERNAME:-}"
+backend_admin_password="${BACKEND_ADMIN_PASSWORD:-}"
 
 wait_for_json() {
   url="$1"
   check_code="$2"
   max_attempts="${3:-60}"
+  auth_header="${4:-}"
   attempt=1
   while [ "$attempt" -le "$max_attempts" ]; do
-    body="$(curl -fsS "$url" 2>/dev/null || true)"
+    if [ -n "$auth_header" ]; then
+      body="$(curl -fsS -H "$auth_header" "$url" 2>/dev/null || true)"
+    else
+      body="$(curl -fsS "$url" 2>/dev/null || true)"
+    fi
     if [ -n "$body" ] && BODY_JSON="$body" python3 -c "$check_code" >/dev/null 2>&1; then
       printf '%s\n' "$body"
       return 0
@@ -29,6 +37,27 @@ curl -fsS "http://127.0.0.1:${backend_host_port}/healthz" >/dev/null
 curl -fsS "http://127.0.0.1:${gateway_host_port}/healthz" >/dev/null
 curl -fsS "http://127.0.0.1:${ops_host_port}/healthz" >/dev/null
 curl -fsS "http://127.0.0.1:${web_host_port}/" >/dev/null
+
+if [ -z "${backend_admin_username}" ] && [ -f "${backend_bootstrap_admin_path}" ]; then
+  backend_admin_username="$(sed -n 's/^username: //p' "${backend_bootstrap_admin_path}" | head -n 1)"
+fi
+
+if [ -z "${backend_admin_password}" ] && [ -f "${backend_bootstrap_admin_path}" ]; then
+  backend_admin_password="$(sed -n 's/^password: //p' "${backend_bootstrap_admin_path}" | head -n 1)"
+fi
+
+backend_admin_username="${backend_admin_username:-admin}"
+
+if [ -z "${backend_admin_password}" ]; then
+  echo "missing backend admin password; set BACKEND_ADMIN_PASSWORD or ensure bootstrap_admin.txt exists" >&2
+  exit 1
+fi
+
+backend_login_body="$(curl -fsS -X POST "http://127.0.0.1:${backend_host_port}/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${backend_admin_username}\",\"password\":\"${backend_admin_password}\"}")"
+backend_access_token="$(BODY_JSON="$backend_login_body" python3 -c 'import json, os; print(json.loads(os.environ["BODY_JSON"])["access_token"])')"
+backend_auth_header="Authorization: Bearer ${backend_access_token}"
 
 sample_payload_file="$(mktemp)"
 cleanup() {
@@ -51,28 +80,37 @@ sh gateway/deployment/container/publish_sample_telemetry.sh \
 
 device_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/devices/eq-001" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["device_id"]=="eq-001"; assert body["online"] is True')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["device_id"]=="eq-001"; assert body["online"] is True' \
+  60 \
+  "$backend_auth_header")"
 
 health_detail_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/system/health/${gateway_id}" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["gateway_id"]; assert len(body["components"]) >= 5')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["gateway_id"]; assert len(body["components"]) >= 5' \
+  60 \
+  "$backend_auth_header")"
 
 command_body="$(curl -fsS -X POST "http://127.0.0.1:${backend_host_port}/api/v1/devices/env-a/config" \
+  -H "$backend_auth_header" \
   -H 'Content-Type: application/json' \
   -d '{"gym_id":"gym-gz-01","gateway_id":"gw-001","device_type":"env","config":{"telemetry_interval_s":20}}')"
 command_id="$(BODY_JSON="$command_body" python3 -c 'import json, os; print(json.loads(os.environ["BODY_JSON"])["command_id"])')"
 
 command_detail_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/gateway/commands/${command_id}" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["status"]=="succeeded"')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["status"]=="succeeded"' \
+  60 \
+  "$backend_auth_header")"
 
 summary_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/system/health" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert len(body) >= 1; assert body[0]["gateway_id"]')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert len(body) >= 1; assert body[0]["gateway_id"]' \
+  60 \
+  "$backend_auth_header")"
 
 ops_health_json="$(wait_for_json \
   "http://127.0.0.1:${ops_host_port}/api/v1/ops/health" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert len(body["items"]) >= 2; assert any(item["module_id"]=="gateway:gw-001" for item in body["items"]); assert any(item["module_id"]=="backend:api-main" for item in body["items"])')"
+  "import json, os; body=json.loads(os.environ['BODY_JSON']); assert len(body['items']) >= 2; gateway=next(item for item in body['items'] if item['module_id']=='gateway:gw-001'); backend=next(item for item in body['items'] if item['module_id']=='backend:api-main'); assert gateway['online'] is True and gateway['health_status']=='healthy'; assert backend['online'] is True and backend['health_status']=='healthy'")"
 
 ops_detail_json="$(wait_for_json \
   "http://127.0.0.1:${ops_host_port}/api/v1/ops/health/gateway:gw-001" \

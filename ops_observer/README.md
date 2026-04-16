@@ -11,6 +11,7 @@
 
 - 轮询上游 `/ops/v1/health`、`/ops/v1/health/components`、`/ops/v1/stats`
 - 订阅上游 `/ops/ws`，在状态变化时触发即时刷新
+- 当上游开启 JWT 时，可使用配置中的 `auth_username` / `auth_password` 自动登录并续期 token
 - 使用 SQLite 持久化模块快照、组件明细、统计与运维告警
 - 支持运维告警人工关闭
 - 对网页端暴露 `GET /api/v1/ops/*` 与 `WS /api/ws/ops`
