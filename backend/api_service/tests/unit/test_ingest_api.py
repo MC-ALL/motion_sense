@@ -173,3 +173,55 @@ def test_env_telemetry_aggregate() -> None:
         assert payload[0]["metrics"]["temperature_c"]["max"] == 28.0
         assert payload[0]["metrics"]["temperature_c"]["avg"] == 27.0
         assert payload[0]["metrics"]["co2_ppm"]["avg"] == 900.0
+
+
+def test_unbind_event_restores_wristband_online_status() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "2026-04-14T16:10:00Z",
+                "items": [
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-010/binding",
+                        "payload": {
+                            "ts": 1712347800,
+                            "wristband_id": "wb-010",
+                            "equipment_id": "eq-010",
+                            "action": "bind",
+                            "reason": "ble_connected",
+                        },
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-010/binding",
+                        "payload": {
+                            "ts": 1712347812,
+                            "wristband_id": "wb-010",
+                            "equipment_id": "eq-010",
+                            "action": "unbind",
+                            "reason": "idle_timeout",
+                        },
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"accepted": 2}
+
+        detail_response = client.get("/api/v1/devices/wb-010")
+        bindings_response = client.get("/api/v1/wristband/wb-010/bindings")
+
+        assert detail_response.status_code == 200
+        assert detail_response.json()["device_id"] == "wb-010"
+        assert detail_response.json()["status"] == "online"
+        assert detail_response.json()["online"] is True
+        assert detail_response.json()["last_seen_ts"] == 1712347812
+        assert detail_response.json()["last_payload"]["action"] == "unbind"
+
+        assert bindings_response.status_code == 200
+        assert bindings_response.json()[0]["action"] == "unbind"
+        assert bindings_response.json()[0]["duration_s"] == 12

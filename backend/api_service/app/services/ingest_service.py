@@ -62,7 +62,7 @@ class IngestService:
                         payload=item.payload,
                     )
 
-                status = str(item.payload.get("status", "online" if item.kind != "binding" else "bound"))
+                status = _derive_device_status(item.kind, item.payload)
                 device = await self._store.upsert_device(
                     gym_id=parsed.gym_id,
                     device_type=parsed.device_type,
@@ -105,3 +105,18 @@ class IngestService:
                         self._ops_service.record_realtime_message("device_status")
 
         return len(batch.items)
+
+
+def _derive_device_status(kind: str, payload: dict) -> str:
+    raw_status = payload.get("status")
+    if isinstance(raw_status, str) and raw_status:
+        return raw_status
+
+    if kind == "binding":
+        action = str(payload.get("action", "bind")).lower()
+        if action == "bind":
+            return "bound"
+        if action == "unbind":
+            return "online"
+
+    return "online"
