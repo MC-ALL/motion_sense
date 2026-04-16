@@ -22,6 +22,7 @@ from app.models.system_health import (
     GatewayHealthSummary,
     derive_overall_status,
 )
+from app.models.user import StoredUser, UserRole, UserSummary
 from app.settings import RuntimeSettings
 from app.storage.telemetry_aggregate import aggregate_env_records
 
@@ -43,6 +44,105 @@ class PostgresStore:
 
     async def close(self) -> None:
         await self._pool.close()
+
+    async def list_users(self) -> list[UserSummary]:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT username, role, created_at, updated_at
+                    FROM users
+                    ORDER BY username
+                    """
+                )
+                rows = await cursor.fetchall()
+
+        return [_user_summary_from_row(row) for row in rows]
+
+    async def get_user(self, *, username: str) -> StoredUser | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT username, role, password_hash, created_at, updated_at
+                    FROM users
+                    WHERE username = %s
+                    """,
+                    (username,),
+                )
+                row = await cursor.fetchone()
+
+        if row is None:
+            return None
+        return _stored_user_from_row(row)
+
+    async def create_user(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        role: UserRole,
+    ) -> UserSummary:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO users (username, role, password_hash)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (username) DO NOTHING
+                    RETURNING username, role, created_at, updated_at
+                    """,
+                    (username, role, password_hash),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            raise ValueError("username already exists")
+        return _user_summary_from_row(row)
+
+    async def update_user(
+        self,
+        *,
+        username: str,
+        password_hash: str | None = None,
+        role: UserRole | None = None,
+    ) -> UserSummary | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE users
+                    SET password_hash = COALESCE(%s, password_hash),
+                        role = COALESCE(%s, role),
+                        updated_at = NOW()
+                    WHERE username = %s
+                    RETURNING username, role, created_at, updated_at
+                    """,
+                    (password_hash, role, username),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            return None
+        return _user_summary_from_row(row)
+
+    async def delete_user(self, *, username: str) -> bool:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    DELETE FROM users
+                    WHERE username = %s
+                    RETURNING 1
+                    """,
+                    (username,),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return row is not None
 
     async def upsert_device(
         self,
@@ -1053,6 +1153,17 @@ class PostgresStore:
                 await cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
                 await cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS users (
+                        username TEXT PRIMARY KEY,
+                        role TEXT NOT NULL,
+                        password_hash TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                await cursor.execute(
+                    """
                     CREATE TABLE IF NOT EXISTS devices (
                         gym_id TEXT NOT NULL,
                         device_type TEXT NOT NULL,
@@ -1265,6 +1376,12 @@ class PostgresStore:
 
                 await cursor.execute(
                     """
+                    CREATE INDEX IF NOT EXISTS idx_users_role
+                    ON users (role, username)
+                    """
+                )
+                await cursor.execute(
+                    """
                     CREATE INDEX IF NOT EXISTS idx_alerts_triggered_at
                     ON alerts (triggered_at DESC)
                     """
@@ -1361,6 +1478,25 @@ def _device_summary_from_row(row: dict[str, Any]) -> DeviceSummary:
                 else None
             )
         }
+    )
+
+
+def _stored_user_from_row(row: dict[str, Any]) -> StoredUser:
+    return StoredUser(
+        username=row["username"],
+        role=row["role"],
+        password_hash=row["password_hash"],
+        created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
+        updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
+    )
+
+
+def _user_summary_from_row(row: dict[str, Any]) -> UserSummary:
+    return UserSummary(
+        username=row["username"],
+        role=row["role"],
+        created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
+        updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
     )
 
 

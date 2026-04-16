@@ -6,6 +6,7 @@
 
 - 批量入库：`POST /api/v1/ingest/batch`
 - JWT 认证：`POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`
+- 用户管理：`GET/POST/PATCH/DELETE /api/v1/users`
 - 设备、告警、遥测、绑定历史查询接口
 - WebSocket 实时接口：`GET /api/ws`
 - 自观测接口：`GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`
@@ -23,6 +24,7 @@
 - `/healthz`：健康检查
 - `/api/v1/ingest/*`：网关批量上报入口
 - `/api/v1/auth/*`：JWT 登录、刷新、退出
+- `/api/v1/users/*`：用户管理
 - `/api/v1/devices/*`：设备查询与配置下发
 - `/api/v1/ota/*`：OTA 预留接口
 - `/api/v1/gateway/*`：配置命令轮询与状态回报
@@ -52,12 +54,14 @@
 - 首次启动会补齐后台管理员密码哈希、JWT 密钥，并生成
   `/runtime/config/backend/api_service/bootstrap_admin.txt`
 - `bootstrap_admin.txt` 仅用于首次取回后台管理员用户名/密码，后续应自行轮换
+- 当前 bootstrap admin 仍由部署配置托管：可用它登录并创建业务账号，但不允许通过 `/api/v1/users` 直接改密、降权或删除
 - 后续修改在下次 `api_service` 重启后生效
 
 ## 当前鉴权边界
 
-- 第 1 迭代默认 `auth.enforce_rest = false`、`auth.enforce_ws = false`
-- 打开后，设备查询、告警、遥测、绑定历史、配置下发、健康查询、AI 预留接口、OTA 预留接口、`/api/ws` 会要求 Bearer JWT
+- 第 1 迭代部署默认 `auth.enforce_rest = true`、`auth.enforce_ws = true`
+- 登录后可获得 `admin`、`teacher`、`student` 角色 JWT；当前仅 `/api/v1/users/*` 强制要求 `admin`，其余业务接口维持“登录即可访问”
+- 设备查询、告警、遥测、绑定历史、配置下发、健康查询、AI 预留接口、OTA 预留接口、`/api/ws` 会要求 Bearer JWT
 - 网关内网链路暂不加 JWT：
   `POST /api/v1/ingest/batch`、
   `GET /api/v1/gateway/{gateway_id}/commands/pending`、

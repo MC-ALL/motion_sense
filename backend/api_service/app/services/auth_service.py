@@ -12,7 +12,9 @@ from typing import Any
 from uuid import uuid4
 
 from app.models.auth import AuthTokenPair, AuthUser
+from app.models.user import StoredUser
 from app.settings import AuthSettings
+from app.storage.store import Store
 
 
 class AuthError(Exception):
@@ -27,8 +29,9 @@ class RefreshSession:
 
 
 class AuthService:
-    def __init__(self, settings: AuthSettings) -> None:
+    def __init__(self, settings: AuthSettings, store: Store) -> None:
         self._settings = settings
+        self._store = store
         self._refresh_sessions: dict[str, RefreshSession] = {}
 
     @property
@@ -39,7 +42,23 @@ class AuthService:
     def ws_auth_required(self) -> bool:
         return self._settings.enforce_ws
 
-    def issue_token_pair(self, username: str) -> AuthTokenPair:
+    @property
+    def bootstrap_admin_username(self) -> str:
+        return self._settings.admin.username
+
+    async def initialize(self) -> None:
+        if not self._settings.admin.username or not self._settings.admin.password_hash:
+            return
+        existing = await self._store.get_user(username=self._settings.admin.username)
+        if existing is None:
+            await self._store.create_user(
+                username=self._settings.admin.username,
+                password_hash=self._settings.admin.password_hash,
+                role="admin",
+            )
+
+    async def issue_token_pair(self, username: str) -> AuthTokenPair:
+        user = await self._require_user(username)
         now_s = int(time.time())
         session_id = str(uuid4())
         refresh_jti = str(uuid4())
@@ -48,16 +67,23 @@ class AuthService:
             refresh_jti=refresh_jti,
             expires_at_s=now_s + self._settings.refresh_token_ttl_s,
         )
-        return self._build_token_pair(username=username, session_id=session_id, refresh_jti=refresh_jti, now_s=now_s)
+        return self._build_token_pair(
+            username=user.username,
+            role=user.role,
+            session_id=session_id,
+            refresh_jti=refresh_jti,
+            now_s=now_s,
+        )
 
-    def login(self, username: str, password: str) -> AuthTokenPair:
-        if username != self._settings.admin.username:
+    async def login(self, username: str, password: str) -> AuthTokenPair:
+        user = await self._store.get_user(username=username)
+        if user is None:
             raise AuthError("invalid username or password")
-        if not verify_password(password=password, encoded=self._settings.admin.password_hash):
+        if not verify_password(password=password, encoded=user.password_hash):
             raise AuthError("invalid username or password")
-        return self.issue_token_pair(username=username)
+        return await self.issue_token_pair(username=username)
 
-    def refresh(self, refresh_token: str) -> AuthTokenPair:
+    async def refresh(self, refresh_token: str) -> AuthTokenPair:
         claims = self._decode_token(
             token=refresh_token,
             secret=self._settings.jwt.refresh_secret,
@@ -78,11 +104,13 @@ class AuthService:
             self._refresh_sessions.pop(session_id, None)
             raise AuthError("refresh token has been rotated")
 
+        user = await self._require_user(session.username)
         refresh_jti = str(uuid4())
         session.refresh_jti = refresh_jti
         session.expires_at_s = now_s + self._settings.refresh_token_ttl_s
         return self._build_token_pair(
-            username=session.username,
+            username=user.username,
+            role=user.role,
             session_id=session_id,
             refresh_jti=refresh_jti,
             now_s=now_s,
@@ -105,15 +133,22 @@ class AuthService:
         )
         username = _require_str_claim(claims, "sub")
         role = _require_str_claim(claims, "role")
-        return AuthUser(username=username, role=role)  # type: ignore[arg-type]
+        return AuthUser(username=username, role=role)
 
     def anonymous_user(self) -> AuthUser:
         return AuthUser(username="anonymous", role="anonymous")
+
+    async def _require_user(self, username: str) -> StoredUser:
+        user = await self._store.get_user(username=username)
+        if user is None:
+            raise AuthError("user not found or disabled")
+        return user
 
     def _build_token_pair(
         self,
         *,
         username: str,
+        role: str,
         session_id: str,
         refresh_jti: str,
         now_s: int,
@@ -122,7 +157,7 @@ class AuthService:
             secret=self._settings.jwt.access_secret,
             payload={
                 "sub": username,
-                "role": "admin",
+                "role": role,
                 "typ": "access",
                 "iat": now_s,
                 "exp": now_s + self._settings.access_token_ttl_s,
@@ -135,7 +170,7 @@ class AuthService:
             secret=self._settings.jwt.refresh_secret,
             payload={
                 "sub": username,
-                "role": "admin",
+                "role": role,
                 "typ": "refresh",
                 "iat": now_s,
                 "exp": now_s + self._settings.refresh_token_ttl_s,
@@ -150,7 +185,7 @@ class AuthService:
             refresh_token=refresh_token,
             expires_in=self._settings.access_token_ttl_s,
             refresh_expires_in=self._settings.refresh_token_ttl_s,
-            user=AuthUser(username=username),
+            user=AuthUser(username=username, role=role),
         )
 
     def _encode_token(self, *, secret: str, payload: dict[str, Any]) -> str:
@@ -239,7 +274,7 @@ def _b64url_encode(value: bytes) -> str:
 
 def _b64url_decode(value: str) -> bytes:
     padding = "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(value + padding)
+    return base64.urlsafe_b64decode(f"{value}{padding}")
 
 
 def _require_str_claim(claims: dict[str, Any], key: str) -> str:

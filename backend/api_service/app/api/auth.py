@@ -22,7 +22,7 @@ async def login(
     auth_service: AuthService = Depends(get_auth_service),
 ) -> AuthTokenPair:
     try:
-        return auth_service.login(username=payload.username, password=payload.password)
+        return await auth_service.login(username=payload.username, password=payload.password)
     except AuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -36,7 +36,7 @@ async def refresh_token(
     auth_service: AuthService = Depends(get_auth_service),
 ) -> AuthTokenPair:
     try:
-        return auth_service.refresh(payload.refresh_token)
+        return await auth_service.refresh(payload.refresh_token)
     except AuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

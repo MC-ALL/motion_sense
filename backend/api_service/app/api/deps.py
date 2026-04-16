@@ -61,3 +61,12 @@ def require_rest_user(
             detail=str(exc),
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+
+def require_admin_user(user: AuthUser = Depends(require_rest_user)) -> AuthUser:
+    if user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="admin role required",
+        )
+    return user

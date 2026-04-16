@@ -19,6 +19,7 @@ from app.models.system_health import (
     GatewayHealthSummary,
     derive_overall_status,
 )
+from app.models.user import StoredUser, UserRole, UserSummary
 from app.storage.telemetry_aggregate import aggregate_env_records
 
 
@@ -26,6 +27,7 @@ class EventStore:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._devices: dict[str, DeviceSummary] = {}
+        self._users: dict[str, StoredUser] = {}
         self._alerts: list[AlertRecord] = []
         self._bindings: list[BindingEventRecord] = []
         self._telemetry: list[TelemetryRecord] = []
@@ -39,6 +41,64 @@ class EventStore:
 
     async def close(self) -> None:
         return None
+
+    async def list_users(self) -> list[UserSummary]:
+        async with self._lock:
+            users = list(self._users.values())
+        return [
+            UserSummary.model_validate(user.model_dump(exclude={"password_hash"}))
+            for user in sorted(users, key=lambda item: item.username)
+        ]
+
+    async def get_user(self, *, username: str) -> StoredUser | None:
+        async with self._lock:
+            return self._users.get(username)
+
+    async def create_user(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        role: UserRole,
+    ) -> UserSummary:
+        async with self._lock:
+            if username in self._users:
+                raise ValueError("username already exists")
+            now = _now_iso()
+            user = StoredUser(
+                username=username,
+                role=role,
+                password_hash=password_hash,
+                created_at=now,
+                updated_at=now,
+            )
+            self._users[username] = user
+            return UserSummary.model_validate(user.model_dump(exclude={"password_hash"}))
+
+    async def update_user(
+        self,
+        *,
+        username: str,
+        password_hash: str | None = None,
+        role: UserRole | None = None,
+    ) -> UserSummary | None:
+        async with self._lock:
+            existing = self._users.get(username)
+            if existing is None:
+                return None
+            updated = existing.model_copy(
+                update={
+                    "password_hash": password_hash or existing.password_hash,
+                    "role": role or existing.role,
+                    "updated_at": _now_iso(),
+                }
+            )
+            self._users[username] = updated
+            return UserSummary.model_validate(updated.model_dump(exclude={"password_hash"}))
+
+    async def delete_user(self, *, username: str) -> bool:
+        async with self._lock:
+            return self._users.pop(username, None) is not None
 
     async def upsert_device(
         self,

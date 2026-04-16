@@ -1,4 +1,5 @@
 export type DeviceType = 'wristband' | 'equipment' | 'env' | 'gateway' | string;
+export type UserRole = 'admin' | 'teacher' | 'student';
 
 export interface DeviceSummary {
   gym_id: string;
@@ -97,7 +98,7 @@ export interface DeviceConfigPublishResult {
 
 export interface AuthUser {
   username: string;
-  role: string;
+  role: UserRole | 'anonymous';
 }
 
 export interface AuthTokenPair {
@@ -124,6 +125,24 @@ export interface RefreshRequest {
 
 export interface LogoutRequest {
   refresh_token: string;
+}
+
+export interface UserSummary {
+  username: string;
+  role: UserRole;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface UserCreateRequest {
+  username: string;
+  password: string;
+  role: UserRole;
+}
+
+export interface UserUpdateRequest {
+  password?: string | null;
+  role?: UserRole | null;
 }
 
 export interface BatchAckResult {

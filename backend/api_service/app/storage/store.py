@@ -11,12 +11,43 @@ from app.models.ingest import (
     TelemetryRecord,
 )
 from app.models.system_health import GatewayHealthDetail, GatewayHealthReportRequest, GatewayHealthSummary
+from app.models.user import StoredUser, UserRole, UserSummary
 
 
 class Store(Protocol):
     async def initialize(self) -> None: ...
 
     async def close(self) -> None: ...
+
+    async def list_users(self) -> list[UserSummary]: ...
+
+    async def get_user(
+        self,
+        *,
+        username: str,
+    ) -> StoredUser | None: ...
+
+    async def create_user(
+        self,
+        *,
+        username: str,
+        password_hash: str,
+        role: UserRole,
+    ) -> UserSummary: ...
+
+    async def update_user(
+        self,
+        *,
+        username: str,
+        password_hash: str | None = None,
+        role: UserRole | None = None,
+    ) -> UserSummary | None: ...
+
+    async def delete_user(
+        self,
+        *,
+        username: str,
+    ) -> bool: ...
 
     async def upsert_device(
         self,

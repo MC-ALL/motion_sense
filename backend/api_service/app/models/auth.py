@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+AuthRole = Literal["admin", "teacher", "student", "anonymous"]
+
 
 class AuthLoginRequest(BaseModel):
     username: str
@@ -20,7 +22,7 @@ class AuthLogoutRequest(BaseModel):
 
 class AuthUser(BaseModel):
     username: str
-    role: str = "admin"
+    role: AuthRole = "admin"
 
 
 class AuthTokenPair(BaseModel):

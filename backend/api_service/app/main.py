@@ -18,6 +18,7 @@ from app.api import (
     ota,
     system_health,
     telemetry,
+    users,
     websocket,
 )
 from app.services.auth_service import AuthService
@@ -40,7 +41,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         websocket_manager = WebSocketManager()
         ops_websocket_manager = OpsWebSocketManager()
         realtime_service = RealtimeService(runtime_settings, websocket_manager)
-        auth_service = AuthService(runtime_settings.auth)
+        auth_service = AuthService(runtime_settings.auth, event_store)
         ops_service = BackendOpsService(
             runtime_settings,
             event_store,
@@ -68,6 +69,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         app.state.ingest_service = IngestService(event_store, realtime_service, ops_service)
         app.state.device_config_service = device_config_service
         await event_store.initialize()
+        await auth_service.initialize()
         await realtime_service.start()
         await ops_service.start()
         yield
@@ -91,6 +93,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(ota.router)
     app.include_router(alerts.router)
     app.include_router(telemetry.router)
+    app.include_router(users.router)
     app.include_router(bindings.router)
     app.include_router(gateway_commands.router)
     app.include_router(system_health.router)

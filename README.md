@@ -19,6 +19,7 @@
 - 网关 `GET /api/v1/gateway/{gateway_id}/commands/pending` 轮询执行与结果回报
 - 配置命令失败重试、租约领取与 `timed_out` 超时收敛
 - 后台 JWT 登录、刷新、退出接口已实现
+- 后台 `GET/POST/PATCH/DELETE /api/v1/users` 用户管理接口已实现，支持 `admin` / `teacher` / `student`
 - 后台 AI / OTA 预留接口已占位，当前返回 `501 reserved`
 - 网关基于 InfluxDB 的本地缓存与补发链路
 - 网关 P1 规则引擎与规则热重载
@@ -37,6 +38,7 @@
 当前缺口：
 
 - 后台部署默认已开启 REST / WebSocket 鉴权；仅网关内网链路 `POST /api/v1/ingest/batch`、`GET /api/v1/gateway/{gateway_id}/commands/pending`、`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`、`POST /api/v1/system/health/report` 保持免 JWT
+- 当前仅用户管理接口强制要求 `admin`，其余业务接口仍是“登录即可访问”的粗粒度控制
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
