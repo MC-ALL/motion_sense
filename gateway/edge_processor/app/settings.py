@@ -48,6 +48,8 @@ class InfluxdbSettings(BaseModel):
     database_name: str = "gym_local"
     auth_token: str | None = None
     request_timeout_s: float = 5.0
+    write_queue_size: int = 8192
+    write_batch_size: int = 256
     replay_batch_size: int = 500
 
 
@@ -124,6 +126,10 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         influxdb["auth_token"] = value
     if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_REQUEST_TIMEOUT_S"):
         influxdb["request_timeout_s"] = float(value)
+    if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_WRITE_QUEUE_SIZE"):
+        influxdb["write_queue_size"] = int(value)
+    if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_WRITE_BATCH_SIZE"):
+        influxdb["write_batch_size"] = int(value)
     if value := os.environ.get("EDGE_PROCESSOR_INFLUXDB_REPLAY_BATCH_SIZE"):
         influxdb["replay_batch_size"] = int(value)
     if value := os.environ.get("EDGE_PROCESSOR_MQTT_HOST"):

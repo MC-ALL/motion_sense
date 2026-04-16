@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import asyncio
 
 import httpx
 
@@ -18,6 +19,12 @@ class BufferedEvent:
     item: IngestItem
 
 
+@dataclass(slots=True)
+class PendingInfluxWrite:
+    event_id: str
+    body: str
+
+
 class InfluxEventBuffer:
     def __init__(self, settings: RuntimeSettings) -> None:
         self._settings = settings
@@ -26,6 +33,10 @@ class InfluxEventBuffer:
             timeout=settings.influxdb.request_timeout_s,
             headers=_build_headers(settings),
         )
+        self._pending_writes: asyncio.Queue[PendingInfluxWrite] = asyncio.Queue(
+            maxsize=settings.influxdb.write_queue_size
+        )
+        self._flush_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         response = await self._client.post(
@@ -39,6 +50,7 @@ class InfluxEventBuffer:
         response.raise_for_status()
 
     async def close(self) -> None:
+        await self._flush_pending()
         await self._client.aclose()
 
     async def append(self, item: IngestItem, parsed_topic: ParsedTopic) -> str:
@@ -70,11 +82,12 @@ class InfluxEventBuffer:
                 ),
             ]
         )
-        await self._write_lines(body)
+        await self._pending_writes.put(PendingInfluxWrite(event_id=event_id, body=body))
         return event_id
 
     async def list_pending(self, limit: int) -> list[BufferedEvent]:
-        response = await self._query_sql(_pending_events_query(limit * 4))
+        await self._flush_pending()
+        response = await self._query_sql(_pending_events_query(limit * 8))
         if response.status_code >= 500 or _is_missing_table_response(response):
             return []
         response.raise_for_status()
@@ -110,6 +123,7 @@ class InfluxEventBuffer:
             )
             if len(events) >= limit:
                 break
+        events.reverse()
         return events
 
     async def ack_delivered(self, event_ids: list[str]) -> None:
@@ -126,6 +140,21 @@ class InfluxEventBuffer:
             for event_id in event_ids
         ]
         await self._write_lines("\n".join(lines))
+
+    async def _flush_pending(self) -> None:
+        async with self._flush_lock:
+            batch: list[PendingInfluxWrite] = []
+            max_batch_size = max(1, self._settings.influxdb.write_batch_size)
+
+            while not self._pending_writes.empty():
+                batch.append(self._pending_writes.get_nowait())
+                if len(batch) < max_batch_size:
+                    continue
+                await self._write_lines("\n".join(item.body for item in batch))
+                batch.clear()
+
+            if batch:
+                await self._write_lines("\n".join(item.body for item in batch))
 
     async def _query_sql(self, query: str) -> httpx.Response:
         return await self._client.post(
@@ -159,7 +188,7 @@ SELECT
   payload_json,
   time AS first_seen
 FROM edge_ingest_events
-ORDER BY first_seen
+ORDER BY first_seen DESC
 LIMIT {int(limit)}
 """.strip()
 
