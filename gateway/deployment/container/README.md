@@ -94,6 +94,12 @@ sh gateway/deployment/container/verify_system_stack.sh
 sh gateway/deployment/container/verify_user_scope_stack.sh
 ```
 
+执行整栈串行回归验证：
+
+```bash
+sh gateway/deployment/container/verify_regression_stack.sh
+```
+
 脚本默认读取 `backend/deployment/compose/runtime/config/backend/api_service/bootstrap_admin.txt` 中首次生成的后台管理员账号；如需覆盖，可在执行前传入：
 
 ```bash
@@ -134,6 +140,7 @@ sh gateway/deployment/container/stop_local_stack.sh
 - `verify_system_stack.sh` 目标验证项包括：设备入库、健康汇聚、配置命令闭环、后台健康汇总视图、`ops_observer` 健康汇总与详情视图，以及网页端入口与运行时配置
 - `verify_user_scope_stack.sh` 会创建临时 `teacher` / `student` 账号，验证 `gym_ids` / `device_ids` 归属下的设备、遥测、告警、绑定历史与告警确认边界；脚本结束后会自动删除临时账号
 - `verify_gateway_resilience.sh` 目标验证项包括：Mosquitto 异常重启后的网关自动重连，以及 `rules.yaml` 热重载后的 P1 规则生效
+- `verify_regression_stack.sh` 会按 `verify_system_stack.sh -> verify_user_scope_stack.sh -> verify_gateway_resilience.sh` 顺序串行执行，适合作为本地整栈固定回归入口
 - 为了覆盖本地 Broker 重连场景，`edge_processor` 在 Apple `container` 联调中会连接宿主机网关地址 `192.168.65.1:1883`，而不是直接连接 `mosquitto` 容器瞬时 IP
 - `start_local_stack.sh` 会解析后台与 InfluxDB 容器 IP，并通过环境变量注入 `edge_processor`；MQTT 入口固定使用宿主机网关地址
 - `start_local_stack.sh` 也会解析 `edge_processor` 与 `backend` 容器 IP，并把后台首次生成的管理员账号注入到 `ops_observer`，用于访问受保护的后台 `/ops/v1/*` 与 `/ops/ws`
