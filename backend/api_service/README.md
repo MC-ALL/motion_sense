@@ -60,7 +60,11 @@
 ## 当前鉴权边界
 
 - 第 1 迭代部署默认 `auth.enforce_rest = true`、`auth.enforce_ws = true`
-- 登录后可获得 `admin`、`teacher`、`student` 角色 JWT；当前仅 `/api/v1/users/*` 强制要求 `admin`，其余业务接口维持“登录即可访问”
+- 登录后可获得 `admin`、`teacher`、`student` 角色 JWT，并附带 `gym_ids` / `device_ids` 归属范围
+- `admin` 不受归属限制；`teacher` 可访问 `gym_ids` 对应场馆与 `device_ids` 明确绑定的设备；`student` 仅可访问 `device_ids` 明确绑定的设备
+- `/api/v1/users/*`、`POST/PATCH/DELETE /api/v1/devices*`、`POST /api/v1/devices/{id}/config`、`GET /api/v1/system/health*`、`/ops/v1/*`、`/ops/ws` 仅允许 `admin`
+- `PATCH /api/v1/alerts/{id}/ack`、`POST /api/v1/alerts/batch-ack` 允许 `admin | teacher`
+- 业务读接口与 `GET /api/ws` 会按登录用户的 `gym_ids` / `device_ids` 继续过滤结果
 - 设备查询、告警、遥测、绑定历史、配置下发、健康查询、AI 预留接口、OTA 预留接口、`/api/ws` 会要求 Bearer JWT
 - 网关内网链路暂不加 JWT：
   `POST /api/v1/ingest/batch`、

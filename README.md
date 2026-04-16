@@ -170,6 +170,7 @@ sh gateway/deployment/container/build_local_images.sh
 sh gateway/deployment/container/prepare_runtime.sh
 sh gateway/deployment/container/start_local_stack.sh
 sh gateway/deployment/container/verify_system_stack.sh
+sh gateway/deployment/container/verify_user_scope_stack.sh
 sh gateway/deployment/container/stop_local_stack.sh
 ```
 
