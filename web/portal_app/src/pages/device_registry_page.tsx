@@ -22,6 +22,7 @@ import {
   fetch_devices,
   update_device_registration
 } from '../api/backend_client';
+import { AuthRequiredState } from '../components/auth_required_state';
 import { use_auth_store } from '../store/auth_store';
 import type {
   DeviceRegistrationRequest,
@@ -214,6 +215,16 @@ export function DeviceRegistryPage() {
     ],
     [edit_form]
   );
+
+  if (!session) {
+    return (
+      <AuthRequiredState
+        eyebrow="06 网页端 / 设备注册"
+        title="登录后可管理设备注册表"
+        description="设备注册页只在登录后访问后台设备管理接口；当前未登录，因此不会发起注册表查询。"
+      />
+    );
+  }
 
   async function handle_create(values: DeviceFormValues) {
     set_submitting(true);

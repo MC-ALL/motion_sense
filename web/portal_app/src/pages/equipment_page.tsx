@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Form, InputNumber, List, Select, Space, Spin, Statistic, Tag } from 'antd';
 
 import { fetch_devices, fetch_equipment_telemetry, publish_device_config } from '../api/backend_client';
+import { AuthRequiredState } from '../components/auth_required_state';
 import { TimeSeriesChart } from '../components/time_series_chart';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
@@ -35,15 +36,32 @@ export function EquipmentPage() {
     selected_device_id ? state.telemetry_by_device[selected_device_id] ?? empty_realtime_points : empty_realtime_points
   );
   const connect = use_business_realtime_store((state) => state.connect);
+  const disconnect = use_business_realtime_store((state) => state.disconnect);
   const session = use_auth_store((state) => state.session);
   const can_publish_config = session?.user.role === 'admin';
   const scope_description = describe_user_scope(session?.user);
 
   useEffect(() => {
+    if (!session) {
+      disconnect();
+      return;
+    }
     connect();
-  }, [connect]);
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect, session]);
 
   useEffect(() => {
+    if (!session) {
+      set_loading(false);
+      set_error(null);
+      set_devices([]);
+      set_wristbands([]);
+      set_selected_device_id(null);
+      return;
+    }
+
     let mounted = true;
     async function load() {
       set_loading(true);
@@ -73,9 +91,14 @@ export function EquipmentPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [session]);
 
   useEffect(() => {
+    if (!session) {
+      set_telemetry([]);
+      return;
+    }
+
     let mounted = true;
     async function load_telemetry() {
       if (!selected_device_id) {
@@ -96,7 +119,17 @@ export function EquipmentPage() {
     return () => {
       mounted = false;
     };
-  }, [selected_device_id]);
+  }, [selected_device_id, session]);
+
+  if (!session) {
+    return (
+      <AuthRequiredState
+        eyebrow="06 网页端 / 器材管理"
+        title="登录后可查看器材详情与下发配置"
+        description="器材管理依赖后台受保护的设备列表、遥测查询与配置下发接口，未登录时不再触发这些请求。"
+      />
+    );
+  }
 
   const selected_device = devices.find((item) => item.device_id === selected_device_id) ?? null;
   const bound_wristbands = wristbands.filter((item) => item.last_payload.current_equipment_id === selected_device_id);

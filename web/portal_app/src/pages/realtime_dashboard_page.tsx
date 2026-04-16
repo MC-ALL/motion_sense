@@ -11,7 +11,9 @@ import {
   fetch_equipment_telemetry,
   fetch_wristband_bindings
 } from '../api/backend_client';
+import { AuthRequiredState } from '../components/auth_required_state';
 import { TimeSeriesChart, type TimeSeriesDefinition } from '../components/time_series_chart';
+import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { BindingEventRecord, BusinessAlertRecord, DeviceSummary, TelemetryRecord } from '../types/backend';
 import { format_time } from '../utils/time';
@@ -70,12 +72,30 @@ export function RealtimeDashboardPage() {
   const device_status = use_business_realtime_store((state) => state.device_status);
   const recent_alerts = use_business_realtime_store((state) => state.recent_alerts);
   const connect = use_business_realtime_store((state) => state.connect);
+  const disconnect = use_business_realtime_store((state) => state.disconnect);
+  const session = use_auth_store((state) => state.session);
 
   useEffect(() => {
+    if (!session) {
+      disconnect();
+      return;
+    }
     connect();
-  }, [connect]);
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect, session]);
 
   useEffect(() => {
+    if (!session) {
+      set_loading(false);
+      set_error(null);
+      set_devices([]);
+      set_alerts([]);
+      set_focus_device_id(null);
+      return;
+    }
+
     let mounted = true;
     async function load() {
       set_loading(true);
@@ -103,12 +123,12 @@ export function RealtimeDashboardPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [session]);
 
   useEffect(() => {
     let mounted = true;
     async function load_focus_data() {
-      if (!focus_device_id) {
+      if (!session || !focus_device_id) {
         return;
       }
       const device = devices.find((item) => item.device_id === focus_device_id);
@@ -174,7 +194,7 @@ export function RealtimeDashboardPage() {
     return () => {
       mounted = false;
     };
-  }, [devices, focus_device_id]);
+  }, [devices, focus_device_id, session]);
 
   const merged_devices = useMemo(
     () =>
@@ -221,6 +241,16 @@ export function RealtimeDashboardPage() {
     alerts: displayed_alerts.filter((item) => !item.is_ack).length,
     bindings: latest_bindings.length
   };
+
+  if (!session) {
+    return (
+      <AuthRequiredState
+        eyebrow="06 网页端 / 实时仪表盘"
+        title="登录后可查看训练现场数据"
+        description="仪表盘默认访问后台受保护的设备、告警与实时 WebSocket 接口，未登录时不会再主动请求这些接口。"
+      />
+    );
+  }
 
   return (
     <section className="page_shell">

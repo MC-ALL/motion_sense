@@ -4,6 +4,7 @@ import { Alert, Button, Select, Space, Statistic, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import { ack_business_alert, batch_ack_business_alerts, fetch_business_alerts, fetch_devices } from '../api/backend_client';
+import { AuthRequiredState } from '../components/auth_required_state';
 import { use_auth_store } from '../store/auth_store';
 import type { BusinessAlertRecord, DeviceSummary } from '../types/backend';
 import { describe_user_scope } from '../utils/user_scope';
@@ -41,10 +42,21 @@ export function AlertsPage() {
   }
 
   useEffect(() => {
+    if (!session) {
+      set_loading(false);
+      set_error(null);
+      set_alerts([]);
+      return;
+    }
     void load();
-  }, [level, device_id, ack_filter]);
+  }, [ack_filter, device_id, level, session]);
 
   useEffect(() => {
+    if (!session) {
+      set_devices([]);
+      return;
+    }
+
     let mounted = true;
 
     async function load_devices_for_filter() {
@@ -64,7 +76,7 @@ export function AlertsPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [session]);
 
   async function ack_one(alert_id: number) {
     set_action_loading(true);
@@ -143,6 +155,16 @@ export function AlertsPage() {
     }),
     [alerts, selected_ids.length]
   );
+
+  if (!session) {
+    return (
+      <AuthRequiredState
+        eyebrow="06 网页端 / 告警管理"
+        title="登录后可查看并处理业务告警"
+        description="告警列表与确认操作都需要后台 JWT；未登录时页面不会再向 `/api/v1/alerts` 发起请求。"
+      />
+    );
+  }
 
   return (
     <section className="page_shell">

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { create_business_websocket, parse_business_message } from '../api/backend_client';
 import type { BusinessAlertRecord, DeviceStatusMessage, TelemetryMessage } from '../types/backend';
+import { get_auth_session } from '../utils/auth_session';
 
 const max_points = 200;
 const max_alerts = 50;
@@ -40,6 +41,14 @@ export const use_business_realtime_store = create<BusinessRealtimeState>((set, g
   device_status: {},
   connect: () => {
     if (websocket && (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const session = get_auth_session();
+    if (!session?.access_token) {
+      should_reconnect = false;
+      clear_timers();
+      set({ ws_state: 'idle' });
       return;
     }
 

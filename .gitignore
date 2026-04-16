@@ -1,4 +1,8 @@
 .DS_Store
+__pycache__/
+.pytest_cache/
+build/
+*.egg-info/
 ops_observer/api_service/build/
 gateway/deployment/compose/runtime/
 backend/deployment/compose/runtime/
