@@ -43,6 +43,12 @@ const UserManagementPage = lazy(async () =>
   }))
 );
 
+const DeviceRegistryPage = lazy(async () =>
+  import('../pages/device_registry_page').then((module) => ({
+    default: module.DeviceRegistryPage
+  }))
+);
+
 function RouteFallback() {
   return (
     <section className="panel_surface loading_surface">
@@ -88,9 +94,14 @@ function AppLayout() {
             告警管理
           </NavLink>
           {is_admin ? (
-            <NavLink to="/user-management" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
-              用户管理
-            </NavLink>
+            <>
+              <NavLink to="/device-registry" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
+                设备注册
+              </NavLink>
+              <NavLink to="/user-management" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
+                用户管理
+              </NavLink>
+            </>
           ) : null}
           <NavLink
             to="/health-center"
@@ -118,6 +129,7 @@ export const router = createBrowserRouter([
       { path: 'equipment', element: render_lazy_page(EquipmentPage) },
       { path: 'env-quality', element: render_lazy_page(EnvQualityPage) },
       { path: 'alerts', element: render_lazy_page(AlertsPage) },
+      { path: 'device-registry', element: render_lazy_page(DeviceRegistryPage) },
       { path: 'user-management', element: render_lazy_page(UserManagementPage) },
       { path: 'health-center', element: render_lazy_page(HealthCenterPage) }
     ]

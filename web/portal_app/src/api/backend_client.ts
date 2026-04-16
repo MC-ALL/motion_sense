@@ -9,6 +9,8 @@ import type {
   BusinessWsMessage,
   DeviceConfigPublishRequest,
   DeviceConfigPublishResult,
+  DeviceRegistrationRequest,
+  DeviceRegistrationUpdateRequest,
   DeviceSummary,
   EnvTelemetryAggregateRecord,
   LoginRequest,
@@ -132,6 +134,23 @@ export async function fetch_devices(params?: {
 export async function fetch_device(device_id: string): Promise<DeviceSummary> {
   const response = await backend_client.get<DeviceSummary>(`/api/v1/devices/${device_id}`);
   return response.data;
+}
+
+export async function create_device_registration(payload: DeviceRegistrationRequest): Promise<DeviceSummary> {
+  const response = await backend_client.post<DeviceSummary>('/api/v1/devices', payload);
+  return response.data;
+}
+
+export async function update_device_registration(
+  device_id: string,
+  payload: DeviceRegistrationUpdateRequest
+): Promise<DeviceSummary> {
+  const response = await backend_client.patch<DeviceSummary>(`/api/v1/devices/${device_id}`, payload);
+  return response.data;
+}
+
+export async function delete_device_registration(device_id: string): Promise<void> {
+  await backend_client.delete(`/api/v1/devices/${device_id}`);
 }
 
 export async function fetch_business_alerts(params?: {

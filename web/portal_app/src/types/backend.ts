@@ -1,4 +1,5 @@
 export type DeviceType = 'wristband' | 'equipment' | 'env' | 'gateway' | string;
+export type DeviceRegistryType = 'wristband' | 'equipment' | 'env' | 'gateway';
 export type UserRole = 'admin' | 'teacher' | 'student';
 
 export interface DeviceSummary {
@@ -15,6 +16,23 @@ export interface DeviceSummary {
   last_payload: Record<string, unknown>;
   registered_at?: string | null;
   updated_at?: string | null;
+}
+
+export interface DeviceRegistrationRequest {
+  gym_id: string;
+  device_type: DeviceRegistryType;
+  device_id: string;
+  gateway_id?: string | null;
+  display_name?: string | null;
+  location?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface DeviceRegistrationUpdateRequest {
+  gateway_id?: string | null;
+  display_name?: string | null;
+  location?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface BusinessAlertRecord {
