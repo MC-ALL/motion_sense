@@ -9,6 +9,9 @@ data_root="${runtime_root}/data"
 network_name="${CONTAINER_NETWORK:-motion-sense-local}"
 backend_host_port="${BACKEND_HOST_PORT:-18000}"
 gateway_host_port="${GATEWAY_HOST_PORT:-18080}"
+backend_bootstrap_admin_path="${BACKEND_BOOTSTRAP_ADMIN_PATH:-${PWD}/backend/deployment/compose/runtime/config/backend/api_service/bootstrap_admin.txt}"
+backend_admin_username="${BACKEND_ADMIN_USERNAME:-}"
+backend_admin_password="${BACKEND_ADMIN_PASSWORD:-}"
 mosquitto_user="${MOSQUITTO_USER:-admin}"
 mosquitto_password="${MOSQUITTO_PASSWORD:-admin123}"
 rules_file="${config_root}/edge_processor/rules.yaml"
@@ -96,9 +99,14 @@ wait_for_json() {
   url="$1"
   check_code="$2"
   max_attempts="${3:-60}"
+  auth_header="${4:-}"
   attempt=1
   while [ "$attempt" -le "$max_attempts" ]; do
-    body="$(curl -fsS "$url" 2>/dev/null || true)"
+    if [ -n "$auth_header" ]; then
+      body="$(curl -fsS -H "$auth_header" "$url" 2>/dev/null || true)"
+    else
+      body="$(curl -fsS "$url" 2>/dev/null || true)"
+    fi
     if [ -n "$body" ] && BODY_JSON="$body" python3 -c "$check_code" >/dev/null 2>&1; then
       printf '%s\n' "$body"
       return 0
@@ -157,6 +165,27 @@ wait_for_http_ok "http://127.0.0.1:${backend_host_port}/healthz" 30
 wait_for_http_ok "http://127.0.0.1:${gateway_host_port}/healthz" 30
 wait_for_tcp 127.0.0.1 1883 30
 
+if [ -z "${backend_admin_username}" ] && [ -f "${backend_bootstrap_admin_path}" ]; then
+  backend_admin_username="$(sed -n 's/^username: //p' "${backend_bootstrap_admin_path}" | head -n 1)"
+fi
+
+if [ -z "${backend_admin_password}" ] && [ -f "${backend_bootstrap_admin_path}" ]; then
+  backend_admin_password="$(sed -n 's/^password: //p' "${backend_bootstrap_admin_path}" | head -n 1)"
+fi
+
+backend_admin_username="${backend_admin_username:-admin}"
+
+if [ -z "${backend_admin_password}" ]; then
+  echo "missing backend admin password; set BACKEND_ADMIN_PASSWORD or ensure bootstrap_admin.txt exists" >&2
+  exit 1
+fi
+
+backend_login_body="$(curl -fsS -X POST "http://127.0.0.1:${backend_host_port}/api/v1/auth/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"${backend_admin_username}\",\"password\":\"${backend_admin_password}\"}")"
+backend_access_token="$(BODY_JSON="$backend_login_body" python3 -c 'import json, os; print(json.loads(os.environ["BODY_JSON"])["access_token"])')"
+backend_auth_header="Authorization: Bearer ${backend_access_token}"
+
 mqtt_connected_before_restart="$(mqtt_connected_count)"
 
 container stop mosquitto >/dev/null 2>&1 || true
@@ -187,7 +216,9 @@ sh gateway/deployment/container/publish_sample_telemetry.sh \
 broker_reconnect_check="import json, os; body=json.loads(os.environ['BODY_JSON']); assert any(item['payload'].get('device_id') == 'eq-reconnect-01' and item['payload'].get('power_w') == 288.0 and item['payload'].get('ts') == ${reconnect_ts} for item in body)"
 broker_reconnect_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/telemetry/equipment/eq-reconnect-01" \
-  "${broker_reconnect_check}")"
+  "${broker_reconnect_check}" \
+  60 \
+  "${backend_auth_header}")"
 
 pre_reload_ts="$(date +%s)"
 cat > "${rule_payload_a_file}" <<EOF
@@ -200,7 +231,9 @@ sh gateway/deployment/container/publish_sample_telemetry.sh \
 
 pre_reload_alerts_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/alerts?device_id=env-rule-01" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert not any(item["code"] == "CO2_HIGH" for item in body)')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert not any(item["code"] == "CO2_HIGH" for item in body)' \
+  60 \
+  "${backend_auth_header}")"
 
 container exec edge_processor python -c '
 from pathlib import Path
@@ -237,7 +270,9 @@ sh gateway/deployment/container/publish_sample_telemetry.sh \
 
 rules_reload_alert_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/alerts?device_id=env-rule-01" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert any(item["device_id"]=="env-rule-01" and item["code"]=="CO2_HIGH" for item in body)')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert any(item["device_id"]=="env-rule-01" and item["code"]=="CO2_HIGH" for item in body)' \
+  60 \
+  "${backend_auth_header}")"
 
 printf 'Broker 重连验证通过: %s\n' "${broker_reconnect_json}"
 printf '规则热重载前无命中验证通过: %s\n' "${pre_reload_alerts_json}"
