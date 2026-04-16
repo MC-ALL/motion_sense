@@ -1,0 +1,29 @@
+gym_id: gym-gz-01
+
+mqtt:
+  host: mosquitto
+  port: 1883
+  username: admin
+  password: admin123
+  client_id: device-simulator
+  keepalive_s: 60
+  qos: 1
+
+intervals:
+  equipment_telemetry_ms: 500
+  wristband_telemetry_ms: 100
+  env_telemetry_ms: 30000
+  status_interval_s: 15
+  startup_jitter_ms: 1500
+
+scenario:
+  equipment_count: 10
+  wristband_count: 10
+  env_count: 10
+  random_seed: 20260416
+  offline_ratio: 0.015
+  p0_alert_ratio: 0.01
+  battery_low_ratio: 0.003
+  equipment_overload_ratio: 0.04
+  env_anomaly_ratio: 0.06
+  bind_change_ratio: 0.02

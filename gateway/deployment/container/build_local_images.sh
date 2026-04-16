@@ -132,6 +132,16 @@ build_image \
   --build-arg PYTHON_BASE=python:3.13-slim \
   --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
+device_simulator_context="$(prepare_context device_simulator \
+  gateway/device_simulator \
+  gateway/deployment/device_simulator)"
+build_image \
+  "${device_simulator_context}" \
+  motion-sense-device-simulator-local \
+  gateway/deployment/device_simulator/Dockerfile \
+  --build-arg PYTHON_BASE=python:3.13-slim \
+  --build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+
 web_context="$(prepare_context web \
   web/portal_app \
   web/deployment/portal_app)"
