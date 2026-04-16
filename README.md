@@ -41,8 +41,9 @@
 
 当前缺口：
 
-- 后台部署默认已开启 REST / WebSocket 鉴权；仅网关内网链路 `POST /api/v1/ingest/batch`、`GET /api/v1/gateway/{gateway_id}/commands/pending`、`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`、`POST /api/v1/system/health/report` 保持免 JWT
-- 当前已收紧角色边界：`admin` 负责用户管理、设备注册写操作、配置下发与运维健康；`teacher` 可访问 `gym_ids` 对应场馆及 `device_ids` 明确绑定的业务数据，并允许确认告警；`student` 仅可访问 `device_ids` 明确绑定的业务数据
+- 当前 `04 / 05` 核心功能链路已闭合，剩余以生产化收尾与预留能力为主
+- Linux 正式部署仍需补齐 Mosquitto `acl.conf`、`passwd`、证书文件的属主与权限初始化
+- 后台 refresh session 当前仍以内存轮换实现，若进入长期运行阶段建议迁移到持久化存储
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
