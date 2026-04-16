@@ -21,9 +21,9 @@ class MqttSettings(BaseModel):
 
 
 class IntervalSettings(BaseModel):
-    equipment_telemetry_ms: int = Field(default=500, ge=50)
-    wristband_telemetry_ms: int = Field(default=100, ge=50)
-    env_telemetry_ms: int = Field(default=30000, ge=500)
+    equipment_telemetry_ms: int = Field(default=1000, ge=50)
+    wristband_telemetry_ms: int = Field(default=500, ge=50)
+    env_telemetry_ms: int = Field(default=5000, ge=500)
     status_interval_s: int = Field(default=15, ge=1)
     startup_jitter_ms: int = Field(default=1500, ge=0)
 

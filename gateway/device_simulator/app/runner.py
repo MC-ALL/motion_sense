@@ -21,6 +21,7 @@ class DeviceSimulatorRunner:
         self._settings = settings
         self._profiles: SimulatorProfiles = build_device_profiles(settings)
         self._engine = ScenarioEngine(settings, self._profiles)
+        self._publish_queue: asyncio.Queue[PublishedMessage] = asyncio.Queue(maxsize=4096)
 
     async def run_forever(self) -> None:
         while True:
@@ -44,16 +45,17 @@ class DeviceSimulatorRunner:
                 await asyncio.sleep(2.0)
 
     async def _run_connected(self, publisher: SimulatorMqttPublisher) -> None:
-        tasks = [
-            asyncio.create_task(self._equipment_loop(profile.identity.device_id, publisher), name=f"sim-equipment-{profile.identity.device_id}")
-            for profile in self._profiles.equipment
-        ]
+        tasks = [asyncio.create_task(self._publish_loop(publisher), name="sim-publish-loop")]
         tasks.extend(
-            asyncio.create_task(self._wristband_loop(profile.identity.device_id, publisher), name=f"sim-wristband-{profile.identity.device_id}")
+            asyncio.create_task(self._equipment_loop(profile.identity.device_id), name=f"sim-equipment-{profile.identity.device_id}")
+            for profile in self._profiles.equipment
+        )
+        tasks.extend(
+            asyncio.create_task(self._wristband_loop(profile.identity.device_id), name=f"sim-wristband-{profile.identity.device_id}")
             for profile in self._profiles.wristbands
         )
         tasks.extend(
-            asyncio.create_task(self._env_loop(profile.identity.device_id, publisher), name=f"sim-env-{profile.identity.device_id}")
+            asyncio.create_task(self._env_loop(profile.identity.device_id), name=f"sim-env-{profile.identity.device_id}")
             for profile in self._profiles.env_nodes
         )
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
@@ -67,30 +69,36 @@ class DeviceSimulatorRunner:
                 with suppress(asyncio.CancelledError):
                     await task
 
-    async def _equipment_loop(self, device_id: str, publisher: SimulatorMqttPublisher) -> None:
+    async def _equipment_loop(self, device_id: str) -> None:
         await self._sleep_startup_jitter(device_id)
         interval_s = self._settings.intervals.equipment_telemetry_ms / 1000.0
         while True:
-            await self._publish_messages(self._engine.step_equipment(device_id, int(time())), publisher)
+            await self._enqueue_messages(self._engine.step_equipment(device_id, int(time())))
             await asyncio.sleep(interval_s)
 
-    async def _wristband_loop(self, device_id: str, publisher: SimulatorMqttPublisher) -> None:
+    async def _wristband_loop(self, device_id: str) -> None:
         await self._sleep_startup_jitter(device_id)
         interval_s = self._settings.intervals.wristband_telemetry_ms / 1000.0
         while True:
-            await self._publish_messages(self._engine.step_wristband(device_id, int(time())), publisher)
+            await self._enqueue_messages(self._engine.step_wristband(device_id, int(time())))
             await asyncio.sleep(interval_s)
 
-    async def _env_loop(self, device_id: str, publisher: SimulatorMqttPublisher) -> None:
+    async def _env_loop(self, device_id: str) -> None:
         await self._sleep_startup_jitter(device_id)
         interval_s = self._settings.intervals.env_telemetry_ms / 1000.0
         while True:
-            await self._publish_messages(self._engine.step_env(device_id, int(time())), publisher)
+            await self._enqueue_messages(self._engine.step_env(device_id, int(time())))
             await asyncio.sleep(interval_s)
 
-    async def _publish_messages(self, messages: list[PublishedMessage], publisher: SimulatorMqttPublisher) -> None:
+    async def _enqueue_messages(self, messages: list[PublishedMessage]) -> None:
         for item in messages:
+            await self._publish_queue.put(item)
+
+    async def _publish_loop(self, publisher: SimulatorMqttPublisher) -> None:
+        while True:
+            item = await self._publish_queue.get()
             await publisher.publish_json(topic=item.topic, payload=item.payload, retain=item.retain)
+            self._publish_queue.task_done()
 
     async def _sleep_startup_jitter(self, device_id: str) -> None:
         jitter_window_ms = self._settings.intervals.startup_jitter_ms

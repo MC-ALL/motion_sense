@@ -10,9 +10,9 @@ mqtt:
   qos: 1
 
 intervals:
-  equipment_telemetry_ms: 500
-  wristband_telemetry_ms: 100
-  env_telemetry_ms: 30000
+  equipment_telemetry_ms: 1000
+  wristband_telemetry_ms: 500
+  env_telemetry_ms: 5000
   status_interval_s: 15
   startup_jitter_ms: 1500
 
