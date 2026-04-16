@@ -90,10 +90,15 @@ health_detail_json="$(wait_for_json \
   60 \
   "$backend_auth_header")"
 
-command_body="$(curl -fsS -X POST "http://127.0.0.1:${backend_host_port}/api/v1/devices/env-a/config" \
+registered_device_json="$(curl -fsS -X POST "http://127.0.0.1:${backend_host_port}/api/v1/devices" \
   -H "$backend_auth_header" \
   -H 'Content-Type: application/json' \
-  -d '{"gym_id":"gym-gz-01","gateway_id":"gw-001","device_type":"env","config":{"telemetry_interval_s":20}}')"
+  -d '{"gym_id":"gym-gz-01","device_type":"env","device_id":"env-b","gateway_id":"gw-001","display_name":"环境节点 B","location":"二楼东侧"}')"
+
+command_body="$(curl -fsS -X POST "http://127.0.0.1:${backend_host_port}/api/v1/devices/env-b/config" \
+  -H "$backend_auth_header" \
+  -H 'Content-Type: application/json' \
+  -d '{"config":{"telemetry_interval_s":20}}')"
 command_id="$(BODY_JSON="$command_body" python3 -c 'import json, os; print(json.loads(os.environ["BODY_JSON"])["command_id"])')"
 
 command_detail_json="$(wait_for_json \
@@ -126,6 +131,7 @@ web_index_html="$(wait_for_json \
 
 printf '设备入库验证通过: %s\n' "$device_json"
 printf '健康汇聚验证通过: %s\n' "$health_detail_json"
+printf '设备注册验证通过: %s\n' "$registered_device_json"
 printf '配置命令闭环验证通过: %s\n' "$command_detail_json"
 printf '健康汇总视图验证通过: %s\n' "$summary_json"
 printf 'ops_observer 健康汇总验证通过: %s\n' "$ops_health_json"

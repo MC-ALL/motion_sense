@@ -178,6 +178,7 @@ class DeviceConfigService:
             device_id=device_id,
             device_type=cast(DeviceType, resolved_device_type),
             request=request,
+            device_gateway_id=device.gateway_id,
             device_payload=device.last_payload,
         )
         return device.gym_id, resolved_gateway_id, cast(DeviceType, resolved_device_type)
@@ -188,12 +189,15 @@ class DeviceConfigService:
         device_id: str,
         device_type: DeviceType,
         request: DeviceConfigPublishRequest,
+        device_gateway_id: str | None,
         device_payload: dict[str, object],
     ) -> str:
         if request.gateway_id:
             return request.gateway_id
         if device_type == "gateway":
             return device_id
+        if device_gateway_id:
+            return device_gateway_id
         payload_gateway_id = device_payload.get("gateway_id")
         if isinstance(payload_gateway_id, str) and payload_gateway_id:
             return payload_gateway_id

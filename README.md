@@ -15,6 +15,7 @@
 - 后台入库与查询主链路
 - 后台 `local` / `redis` 两种 WebSocket 实时推送路径
 - 后台 `POST /api/v1/devices/{id}/config` 配置命令入库
+- 后台 `POST /api/v1/devices`、`PATCH /api/v1/devices/{id}`、`DELETE /api/v1/devices/{id}` 设备注册管理
 - 网关 `GET /api/v1/gateway/{gateway_id}/commands/pending` 轮询执行与结果回报
 - 配置命令失败重试、租约领取与 `timed_out` 超时收敛
 - 后台 JWT 登录、刷新、退出接口已实现

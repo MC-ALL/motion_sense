@@ -4,10 +4,16 @@ export interface DeviceSummary {
   gym_id: string;
   device_type: DeviceType;
   device_id: string;
+  gateway_id?: string | null;
+  display_name?: string | null;
+  location?: string | null;
+  metadata?: Record<string, unknown> | null;
   status: string;
   online: boolean;
   last_seen_ts: number | null;
   last_payload: Record<string, unknown>;
+  registered_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface BusinessAlertRecord {

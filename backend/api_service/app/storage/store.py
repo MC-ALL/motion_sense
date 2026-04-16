@@ -30,6 +30,31 @@ class Store(Protocol):
         payload: dict,
     ) -> DeviceSummary: ...
 
+    async def register_device(
+        self,
+        *,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+        gateway_id: str | None,
+        display_name: str | None,
+        location: str | None,
+        metadata: dict,
+    ) -> DeviceSummary: ...
+
+    async def update_device_registration(
+        self,
+        *,
+        device_id: str,
+        updates: dict,
+    ) -> DeviceSummary | None: ...
+
+    async def delete_device(
+        self,
+        *,
+        device_id: str,
+    ) -> bool: ...
+
     async def add_alert(
         self,
         *,

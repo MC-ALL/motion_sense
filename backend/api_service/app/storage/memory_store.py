@@ -53,17 +53,104 @@ class EventStore:
     ) -> DeviceSummary:
         async with self._lock:
             key = _device_key(gym_id, device_type, device_id)
+            existing = self._devices.get(key)
             device = DeviceSummary(
                 gym_id=gym_id,
                 device_type=device_type,
                 device_id=device_id,
+                gateway_id=(
+                    existing.gateway_id
+                    if existing is not None and existing.gateway_id is not None
+                    else _resolve_gateway_id(device_type=device_type, device_id=device_id, payload=payload)
+                ),
+                display_name=existing.display_name if existing is not None else None,
+                location=existing.location if existing is not None else None,
+                metadata=existing.metadata if existing is not None else None,
                 status=status,
                 online=online,
                 last_seen_ts=last_seen_ts,
                 last_payload=payload,
+                registered_at=existing.registered_at if existing is not None else None,
+                updated_at=existing.updated_at if existing is not None else None,
             )
             self._devices[key] = device
             return device
+
+    async def register_device(
+        self,
+        *,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+        gateway_id: str | None,
+        display_name: str | None,
+        location: str | None,
+        metadata: dict,
+    ) -> DeviceSummary:
+        async with self._lock:
+            existing = self._find_device_by_id_locked(device_id)
+            key = _device_key(gym_id, device_type, device_id)
+            if existing is not None and _device_key(existing.gym_id, existing.device_type, existing.device_id) != key:
+                raise ValueError("device_id already exists with different gym_id or device_type")
+
+            now = _now_iso()
+            snapshot = self._devices.get(key)
+            device = DeviceSummary(
+                gym_id=gym_id,
+                device_type=device_type,
+                device_id=device_id,
+                gateway_id=gateway_id,
+                display_name=display_name,
+                location=location,
+                metadata=metadata,
+                status=snapshot.status if snapshot is not None else "registered",
+                online=snapshot.online if snapshot is not None else False,
+                last_seen_ts=snapshot.last_seen_ts if snapshot is not None else None,
+                last_payload=snapshot.last_payload if snapshot is not None else {},
+                registered_at=(
+                    snapshot.registered_at
+                    if snapshot is not None and snapshot.registered_at is not None
+                    else now
+                ),
+                updated_at=now,
+            )
+            self._devices[key] = device
+            return device
+
+    async def update_device_registration(
+        self,
+        *,
+        device_id: str,
+        updates: dict,
+    ) -> DeviceSummary | None:
+        async with self._lock:
+            existing = self._find_device_by_id_locked(device_id)
+            if existing is None:
+                return None
+
+            updated = existing.model_copy(
+                update={
+                    "gateway_id": updates.get("gateway_id", existing.gateway_id),
+                    "display_name": updates.get("display_name", existing.display_name),
+                    "location": updates.get("location", existing.location),
+                    "metadata": updates.get("metadata", existing.metadata),
+                    "updated_at": _now_iso(),
+                }
+            )
+            self._devices[_device_key(existing.gym_id, existing.device_type, existing.device_id)] = updated
+            return updated
+
+    async def delete_device(
+        self,
+        *,
+        device_id: str,
+    ) -> bool:
+        async with self._lock:
+            existing = self._find_device_by_id_locked(device_id)
+            if existing is None:
+                return False
+            self._devices.pop(_device_key(existing.gym_id, existing.device_type, existing.device_id), None)
+            return True
 
     async def add_alert(
         self,
@@ -175,9 +262,7 @@ class EventStore:
 
     async def get_device(self, *, device_id: str) -> DeviceSummary | None:
         async with self._lock:
-            for device in self._devices.values():
-                if device.device_id == device_id:
-                    return device
+            return self._find_device_by_id_locked(device_id)
         return None
 
     async def list_alerts(
@@ -521,6 +606,12 @@ class EventStore:
             self._device_config_commands[command_id] = updated
             return updated
 
+    def _find_device_by_id_locked(self, device_id: str) -> DeviceSummary | None:
+        for device in self._devices.values():
+            if device.device_id == device_id:
+                return device
+        return None
+
     def _build_gateway_health_detail(self, gateway_id: str) -> GatewayHealthDetail:
         components = sorted(
             [
@@ -569,6 +660,19 @@ def payload_triggered_at(payload: dict) -> str:
 
 def _device_key(gym_id: str, device_type: str, device_id: str) -> str:
     return f"{gym_id}:{device_type}:{device_id}"
+
+
+def _resolve_gateway_id(*, device_type: str, device_id: str, payload: dict) -> str | None:
+    payload_gateway_id = payload.get("gateway_id")
+    if isinstance(payload_gateway_id, str) and payload_gateway_id:
+        return payload_gateway_id
+    if device_type == "gateway":
+        return device_id
+    return None
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _isoformat_from_ts(value: int | None) -> str:

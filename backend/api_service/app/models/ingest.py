@@ -28,10 +28,16 @@ class DeviceSummary(BaseModel):
     gym_id: str
     device_type: str
     device_id: str
+    gateway_id: str | None = None
+    display_name: str | None = None
+    location: str | None = None
+    metadata: dict[str, Any] | None = None
     status: str
     online: bool
     last_seen_ts: int | None = None
     last_payload: dict[str, Any] = Field(default_factory=dict)
+    registered_at: str | None = None
+    updated_at: str | None = None
 
 
 class AlertRecord(BaseModel):

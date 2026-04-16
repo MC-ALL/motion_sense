@@ -55,6 +55,7 @@ class PostgresStore:
         last_seen_ts: int | None,
         payload: dict,
     ) -> DeviceSummary:
+        gateway_id = _resolve_gateway_id(device_type=device_type, device_id=device_id, payload=payload)
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
@@ -63,25 +64,29 @@ class PostgresStore:
                         gym_id,
                         device_type,
                         device_id,
+                        gateway_id,
                         status,
                         online,
                         last_seen_ts,
                         last_payload
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (gym_id, device_type, device_id)
                     DO UPDATE SET
+                        gateway_id = COALESCE(devices.gateway_id, EXCLUDED.gateway_id),
                         status = EXCLUDED.status,
                         online = EXCLUDED.online,
                         last_seen_ts = EXCLUDED.last_seen_ts,
                         last_payload = EXCLUDED.last_payload,
                         updated_at = NOW()
-                    RETURNING gym_id, device_type, device_id, status, online, last_seen_ts, last_payload
+                    RETURNING gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                              status, online, last_seen_ts, last_payload, registered_at, updated_at
                     """,
                     (
                         gym_id,
                         device_type,
                         device_id,
+                        gateway_id,
                         status,
                         online,
                         last_seen_ts,
@@ -91,7 +96,147 @@ class PostgresStore:
                 row = await cursor.fetchone()
             await connection.commit()
 
-        return DeviceSummary.model_validate(row)
+        return _device_summary_from_row(row)
+
+    async def register_device(
+        self,
+        *,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+        gateway_id: str | None,
+        display_name: str | None,
+        location: str | None,
+        metadata: dict,
+    ) -> DeviceSummary:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await self._ensure_device_id_unique(
+                    cursor,
+                    gym_id=gym_id,
+                    device_type=device_type,
+                    device_id=device_id,
+                )
+                await cursor.execute(
+                    """
+                    INSERT INTO devices (
+                        gym_id,
+                        device_type,
+                        device_id,
+                        gateway_id,
+                        display_name,
+                        location,
+                        metadata,
+                        status,
+                        online,
+                        last_seen_ts,
+                        last_payload,
+                        registered_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'registered', FALSE, NULL, '{}'::jsonb, NOW(), NOW())
+                    ON CONFLICT (gym_id, device_type, device_id)
+                    DO UPDATE SET
+                        gateway_id = EXCLUDED.gateway_id,
+                        display_name = EXCLUDED.display_name,
+                        location = EXCLUDED.location,
+                        metadata = EXCLUDED.metadata,
+                        registered_at = COALESCE(devices.registered_at, NOW()),
+                        updated_at = NOW()
+                    RETURNING gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                              status, online, last_seen_ts, last_payload, registered_at, updated_at
+                    """,
+                    (
+                        gym_id,
+                        device_type,
+                        device_id,
+                        gateway_id,
+                        display_name,
+                        location,
+                        Jsonb(metadata),
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return _device_summary_from_row(row)
+
+    async def update_device_registration(
+        self,
+        *,
+        device_id: str,
+        updates: dict,
+    ) -> DeviceSummary | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                           status, online, last_seen_ts, last_payload, registered_at, updated_at
+                    FROM devices
+                    WHERE device_id = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                    """,
+                    (device_id,),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    return None
+
+                gateway_id = updates.get("gateway_id", row.get("gateway_id"))
+                display_name = updates.get("display_name", row.get("display_name"))
+                location = updates.get("location", row.get("location"))
+                metadata = updates.get("metadata", row.get("metadata") or {})
+
+                await cursor.execute(
+                    """
+                    UPDATE devices
+                    SET gateway_id = %s,
+                        display_name = %s,
+                        location = %s,
+                        metadata = %s,
+                        updated_at = NOW()
+                    WHERE gym_id = %s
+                      AND device_type = %s
+                      AND device_id = %s
+                    RETURNING gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                              status, online, last_seen_ts, last_payload, registered_at, updated_at
+                    """,
+                    (
+                        gateway_id,
+                        display_name,
+                        location,
+                        Jsonb(metadata),
+                        row["gym_id"],
+                        row["device_type"],
+                        row["device_id"],
+                    ),
+                )
+                updated = await cursor.fetchone()
+            await connection.commit()
+
+        return _device_summary_from_row(updated)
+
+    async def delete_device(
+        self,
+        *,
+        device_id: str,
+    ) -> bool:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    DELETE FROM devices
+                    WHERE device_id = %s
+                    RETURNING 1
+                    """,
+                    (device_id,),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return row is not None
 
     async def add_alert(
         self,
@@ -275,7 +420,8 @@ class PostgresStore:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     f"""
-                    SELECT gym_id, device_type, device_id, status, online, last_seen_ts, last_payload
+                    SELECT gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                           status, online, last_seen_ts, last_payload, registered_at, updated_at
                     FROM devices
                     {where_clause}
                     ORDER BY device_type, device_id
@@ -284,14 +430,15 @@ class PostgresStore:
                 )
                 rows = await cursor.fetchall()
 
-        return [DeviceSummary.model_validate(row) for row in rows]
+        return [_device_summary_from_row(row) for row in rows]
 
     async def get_device(self, *, device_id: str) -> DeviceSummary | None:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     """
-                    SELECT gym_id, device_type, device_id, status, online, last_seen_ts, last_payload
+                    SELECT gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                           status, online, last_seen_ts, last_payload, registered_at, updated_at
                     FROM devices
                     WHERE device_id = %s
                     ORDER BY updated_at DESC
@@ -303,7 +450,7 @@ class PostgresStore:
 
         if row is None:
             return None
-        return DeviceSummary.model_validate(row)
+        return _device_summary_from_row(row)
 
     async def list_alerts(
         self,
@@ -910,13 +1057,48 @@ class PostgresStore:
                         gym_id TEXT NOT NULL,
                         device_type TEXT NOT NULL,
                         device_id TEXT NOT NULL,
+                        gateway_id TEXT,
+                        display_name TEXT,
+                        location TEXT,
+                        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
                         status TEXT NOT NULL,
                         online BOOLEAN NOT NULL,
                         last_seen_ts BIGINT,
                         last_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        registered_at TIMESTAMPTZ,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         PRIMARY KEY (gym_id, device_type, device_id)
                     )
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE devices
+                    ADD COLUMN IF NOT EXISTS gateway_id TEXT
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE devices
+                    ADD COLUMN IF NOT EXISTS display_name TEXT
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE devices
+                    ADD COLUMN IF NOT EXISTS location TEXT
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE devices
+                    ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE devices
+                    ADD COLUMN IF NOT EXISTS registered_at TIMESTAMPTZ
                     """
                 )
                 await cursor.execute(
@@ -1113,6 +1295,28 @@ class PostgresStore:
                 )
             await connection.commit()
 
+    async def _ensure_device_id_unique(
+        self,
+        cursor,
+        *,
+        gym_id: str,
+        device_type: str,
+        device_id: str,
+    ) -> None:
+        await cursor.execute(
+            """
+            SELECT gym_id, device_type
+            FROM devices
+            WHERE device_id = %s
+              AND (gym_id <> %s OR device_type <> %s)
+            LIMIT 1
+            """,
+            (device_id, gym_id, device_type),
+        )
+        row = await cursor.fetchone()
+        if row is not None:
+            raise ValueError("device_id already exists with different gym_id or device_type")
+
 
 def _telemetry_table_name(device_type: str) -> str:
     if device_type == "wristband":
@@ -1130,6 +1334,34 @@ def _coerce_timestamptz(value: str | int | None) -> datetime:
     if isinstance(value, int):
         return datetime.fromtimestamp(value, tz=UTC)
     return datetime.now(UTC)
+
+
+def _device_summary_from_row(row: dict[str, Any]) -> DeviceSummary:
+    return DeviceSummary(
+        gym_id=row["gym_id"],
+        device_type=row["device_type"],
+        device_id=row["device_id"],
+        gateway_id=row.get("gateway_id"),
+        display_name=row.get("display_name"),
+        location=row.get("location"),
+        metadata=row.get("metadata"),
+        status=row["status"],
+        online=row["online"],
+        last_seen_ts=row.get("last_seen_ts"),
+        last_payload=row.get("last_payload") or {},
+        registered_at=(
+            row["registered_at"].isoformat() if row.get("registered_at") is not None else None
+        ),
+        updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
+    ).model_copy(
+        update={
+            "updated_at": (
+                row["updated_at"].isoformat()
+                if row.get("registered_at") is not None and row.get("updated_at") is not None
+                else None
+            )
+        }
+    )
 
 
 def _alert_record_from_row(row: dict[str, Any]) -> AlertRecord:
@@ -1224,3 +1456,12 @@ def _group_gateway_health_rows(rows: list[dict[str, Any]]) -> list[GatewayHealth
         )
 
     return sorted(details, key=lambda item: item.gateway_id)
+
+
+def _resolve_gateway_id(*, device_type: str, device_id: str, payload: dict[str, Any]) -> str | None:
+    payload_gateway_id = payload.get("gateway_id")
+    if isinstance(payload_gateway_id, str) and payload_gateway_id:
+        return payload_gateway_id
+    if device_type == "gateway":
+        return device_id
+    return None
