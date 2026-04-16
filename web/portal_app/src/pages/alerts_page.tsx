@@ -4,6 +4,7 @@ import { Alert, Button, Select, Space, Statistic, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import { ack_business_alert, batch_ack_business_alerts, fetch_business_alerts, fetch_devices } from '../api/backend_client';
+import { use_auth_store } from '../store/auth_store';
 import type { BusinessAlertRecord, DeviceSummary } from '../types/backend';
 import { format_time } from '../utils/time';
 
@@ -17,6 +18,8 @@ export function AlertsPage() {
   const [device_id, set_device_id] = useState<string | undefined>(undefined);
   const [ack_filter, set_ack_filter] = useState<'all' | 'acked' | 'open'>('open');
   const [selected_ids, set_selected_ids] = useState<number[]>([]);
+  const session = use_auth_store((state) => state.session);
+  const can_ack_alerts = session?.user.role === 'admin' || session?.user.role === 'teacher';
 
   async function load() {
     set_loading(true);
@@ -122,7 +125,7 @@ export function AlertsPage() {
       title: '操作',
       key: 'action',
       render: (_, record) => (
-        <Button size="small" disabled={record.is_ack} onClick={() => void ack_one(record.id)}>
+        <Button size="small" disabled={record.is_ack || !can_ack_alerts} onClick={() => void ack_one(record.id)}>
           确认
         </Button>
       )
@@ -183,13 +186,14 @@ export function AlertsPage() {
             ]}
             style={{ minWidth: 160 }}
           />
-          <Button type="primary" onClick={() => void ack_batch()} loading={action_loading} disabled={selected_ids.length === 0}>
+          <Button type="primary" onClick={() => void ack_batch()} loading={action_loading} disabled={selected_ids.length === 0 || !can_ack_alerts}>
             批量确认
           </Button>
         </Space>
       </section>
 
       {error ? <Alert type="error" message="告警管理异常" description={error} showIcon /> : null}
+      {!can_ack_alerts ? <Alert type="info" message="当前角色为只读模式" description="学生当前只能查看告警，不能执行确认操作。" showIcon /> : null}
 
       <section className="metric_grid">
         <div className="panel_surface metric_card"><Statistic title="当前结果数" value={summary.total} /></div>
@@ -207,7 +211,7 @@ export function AlertsPage() {
           rowSelection={{
             selectedRowKeys: selected_ids,
             onChange: (keys) => set_selected_ids(keys as number[]),
-            getCheckboxProps: (record) => ({ disabled: record.is_ack })
+            getCheckboxProps: (record) => ({ disabled: record.is_ack || !can_ack_alerts })
           }}
           pagination={{ pageSize: 10 }}
         />

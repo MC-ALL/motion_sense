@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_device_config_service, get_event_store, require_rest_user
+from app.api.deps import get_device_config_service, get_event_store, require_admin_user, require_rest_user
 from app.models.device_registry import (
     DeviceDeleteResponse,
     DeviceRegistrationRequest,
@@ -37,6 +37,7 @@ async def list_devices(
 @router.post("", response_model=DeviceSummary, response_model_exclude_none=True)
 async def register_device(
     payload: DeviceRegistrationRequest,
+    _: object = Depends(require_admin_user),
     store: Store = Depends(get_event_store),
 ) -> DeviceSummary:
     gateway_id = _normalize_gateway_id(
@@ -73,6 +74,7 @@ async def get_device(
 async def update_device(
     device_id: str,
     payload: DeviceRegistrationUpdateRequest,
+    _: object = Depends(require_admin_user),
     store: Store = Depends(get_event_store),
 ) -> DeviceSummary:
     existing = await store.get_device(device_id=device_id)
@@ -98,6 +100,7 @@ async def update_device(
 @router.delete("/{device_id}", response_model=DeviceDeleteResponse)
 async def delete_device(
     device_id: str,
+    _: object = Depends(require_admin_user),
     store: Store = Depends(get_event_store),
 ) -> DeviceDeleteResponse:
     deleted = await store.delete_device(device_id=device_id)
@@ -110,6 +113,7 @@ async def delete_device(
 async def publish_device_config(
     device_id: str,
     payload: DeviceConfigPublishRequest,
+    _: object = Depends(require_admin_user),
     service: DeviceConfigService = Depends(get_device_config_service),
 ) -> DeviceConfigPublishResult:
     try:

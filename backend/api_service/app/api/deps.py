@@ -63,10 +63,19 @@ def require_rest_user(
         ) from exc
 
 
-def require_admin_user(user: AuthUser = Depends(require_rest_user)) -> AuthUser:
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="admin role required",
-        )
-    return user
+def require_roles(*allowed_roles: str):
+    def dependency(user: AuthUser = Depends(require_rest_user)) -> AuthUser:
+        if user.role == "anonymous":
+            return user
+        if user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"required roles: {', '.join(allowed_roles)}",
+            )
+        return user
+
+    return dependency
+
+
+require_admin_user = require_roles("admin")
+require_admin_or_teacher_user = require_roles("admin", "teacher")

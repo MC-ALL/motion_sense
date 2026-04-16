@@ -103,12 +103,14 @@ function AppLayout() {
               </NavLink>
             </>
           ) : null}
-          <NavLink
-            to="/health-center"
-            className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}
-          >
-            系统健康中心
-          </NavLink>
+          {is_admin ? (
+            <NavLink
+              to="/health-center"
+              className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}
+            >
+              系统健康中心
+            </NavLink>
+          ) : null}
         </nav>
         <AuthSessionPanel />
       </aside>

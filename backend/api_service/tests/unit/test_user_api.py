@@ -66,7 +66,7 @@ def test_admin_can_manage_users_and_teacher_cannot_call_admin_api() -> None:
             headers={"Authorization": f"Bearer {teacher_login['access_token']}"},
         )
         assert forbidden.status_code == 403
-        assert forbidden.json()["detail"] == "admin role required"
+        assert forbidden.json()["detail"] == "required roles: admin"
 
 
 def test_refresh_token_reflects_latest_user_role() -> None:

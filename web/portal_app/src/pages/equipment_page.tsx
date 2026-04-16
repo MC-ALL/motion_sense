@@ -4,6 +4,7 @@ import { Alert, Button, Form, InputNumber, List, Select, Space, Spin, Statistic,
 
 import { fetch_devices, fetch_equipment_telemetry, publish_device_config } from '../api/backend_client';
 import { TimeSeriesChart } from '../components/time_series_chart';
+import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, TelemetryRecord } from '../types/backend';
 import { format_time } from '../utils/time';
@@ -33,6 +34,8 @@ export function EquipmentPage() {
     selected_device_id ? state.telemetry_by_device[selected_device_id] ?? empty_realtime_points : empty_realtime_points
   );
   const connect = use_business_realtime_store((state) => state.connect);
+  const session = use_auth_store((state) => state.session);
+  const can_publish_config = session?.user.role === 'admin';
 
   useEffect(() => {
     connect();
@@ -221,23 +224,29 @@ export function EquipmentPage() {
                     <h3>目标次数</h3>
                   </div>
                 </div>
-                <Form form={form} layout="vertical" onFinish={(values) => void submit_command(values)}>
-                  <Form.Item name="target_reps" label="目标重复次数" rules={[{ required: true, message: '请输入目标次数' }]}>
-                    <InputNumber min={1} max={9999} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Button htmlType="submit" type="primary" loading={command_loading} block>
-                    下发到网关
-                  </Button>
-                </Form>
-                {command_result ? (
-                  <Alert
-                    className="inline_alert"
-                    type={command_result.status === 'pending' ? 'info' : 'success'}
-                    message={`命令状态：${command_result.status}`}
-                    description={`command_id=${command_result.command_id}，topic=${command_result.topic}`}
-                    showIcon
-                  />
-                ) : null}
+                {can_publish_config ? (
+                  <>
+                    <Form form={form} layout="vertical" onFinish={(values) => void submit_command(values)}>
+                      <Form.Item name="target_reps" label="目标重复次数" rules={[{ required: true, message: '请输入目标次数' }]}>
+                        <InputNumber min={1} max={9999} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Button htmlType="submit" type="primary" loading={command_loading} block>
+                        下发到网关
+                      </Button>
+                    </Form>
+                    {command_result ? (
+                      <Alert
+                        className="inline_alert"
+                        type={command_result.status === 'pending' ? 'info' : 'success'}
+                        message={`命令状态：${command_result.status}`}
+                        description={`command_id=${command_result.command_id}，topic=${command_result.topic}`}
+                        showIcon
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <Alert type="info" message="当前角色为只读模式" description="教师和学生当前不能从网页端下发器材配置。" showIcon />
+                )}
               </div>
 
               <div className="panel_surface">

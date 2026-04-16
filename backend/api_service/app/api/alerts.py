@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_event_store, require_rest_user
+from app.api.deps import get_event_store, require_admin_or_teacher_user, require_rest_user
 from app.models.ingest import AlertBatchAckRequest, AlertBatchAckResult, AlertRecord
 from app.storage.store import Store
 
@@ -38,6 +38,7 @@ async def get_alert(
 @router.patch("/{alert_id}/ack", response_model=AlertRecord)
 async def ack_alert(
     alert_id: int,
+    _: object = Depends(require_admin_or_teacher_user),
     store: Store = Depends(get_event_store),
 ) -> AlertRecord:
     alert = await store.ack_alert(alert_id=alert_id)
@@ -49,6 +50,7 @@ async def ack_alert(
 @router.post("/batch-ack", response_model=AlertBatchAckResult)
 async def batch_ack_alerts(
     payload: AlertBatchAckRequest,
+    _: object = Depends(require_admin_or_teacher_user),
     store: Store = Depends(get_event_store),
 ) -> AlertBatchAckResult:
     items = await store.batch_ack_alerts(alert_ids=payload.ids)

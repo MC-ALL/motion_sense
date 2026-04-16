@@ -38,7 +38,7 @@
 当前缺口：
 
 - 后台部署默认已开启 REST / WebSocket 鉴权；仅网关内网链路 `POST /api/v1/ingest/batch`、`GET /api/v1/gateway/{gateway_id}/commands/pending`、`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`、`POST /api/v1/system/health/report` 保持免 JWT
-- 当前仅用户管理接口强制要求 `admin`，其余业务接口仍是“登录即可访问”的粗粒度控制
+- 当前已收紧角色边界：`admin` 负责用户管理、设备注册写操作、配置下发与运维健康；`teacher` 可读业务数据并确认告警；`student` 暂保留共享读权限。个人数据范围与归属映射仍未实现
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - OTA 当前仅保留接口预留，不纳入后续开发计划
 - AI 当前继续搁置，仅保留预留接口，不纳入本轮开发

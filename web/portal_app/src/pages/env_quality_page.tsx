@@ -4,6 +4,7 @@ import { Alert, Button, Form, InputNumber, List, Select, Space, Spin, Statistic,
 
 import { fetch_devices, fetch_env_aggregate, fetch_env_telemetry, publish_device_config } from '../api/backend_client';
 import { TimeSeriesChart } from '../components/time_series_chart';
+import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, EnvTelemetryAggregateRecord, TelemetryRecord } from '../types/backend';
 
@@ -49,6 +50,8 @@ export function EnvQualityPage() {
     selected_device_id ? state.telemetry_by_device[selected_device_id] ?? empty_realtime_points : empty_realtime_points
   );
   const connect = use_business_realtime_store((state) => state.connect);
+  const session = use_auth_store((state) => state.session);
+  const can_publish_config = session?.user.role === 'admin';
 
   useEffect(() => {
     connect();
@@ -241,23 +244,29 @@ export function EnvQualityPage() {
                     <h3>修改上报周期</h3>
                   </div>
                 </div>
-                <Form form={form} layout="vertical" onFinish={(values) => void submit_command(values)}>
-                  <Form.Item name="telemetry_interval_s" label="上报周期（秒）" rules={[{ required: true, message: '请输入上报周期' }]}>
-                    <InputNumber min={1} max={3600} style={{ width: '100%' }} />
-                  </Form.Item>
-                  <Button htmlType="submit" type="primary" loading={command_loading} block>
-                    下发到网关
-                  </Button>
-                </Form>
-                {command_result ? (
-                  <Alert
-                    className="inline_alert"
-                    type={command_result.status === 'pending' ? 'info' : 'success'}
-                    message={`命令状态：${command_result.status}`}
-                    description={`command_id=${command_result.command_id}`}
-                    showIcon
-                  />
-                ) : null}
+                {can_publish_config ? (
+                  <>
+                    <Form form={form} layout="vertical" onFinish={(values) => void submit_command(values)}>
+                      <Form.Item name="telemetry_interval_s" label="上报周期（秒）" rules={[{ required: true, message: '请输入上报周期' }]}>
+                        <InputNumber min={1} max={3600} style={{ width: '100%' }} />
+                      </Form.Item>
+                      <Button htmlType="submit" type="primary" loading={command_loading} block>
+                        下发到网关
+                      </Button>
+                    </Form>
+                    {command_result ? (
+                      <Alert
+                        className="inline_alert"
+                        type={command_result.status === 'pending' ? 'info' : 'success'}
+                        message={`命令状态：${command_result.status}`}
+                        description={`command_id=${command_result.command_id}`}
+                        showIcon
+                      />
+                    ) : null}
+                  </>
+                ) : (
+                  <Alert type="info" message="当前角色为只读模式" description="教师和学生当前不能从网页端下发环境节点配置。" showIcon />
+                )}
               </div>
 
               <div className="panel_surface">

@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { Alert, Button, Layout, Spin, Statistic } from 'antd';
 
 import { ModuleSummaryList } from '../components/module_summary_list';
+import { use_auth_store } from '../store/auth_store';
 import { use_ops_bootstrap } from '../hooks/use_ops_bootstrap';
 import { use_ops_store } from '../store/ops_store';
 
@@ -24,7 +25,10 @@ const OpsAlertPanel = lazy(async () =>
 );
 
 export function HealthCenterPage() {
-  use_ops_bootstrap();
+  const session = use_auth_store((state) => state.session);
+  const is_admin = session?.user.role === 'admin';
+
+  use_ops_bootstrap({ enabled: is_admin });
 
   const loading = use_ops_store((state) => state.loading);
   const summaries = use_ops_store((state) => state.summaries);
@@ -36,6 +40,26 @@ export function HealthCenterPage() {
   const bootstrap = use_ops_store((state) => state.bootstrap);
   const select_module = use_ops_store((state) => state.select_module);
   const close_alert = use_ops_store((state) => state.close_alert);
+
+  if (!session || !is_admin) {
+    return (
+      <Layout className="page_shell">
+        <section className="hero_banner compact_hero_banner">
+          <div>
+            <div className="eyebrow">06 网页端 / 系统健康中心</div>
+            <h1>当前账号没有运维观测权限</h1>
+            <p>运维健康视图当前仅对 <code>admin</code> 角色开放。</p>
+          </div>
+        </section>
+        <Alert
+          type="warning"
+          message={session ? '需要管理员权限' : '请先登录后台管理员账号'}
+          description={session ? `当前角色：${session.user.role}` : '未登录时不会访问 ops_observer 接口'}
+          showIcon
+        />
+      </Layout>
+    );
+  }
 
   const healthy_count = summaries.filter((item) => item.health_status === 'healthy').length;
   const degraded_count = summaries.filter((item) => item.health_status === 'degraded').length;
