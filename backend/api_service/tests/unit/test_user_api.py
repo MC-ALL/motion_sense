@@ -48,18 +48,24 @@ def test_admin_can_manage_users_and_teacher_cannot_call_admin_api() -> None:
                 "username": "teacher_one",
                 "password": "teacher123",
                 "role": "teacher",
+                "gym_ids": ["gym-gz-01"],
+                "device_ids": [],
             },
             headers=headers,
         )
         assert create_response.status_code == 201
         assert create_response.json()["role"] == "teacher"
+        assert create_response.json()["gym_ids"] == ["gym-gz-01"]
 
         list_response = client.get("/api/v1/users", headers=headers)
         assert list_response.status_code == 200
         assert [item["username"] for item in list_response.json()] == ["admin", "teacher_one"]
 
         teacher_login = _login(client, "teacher_one", "teacher123")
-        assert teacher_login["user"] == {"username": "teacher_one", "role": "teacher"}
+        assert teacher_login["user"]["username"] == "teacher_one"
+        assert teacher_login["user"]["role"] == "teacher"
+        assert teacher_login["user"]["gym_ids"] == ["gym-gz-01"]
+        assert teacher_login["user"]["device_ids"] == []
 
         forbidden = client.get(
             "/api/v1/users",
@@ -69,7 +75,7 @@ def test_admin_can_manage_users_and_teacher_cannot_call_admin_api() -> None:
         assert forbidden.json()["detail"] == "required roles: admin"
 
 
-def test_refresh_token_reflects_latest_user_role() -> None:
+def test_refresh_token_reflects_latest_user_role_and_scope() -> None:
     settings = RuntimeSettings(auth=_build_auth_settings())
 
     with TestClient(create_app(settings)) as client:
@@ -80,6 +86,8 @@ def test_refresh_token_reflects_latest_user_role() -> None:
                 "username": "role_switch",
                 "password": "teacher123",
                 "role": "teacher",
+                "gym_ids": ["gym-gz-01"],
+                "device_ids": ["eq-001"],
             },
             headers=headers,
         )
@@ -87,14 +95,18 @@ def test_refresh_token_reflects_latest_user_role() -> None:
 
         first_login = _login(client, "role_switch", "teacher123")
         assert first_login["user"]["role"] == "teacher"
+        assert first_login["user"]["gym_ids"] == ["gym-gz-01"]
+        assert first_login["user"]["device_ids"] == ["eq-001"]
 
         patch_response = client.patch(
             "/api/v1/users/role_switch",
-            json={"role": "student"},
+            json={"role": "student", "gym_ids": ["gym-gz-02"], "device_ids": ["wb-001"]},
             headers=headers,
         )
         assert patch_response.status_code == 200
         assert patch_response.json()["role"] == "student"
+        assert patch_response.json()["gym_ids"] == ["gym-gz-02"]
+        assert patch_response.json()["device_ids"] == ["wb-001"]
 
         refresh_response = client.post(
             "/api/v1/auth/refresh",
@@ -102,6 +114,8 @@ def test_refresh_token_reflects_latest_user_role() -> None:
         )
         assert refresh_response.status_code == 200
         assert refresh_response.json()["user"]["role"] == "student"
+        assert refresh_response.json()["user"]["gym_ids"] == ["gym-gz-02"]
+        assert refresh_response.json()["user"]["device_ids"] == ["wb-001"]
 
 
 def test_bootstrap_admin_is_protected() -> None:

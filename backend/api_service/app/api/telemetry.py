@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_event_store, require_rest_user
+from app.api.deps import ensure_known_device_scope, get_event_store, require_rest_user
+from app.models.auth import AuthUser
 from app.models.ingest import EnvTelemetryAggregateRecord, TelemetryRecord
 from app.storage.store import Store
 
@@ -21,8 +22,10 @@ async def list_wristband_telemetry(
     end: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> list[TelemetryRecord]:
+    await ensure_known_device_scope(device_id=device_id, user=user, store=store)
     return await store.list_telemetry(
         device_type="wristband",
         device_id=device_id,
@@ -40,8 +43,10 @@ async def list_equipment_telemetry(
     end: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> list[TelemetryRecord]:
+    await ensure_known_device_scope(device_id=device_id, user=user, store=store)
     return await store.list_telemetry(
         device_type="equipment",
         device_id=device_id,
@@ -59,8 +64,10 @@ async def list_env_telemetry(
     end: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> list[TelemetryRecord]:
+    await ensure_known_device_scope(device_id=device_id, user=user, store=store)
     return await store.list_telemetry(
         device_type="env",
         device_id=device_id,
@@ -79,8 +86,10 @@ async def aggregate_env_telemetry(
     end: str | None = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
+    user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> list[EnvTelemetryAggregateRecord]:
+    await ensure_known_device_scope(device_id=device_id, user=user, store=store)
     try:
         return await store.aggregate_env_telemetry(
             device_id=device_id,

@@ -50,7 +50,7 @@ class PostgresStore:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     """
-                    SELECT username, role, created_at, updated_at
+                    SELECT username, role, gym_ids, device_ids, created_at, updated_at
                     FROM users
                     ORDER BY username
                     """
@@ -64,7 +64,7 @@ class PostgresStore:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     """
-                    SELECT username, role, password_hash, created_at, updated_at
+                    SELECT username, role, gym_ids, device_ids, password_hash, created_at, updated_at
                     FROM users
                     WHERE username = %s
                     """,
@@ -82,17 +82,19 @@ class PostgresStore:
         username: str,
         password_hash: str,
         role: UserRole,
+        gym_ids: list[str],
+        device_ids: list[str],
     ) -> UserSummary:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
                 await cursor.execute(
                     """
-                    INSERT INTO users (username, role, password_hash)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO users (username, role, gym_ids, device_ids, password_hash)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON CONFLICT (username) DO NOTHING
-                    RETURNING username, role, created_at, updated_at
+                    RETURNING username, role, gym_ids, device_ids, created_at, updated_at
                     """,
-                    (username, role, password_hash),
+                    (username, role, Jsonb(gym_ids), Jsonb(device_ids), password_hash),
                 )
                 row = await cursor.fetchone()
             await connection.commit()
@@ -107,6 +109,8 @@ class PostgresStore:
         username: str,
         password_hash: str | None = None,
         role: UserRole | None = None,
+        gym_ids: list[str] | None = None,
+        device_ids: list[str] | None = None,
     ) -> UserSummary | None:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
@@ -115,11 +119,13 @@ class PostgresStore:
                     UPDATE users
                     SET password_hash = COALESCE(%s, password_hash),
                         role = COALESCE(%s, role),
+                        gym_ids = COALESCE(%s, gym_ids),
+                        device_ids = COALESCE(%s, device_ids),
                         updated_at = NOW()
                     WHERE username = %s
-                    RETURNING username, role, created_at, updated_at
+                    RETURNING username, role, gym_ids, device_ids, created_at, updated_at
                     """,
-                    (password_hash, role, username),
+                    (password_hash, role, Jsonb(gym_ids) if gym_ids is not None else None, Jsonb(device_ids) if device_ids is not None else None, username),
                 )
                 row = await cursor.fetchone()
             await connection.commit()
@@ -1156,10 +1162,24 @@ class PostgresStore:
                     CREATE TABLE IF NOT EXISTS users (
                         username TEXT PRIMARY KEY,
                         role TEXT NOT NULL,
+                        gym_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        device_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
                         password_hash TEXT NOT NULL,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     )
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS gym_ids JSONB NOT NULL DEFAULT '[]'::jsonb
+                    """
+                )
+                await cursor.execute(
+                    """
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS device_ids JSONB NOT NULL DEFAULT '[]'::jsonb
                     """
                 )
                 await cursor.execute(
@@ -1485,6 +1505,8 @@ def _stored_user_from_row(row: dict[str, Any]) -> StoredUser:
     return StoredUser(
         username=row["username"],
         role=row["role"],
+        gym_ids=list(row.get("gym_ids") or []),
+        device_ids=list(row.get("device_ids") or []),
         password_hash=row["password_hash"],
         created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
         updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
@@ -1495,6 +1517,8 @@ def _user_summary_from_row(row: dict[str, Any]) -> UserSummary:
     return UserSummary(
         username=row["username"],
         role=row["role"],
+        gym_ids=list(row.get("gym_ids") or []),
+        device_ids=list(row.get("device_ids") or []),
         created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
         updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
     )

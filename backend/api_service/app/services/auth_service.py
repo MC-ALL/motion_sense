@@ -55,6 +55,8 @@ class AuthService:
                 username=self._settings.admin.username,
                 password_hash=self._settings.admin.password_hash,
                 role="admin",
+                gym_ids=[],
+                device_ids=[],
             )
 
     async def issue_token_pair(self, username: str) -> AuthTokenPair:
@@ -68,8 +70,7 @@ class AuthService:
             expires_at_s=now_s + self._settings.refresh_token_ttl_s,
         )
         return self._build_token_pair(
-            username=user.username,
-            role=user.role,
+            user=user,
             session_id=session_id,
             refresh_jti=refresh_jti,
             now_s=now_s,
@@ -109,8 +110,7 @@ class AuthService:
         session.refresh_jti = refresh_jti
         session.expires_at_s = now_s + self._settings.refresh_token_ttl_s
         return self._build_token_pair(
-            username=user.username,
-            role=user.role,
+            user=user,
             session_id=session_id,
             refresh_jti=refresh_jti,
             now_s=now_s,
@@ -131,12 +131,15 @@ class AuthService:
             secret=self._settings.jwt.access_secret,
             expected_type="access",
         )
-        username = _require_str_claim(claims, "sub")
-        role = _require_str_claim(claims, "role")
-        return AuthUser(username=username, role=role)
+        return AuthUser(
+            username=_require_str_claim(claims, "sub"),
+            role=_require_str_claim(claims, "role"),
+            gym_ids=_require_str_list_claim(claims, "gym_ids"),
+            device_ids=_require_str_list_claim(claims, "device_ids"),
+        )
 
     def anonymous_user(self) -> AuthUser:
-        return AuthUser(username="anonymous", role="anonymous")
+        return AuthUser(username="anonymous", role="anonymous", gym_ids=[], device_ids=[])
 
     async def _require_user(self, username: str) -> StoredUser:
         user = await self._store.get_user(username=username)
@@ -147,45 +150,50 @@ class AuthService:
     def _build_token_pair(
         self,
         *,
-        username: str,
-        role: str,
+        user: StoredUser,
         session_id: str,
         refresh_jti: str,
         now_s: int,
     ) -> AuthTokenPair:
-        access_token = self._encode_token(
-            secret=self._settings.jwt.access_secret,
-            payload={
-                "sub": username,
-                "role": role,
-                "typ": "access",
-                "iat": now_s,
-                "exp": now_s + self._settings.access_token_ttl_s,
-                "iss": self._settings.issuer,
-                "aud": self._settings.audience,
-                "jti": str(uuid4()),
-            },
-        )
-        refresh_token = self._encode_token(
-            secret=self._settings.jwt.refresh_secret,
-            payload={
-                "sub": username,
-                "role": role,
-                "typ": "refresh",
-                "iat": now_s,
-                "exp": now_s + self._settings.refresh_token_ttl_s,
-                "iss": self._settings.issuer,
-                "aud": self._settings.audience,
-                "sid": session_id,
-                "jti": refresh_jti,
-            },
+        access_payload = {
+            "sub": user.username,
+            "role": user.role,
+            "gym_ids": user.gym_ids,
+            "device_ids": user.device_ids,
+            "typ": "access",
+            "iat": now_s,
+            "exp": now_s + self._settings.access_token_ttl_s,
+            "iss": self._settings.issuer,
+            "aud": self._settings.audience,
+            "jti": str(uuid4()),
+        }
+        refresh_payload = {
+            "sub": user.username,
+            "role": user.role,
+            "gym_ids": user.gym_ids,
+            "device_ids": user.device_ids,
+            "typ": "refresh",
+            "iat": now_s,
+            "exp": now_s + self._settings.refresh_token_ttl_s,
+            "iss": self._settings.issuer,
+            "aud": self._settings.audience,
+            "sid": session_id,
+            "jti": refresh_jti,
+        }
+        access_token = self._encode_token(secret=self._settings.jwt.access_secret, payload=access_payload)
+        refresh_token = self._encode_token(secret=self._settings.jwt.refresh_secret, payload=refresh_payload)
+        auth_user = AuthUser(
+            username=user.username,
+            role=user.role,
+            gym_ids=list(user.gym_ids),
+            device_ids=list(user.device_ids),
         )
         return AuthTokenPair(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=self._settings.access_token_ttl_s,
             refresh_expires_in=self._settings.refresh_token_ttl_s,
-            user=AuthUser(username=username, role=role),
+            user=auth_user,
         )
 
     def _encode_token(self, *, secret: str, payload: dict[str, Any]) -> str:
@@ -282,3 +290,15 @@ def _require_str_claim(claims: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise AuthError(f"invalid token claim: {key}")
     return value
+
+
+def _require_str_list_claim(claims: dict[str, Any], key: str) -> list[str]:
+    value = claims.get(key, [])
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise AuthError(f"invalid token claim: {key}")
+    items = [item for item in value if isinstance(item, str) and item]
+    if len(items) != len(value):
+        raise AuthError(f"invalid token claim: {key}")
+    return items

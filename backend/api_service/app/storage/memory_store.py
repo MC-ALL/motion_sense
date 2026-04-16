@@ -60,6 +60,8 @@ class EventStore:
         username: str,
         password_hash: str,
         role: UserRole,
+        gym_ids: list[str],
+        device_ids: list[str],
     ) -> UserSummary:
         async with self._lock:
             if username in self._users:
@@ -68,6 +70,8 @@ class EventStore:
             user = StoredUser(
                 username=username,
                 role=role,
+                gym_ids=list(gym_ids),
+                device_ids=list(device_ids),
                 password_hash=password_hash,
                 created_at=now,
                 updated_at=now,
@@ -81,6 +85,8 @@ class EventStore:
         username: str,
         password_hash: str | None = None,
         role: UserRole | None = None,
+        gym_ids: list[str] | None = None,
+        device_ids: list[str] | None = None,
     ) -> UserSummary | None:
         async with self._lock:
             existing = self._users.get(username)
@@ -90,6 +96,8 @@ class EventStore:
                 update={
                     "password_hash": password_hash or existing.password_hash,
                     "role": role or existing.role,
+                    "gym_ids": list(gym_ids) if gym_ids is not None else existing.gym_ids,
+                    "device_ids": list(device_ids) if device_ids is not None else existing.device_ids,
                     "updated_at": _now_iso(),
                 }
             )

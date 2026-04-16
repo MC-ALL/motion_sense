@@ -78,6 +78,7 @@ class IngestService:
                         {
                             "type": "telemetry",
                             "data": {
+                                "gym_id": parsed.gym_id,
                                 "device_type": parsed.device_type,
                                 "device_id": parsed.device_id,
                                 **item.payload,
@@ -91,6 +92,8 @@ class IngestService:
                         {
                             "type": "device_status",
                             "data": {
+                                "gym_id": device.gym_id,
+                                "device_type": device.device_type,
                                 "device_id": device.device_id,
                                 "online": device.online,
                                 "ts": device.last_seen_ts,

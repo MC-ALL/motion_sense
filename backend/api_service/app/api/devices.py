@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_device_config_service, get_event_store, require_admin_user, require_rest_user
+from app.api.deps import (
+    ensure_device_scope,
+    filter_devices_for_user,
+    get_device_config_service,
+    get_event_store,
+    require_admin_user,
+    require_rest_user,
+)
+from app.models.auth import AuthUser
+from app.models.device_config import DeviceConfigPublishRequest, DeviceConfigPublishResult
 from app.models.device_registry import (
     DeviceDeleteResponse,
     DeviceRegistrationRequest,
     DeviceRegistrationUpdateRequest,
 )
-from app.models.device_config import DeviceConfigPublishRequest, DeviceConfigPublishResult
 from app.models.ingest import DeviceSummary
 from app.services.device_config_service import (
     DeviceConfigConflictError,
@@ -29,9 +37,11 @@ router = APIRouter(
 async def list_devices(
     type: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> list[DeviceSummary]:
-    return await store.list_devices(device_type=type, status=status)
+    devices = await store.list_devices(device_type=type, status=status)
+    return filter_devices_for_user(user, devices)
 
 
 @router.post("", response_model=DeviceSummary, response_model_exclude_none=True)
@@ -62,11 +72,13 @@ async def register_device(
 @router.get("/{device_id}", response_model=DeviceSummary, response_model_exclude_none=True)
 async def get_device(
     device_id: str,
+    user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
 ) -> DeviceSummary:
     device = await store.get_device(device_id=device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="device not found")
+    ensure_device_scope(user, device)
     return device
 
 

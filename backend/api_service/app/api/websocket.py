@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from starlette.websockets import WebSocketState
 
+from app.models.auth import AuthUser
 from app.services.auth_service import AuthError, AuthService
 from app.services.websocket_manager import WebSocketManager
 
@@ -13,19 +14,20 @@ router = APIRouter()
 @router.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     auth_service: AuthService = websocket.app.state.auth_service
+    user: AuthUser = auth_service.anonymous_user()
     if auth_service.ws_auth_required:
         token = websocket.query_params.get("token")
         if not token:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="missing token")
             return
         try:
-            auth_service.verify_access_token(token)
+            user = auth_service.verify_access_token(token)
         except AuthError:
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="invalid token")
             return
 
     manager: WebSocketManager = websocket.app.state.websocket_manager
-    await manager.connect(websocket)
+    await manager.connect(websocket, user)
 
     try:
         while True:

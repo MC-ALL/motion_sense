@@ -33,6 +33,8 @@ async def create_user(
             username=payload.username,
             password_hash=generate_password_hash(payload.password),
             role=payload.role,
+            gym_ids=_normalize_scope_items(payload.gym_ids),
+            device_ids=_normalize_scope_items(payload.device_ids),
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -66,6 +68,16 @@ async def update_user(
         username=username,
         password_hash=password_hash,
         role=payload.role,
+        gym_ids=(
+            _normalize_scope_items(payload.gym_ids)
+            if payload.gym_ids is not None
+            else None
+        ),
+        device_ids=(
+            _normalize_scope_items(payload.device_ids)
+            if payload.device_ids is not None
+            else None
+        ),
     )
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
@@ -93,3 +105,15 @@ async def delete_user(
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user not found")
     return UserDeleteResponse()
+
+
+def _normalize_scope_items(items: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized

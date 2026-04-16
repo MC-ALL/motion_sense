@@ -35,13 +35,29 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_user(client: TestClient, admin_token: str, username: str, password: str, role: str) -> None:
+def _create_user(
+    client: TestClient,
+    admin_token: str,
+    username: str,
+    password: str,
+    role: str,
+    *,
+    gym_ids: list[str] | None = None,
+    device_ids: list[str] | None = None,
+) -> None:
     response = client.post(
         "/api/v1/users",
-        json={"username": username, "password": password, "role": role},
+        json={
+            "username": username,
+            "password": password,
+            "role": role,
+            "gym_ids": gym_ids or [],
+            "device_ids": device_ids or [],
+        },
         headers=_headers(admin_token),
     )
     assert response.status_code == 201
+
 
 
 def test_role_boundaries_for_business_and_ops_routes() -> None:
@@ -49,8 +65,23 @@ def test_role_boundaries_for_business_and_ops_routes() -> None:
 
     with TestClient(create_app(settings)) as client:
         admin_token = _login(client, "admin", "admin123")["access_token"]
-        _create_user(client, admin_token, "teacher_one", "teacher123", "teacher")
-        _create_user(client, admin_token, "student_one", "student123", "student")
+        _create_user(
+            client,
+            admin_token,
+            "teacher_one",
+            "teacher123",
+            "teacher",
+            gym_ids=["gym-gz-01"],
+        )
+        _create_user(
+            client,
+            admin_token,
+            "student_one",
+            "student123",
+            "student",
+            gym_ids=["gym-gz-01"],
+            device_ids=["eq-001"],
+        )
 
         ingest_response = client.post(
             "/api/v1/ingest/batch",

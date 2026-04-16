@@ -33,6 +33,8 @@ class Store(Protocol):
         username: str,
         password_hash: str,
         role: UserRole,
+        gym_ids: list[str],
+        device_ids: list[str],
     ) -> UserSummary: ...
 
     async def update_user(
@@ -41,6 +43,8 @@ class Store(Protocol):
         username: str,
         password_hash: str | None = None,
         role: UserRole | None = None,
+        gym_ids: list[str] | None = None,
+        device_ids: list[str] | None = None,
     ) -> UserSummary | None: ...
 
     async def delete_user(
