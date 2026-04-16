@@ -5,6 +5,7 @@
 ## 目录结构
 
 - `edge_processor/`：Python 3.13 异步应用源码与测试
+- `device_simulator/`：独立 Python 3.13 异步 MQTT 设备模拟器源码与测试
 - `mosquitto/defaults/`：Broker 默认配置模板，首次启动复制到运行挂载目录
 - `influxdb/defaults/`：InfluxDB 默认初始化模板
 - `deployment/`：Dockerfile、入口脚本、Compose 与本地测试辅助脚本
@@ -67,6 +68,7 @@ Compose 约定以下宿主机挂载目录位于 `deployment/compose/runtime/`：
 - 在 macOS + Apple `container` 上已验证：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图
 - 设备在线/离线检测改为使用网关接收时间，避免设备时钟漂移导致瞬时误判离线
+- 已新增独立 `device_simulator` 模块骨架，默认可模拟 10 台器材、10 个手环、10 个环境节点，并通过单 MQTT 连接持续发布随机场景数据
 
 ## 当前风险
 
@@ -76,7 +78,9 @@ Compose 约定以下宿主机挂载目录位于 `deployment/compose/runtime/`：
 ## 运行时规则说明
 
 - `/runtime/config/edge_processor/app_settings.yaml`、`rules.yaml`、`logging.yaml` 首次启动自动生成
+- `/runtime/config/device_simulator/simulator_settings.yaml` 首次启动自动生成
 - `/runtime/config/influxdb/admin_token.txt` 由 InfluxDB 首次启动生成，`edge_processor` 会复用
 - 编辑 `rules.yaml` 可热重载
 - 编辑 `app_settings.yaml` 需要重启 `edge_processor`
+- 编辑 `simulator_settings.yaml` 需要重启 `device_simulator`
 - 修改 InfluxDB 保留策略或存储参数需要重启 `influxdb`
