@@ -104,3 +104,72 @@ def test_gateway_ops_websocket_ping_pong(monkeypatch) -> None:
 
             websocket.send_json({"type": "ping"})
             assert websocket.receive_json() == {"type": "pong"}
+
+
+def test_gateway_ops_rest_requires_token_when_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(EdgeProcessorRunner, "start", _noop_start)
+    monkeypatch.setattr(EdgeProcessorRunner, "stop", _noop_stop)
+
+    app = build_app(
+        RuntimeSettings(
+            gateway_id="gw-test-001",
+            gym_id="gym-gz-01",
+            ops_auth={
+                "enforce_rest": True,
+                "token": "ops-token-123",
+            },
+        )
+    )
+    app.state.runner._latest_health_report = _sample_report()
+
+    with TestClient(app) as client:
+        assert client.get("/ops/v1/health").status_code == 401
+        assert client.get(
+            "/ops/v1/health",
+            headers={"Authorization": "Bearer invalid-token"},
+        ).status_code == 403
+
+        response = client.get(
+            "/ops/v1/health",
+            headers={"Authorization": "Bearer ops-token-123"},
+        )
+        assert response.status_code == 200
+        assert response.json()["module_id"] == "gateway:gw-test-001"
+
+
+def test_gateway_ops_websocket_requires_token_when_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(EdgeProcessorRunner, "start", _noop_start)
+    monkeypatch.setattr(EdgeProcessorRunner, "stop", _noop_stop)
+
+    app = build_app(
+        RuntimeSettings(
+            gateway_id="gw-test-001",
+            gym_id="gym-gz-01",
+            ops_auth={
+                "enforce_ws": True,
+                "token": "ops-token-123",
+            },
+        )
+    )
+    app.state.runner._latest_health_report = _sample_report()
+
+    with TestClient(app) as client:
+        try:
+            with client.websocket_connect("/ops/ws") as websocket:
+                websocket.receive_json()
+        except Exception:
+            pass
+        else:
+            raise AssertionError("websocket without token should fail")
+
+        try:
+            with client.websocket_connect("/ops/ws?token=invalid-token") as websocket:
+                websocket.receive_json()
+        except Exception:
+            pass
+        else:
+            raise AssertionError("websocket with invalid token should fail")
+
+        with client.websocket_connect("/ops/ws?token=ops-token-123") as websocket:
+            initial = websocket.receive_json()
+            assert initial["type"] == "ops_snapshot"

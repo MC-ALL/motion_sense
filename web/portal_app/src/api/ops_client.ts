@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { get_runtime_config } from '../config/runtime_config';
+import { get_auth_session } from '../utils/auth_session';
 import type {
   OpsAlertListResponse,
   OpsHealthDetailResponse,
@@ -13,6 +14,14 @@ const runtime_config = get_runtime_config();
 const ops_client = axios.create({
   baseURL: runtime_config.ops_base_url,
   timeout: 5000
+});
+
+ops_client.interceptors.request.use((config) => {
+  const session = get_auth_session();
+  if (session?.access_token) {
+    config.headers.set('Authorization', `Bearer ${session.access_token}`);
+  }
+  return config;
 });
 
 export async function fetch_ops_health(): Promise<OpsHealthListResponse> {
@@ -43,5 +52,10 @@ export async function fetch_ops_stats(): Promise<OpsStatsResponse> {
 }
 
 export function create_ops_websocket(): WebSocket {
-  return new WebSocket(runtime_config.ops_ws_url);
+  const session = get_auth_session();
+  const url = new URL(runtime_config.ops_ws_url);
+  if (session?.access_token) {
+    url.searchParams.set('token', session.access_token);
+  }
+  return new WebSocket(url.toString());
 }

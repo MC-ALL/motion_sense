@@ -53,6 +53,12 @@ class InfluxdbSettings(BaseModel):
     replay_batch_size: int = 500
 
 
+class OpsAuthSettings(BaseModel):
+    enforce_rest: bool = False
+    enforce_ws: bool = False
+    token: str | None = None
+
+
 class RuntimeSettings(BaseModel):
     app_name: str = "motion-sense-edge-processor"
     gateway_id: str = "gw-001"
@@ -67,6 +73,7 @@ class RuntimeSettings(BaseModel):
     backend: HttpBackendSettings = Field(default_factory=HttpBackendSettings)
     influxdb: InfluxdbSettings = Field(default_factory=InfluxdbSettings)
     mqtt: MqttSettings = Field(default_factory=MqttSettings)
+    ops_auth: OpsAuthSettings = Field(default_factory=OpsAuthSettings)
 
 
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSettings:
@@ -87,6 +94,7 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
     backend = raw.setdefault("backend", {})
     influxdb = raw.setdefault("influxdb", {})
     mqtt = raw.setdefault("mqtt", {})
+    ops_auth = raw.setdefault("ops_auth", {})
 
     if value := os.environ.get("EDGE_PROCESSOR_HOST"):
         raw["host"] = value
@@ -144,6 +152,12 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         mqtt["username"] = value
     if value := os.environ.get("EDGE_PROCESSOR_MQTT_PASSWORD"):
         mqtt["password"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_OPS_AUTH_ENFORCE_REST"):
+        ops_auth["enforce_rest"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("EDGE_PROCESSOR_OPS_AUTH_ENFORCE_WS"):
+        ops_auth["enforce_ws"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("EDGE_PROCESSOR_OPS_AUTH_TOKEN"):
+        ops_auth["token"] = value
 
     if not influxdb.get("auth_token") and DEFAULT_INFLUXDB_TOKEN_PATH.exists():
         influxdb["auth_token"] = DEFAULT_INFLUXDB_TOKEN_PATH.read_text(encoding="utf-8").strip()

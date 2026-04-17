@@ -43,6 +43,7 @@ def build_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app = FastAPI(title=runtime_settings.app_name, lifespan=lifespan)
     app.state.runner = runner
     app.state.ops_websocket_manager = ops_websocket_manager
+    app.state.runtime_settings = runtime_settings
     app.include_router(build_health_router(runtime_settings))
     app.include_router(ops_router)
     return app

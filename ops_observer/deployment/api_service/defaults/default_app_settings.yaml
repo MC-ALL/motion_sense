@@ -10,6 +10,13 @@ database_path: /runtime/data/ops_observer/ops_observer.sqlite3
 alert_threshold:
   stale_after_s: 60
   emit_recovery_alert: true
+auth:
+  enforce_rest: false
+  enforce_ws: false
+  issuer: motion_sense_backend
+  audience: motion_sense_api
+  jwt:
+    access_secret: null
 upstream_modules:
   - module_id: gateway:gw-001
     module_type: gateway

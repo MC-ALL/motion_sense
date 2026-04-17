@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import health, ops
+from app.services.auth_service import AuthService
 from app.services.observer_service import OpsObserverService
 from app.services.ops_websocket_manager import OpsWebSocketManager
 from app.services.sqlite_store import OpsSqliteStore
@@ -29,9 +30,11 @@ def create_app(
             ops_websocket_manager,
             http_client=http_client,
         )
+        auth_service = AuthService(runtime_settings.auth)
         app.state.store = store
         app.state.ops_websocket_manager = ops_websocket_manager
         app.state.observer_service = observer_service
+        app.state.auth_service = auth_service
         await store.initialize()
         await observer_service.start()
         yield

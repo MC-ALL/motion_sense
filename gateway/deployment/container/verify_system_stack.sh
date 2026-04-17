@@ -115,11 +115,15 @@ summary_json="$(wait_for_json \
 
 ops_health_json="$(wait_for_json \
   "http://127.0.0.1:${ops_host_port}/api/v1/ops/health" \
-  "import json, os; body=json.loads(os.environ['BODY_JSON']); assert len(body['items']) >= 2; gateway=next(item for item in body['items'] if item['module_id']=='gateway:gw-001'); backend=next(item for item in body['items'] if item['module_id']=='backend:api-main'); assert gateway['online'] is True and gateway['health_status']=='healthy'; assert backend['online'] is True and backend['health_status']=='healthy'")"
+  "import json, os; body=json.loads(os.environ['BODY_JSON']); assert len(body['items']) >= 2; gateway=next(item for item in body['items'] if item['module_id']=='gateway:gw-001'); backend=next(item for item in body['items'] if item['module_id']=='backend:api-main'); assert gateway['online'] is True and gateway['health_status']=='healthy'; assert backend['online'] is True and backend['health_status']=='healthy'" \
+  60 \
+  "$backend_auth_header")"
 
 ops_detail_json="$(wait_for_json \
   "http://127.0.0.1:${ops_host_port}/api/v1/ops/health/gateway:gw-001" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["summary"]["module_id"]=="gateway:gw-001"; assert len(body["components"]) >= 1')"
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["summary"]["module_id"]=="gateway:gw-001"; assert len(body["components"]) >= 1' \
+  60 \
+  "$backend_auth_header")"
 
 web_runtime_config="$(wait_for_json \
   "http://127.0.0.1:${web_host_port}/runtime_config.js" \

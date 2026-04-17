@@ -43,6 +43,15 @@ mkdir -p "${backend_config_root}"
 mkdir -p "${ops_config_root}" "${ops_data_root}"
 mkdir -p "${web_config_root}"
 
+gateway_ops_token_path="${secret_root}/edge_processor_ops_token.txt"
+if [ -f "${gateway_ops_token_path}" ]; then
+  gateway_ops_token="$(tr -d '\r\n' < "${gateway_ops_token_path}")"
+else
+  gateway_ops_token="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  printf '%s\n' "${gateway_ops_token}" > "${gateway_ops_token_path}"
+  chmod 600 "${gateway_ops_token_path}"
+fi
+
 container network create --subnet "${network_subnet}" "${network_name}" >/dev/null 2>&1 || true
 
 wait_for_tcp() {
@@ -162,6 +171,15 @@ backend_ip="$(container inspect backend | python3 -c 'import json,sys; data=json
 influxdb_ip="$(container inspect influxdb | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data[0]["networks"][0]["ipv4Address"].split("/")[0])')"
 backend_admin_username="$(sed -n 's/^username: //p' "${backend_config_root}/backend/api_service/bootstrap_admin.txt" | head -n 1)"
 backend_admin_password="$(sed -n 's/^password: //p' "${backend_config_root}/backend/api_service/bootstrap_admin.txt" | head -n 1)"
+backend_runtime_config_path="${backend_config_root}/backend/api_service/app_settings.yaml"
+backend_auth_issuer="$(sed -n 's/^  issuer: //p' "${backend_runtime_config_path}" | head -n 1)"
+backend_auth_audience="$(sed -n 's/^  audience: //p' "${backend_runtime_config_path}" | head -n 1)"
+backend_auth_access_secret="$(sed -n 's/^    access_secret: //p' "${backend_runtime_config_path}" | head -n 1)"
+
+if [ -z "${backend_auth_issuer}" ] || [ -z "${backend_auth_audience}" ] || [ -z "${backend_auth_access_secret}" ]; then
+  echo "missing backend auth runtime settings for ops observer" >&2
+  exit 1
+fi
 
 wait_for_tcp 127.0.0.1 "${influxdb_host_port}" 90
 wait_for_tcp 127.0.0.1 1883 30
@@ -178,6 +196,9 @@ container run \
   --env "EDGE_PROCESSOR_MQTT_USERNAME=${mosquitto_user}" \
   --env "EDGE_PROCESSOR_MQTT_PASSWORD=${mosquitto_password}" \
   --env "EDGE_PROCESSOR_HEALTH_INTERVAL_S=${edge_health_interval_s}" \
+  --env "EDGE_PROCESSOR_OPS_AUTH_ENFORCE_REST=true" \
+  --env "EDGE_PROCESSOR_OPS_AUTH_ENFORCE_WS=true" \
+  --env "EDGE_PROCESSOR_OPS_AUTH_TOKEN=${gateway_ops_token}" \
   --mount "type=bind,source=${config_root},target=/runtime/config" \
   motion-sense-edge-processor-local
 
@@ -194,8 +215,14 @@ container run \
   --env "OPS_OBSERVER_BACKEND_BASE_URL=http://${backend_ip}:8000" \
   --env "OPS_OBSERVER_BACKEND_AUTH_USERNAME=${backend_admin_username}" \
   --env "OPS_OBSERVER_BACKEND_AUTH_PASSWORD=${backend_admin_password}" \
+  --env "OPS_OBSERVER_GATEWAY_AUTH_TOKEN=${gateway_ops_token}" \
   --env "OPS_OBSERVER_GATEWAY_WS_ENABLED=true" \
   --env "OPS_OBSERVER_BACKEND_WS_ENABLED=true" \
+  --env "OPS_OBSERVER_AUTH_ENFORCE_REST=true" \
+  --env "OPS_OBSERVER_AUTH_ENFORCE_WS=true" \
+  --env "OPS_OBSERVER_AUTH_ISSUER=${backend_auth_issuer}" \
+  --env "OPS_OBSERVER_AUTH_AUDIENCE=${backend_auth_audience}" \
+  --env "OPS_OBSERVER_AUTH_ACCESS_SECRET=${backend_auth_access_secret}" \
   --mount "type=bind,source=${ops_config_root},target=/runtime/config" \
   --mount "type=bind,source=${ops_data_root},target=/runtime/data" \
   motion-sense-ops-observer-local

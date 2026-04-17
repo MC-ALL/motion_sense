@@ -34,3 +34,7 @@ mqtt:
     - gym/+/env/+/alert
     - gym/+/env/+/status
     - gym/+/gateway/+/config
+ops_auth:
+  enforce_rest: false
+  enforce_ws: false
+  token: null

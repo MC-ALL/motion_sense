@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import json
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -20,6 +26,9 @@ def build_settings(
     auth_token: str | None = None,
     auth_username: str | None = None,
     auth_password: str | None = None,
+    enforce_rest_auth: bool = False,
+    enforce_ws_auth: bool = False,
+    access_secret: str | None = None,
 ) -> RuntimeSettings:
     return RuntimeSettings(
         database_path=str(database_path),
@@ -28,6 +37,15 @@ def build_settings(
         upstream_ws_ping_interval_s=3600,
         upstream_ws_retry_interval_s=1,
         alert_threshold=AlertThresholdSettings(stale_after_s=120, emit_recovery_alert=True),
+        auth={
+            "enforce_rest": enforce_rest_auth,
+            "enforce_ws": enforce_ws_auth,
+            "issuer": "motion_sense_backend",
+            "audience": "motion_sense_api",
+            "jwt": {
+                "access_secret": access_secret,
+            },
+        },
         upstream_modules=[
             UpstreamModuleSettings(
                 module_id="gateway:gw-001",
@@ -53,6 +71,42 @@ def build_settings(
     )
 
 
+def build_access_token(
+    *,
+    secret: str,
+    role: str = "admin",
+    username: str = "ops-admin",
+    expires_in_s: int = 900,
+) -> str:
+    now_s = int(time.time())
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload = {
+        "sub": username,
+        "role": role,
+        "gym_ids": [],
+        "device_ids": [],
+        "typ": "access",
+        "iat": now_s,
+        "exp": now_s + expires_in_s,
+        "iss": "motion_sense_backend",
+        "aud": "motion_sense_api",
+        "jti": "ops-test-token",
+    }
+    encoded_header = _b64url_encode(json.dumps(header, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    encoded_payload = _b64url_encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    signing_input = f"{encoded_header}.{encoded_payload}"
+    signature = hmac.new(secret.encode("utf-8"), signing_input.encode("utf-8"), hashlib.sha256).digest()
+    return f"{signing_input}.{_b64url_encode(signature)}"
+
+
+def _b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("utf-8")
+
+
+def fresh_checked_at(seconds_ago: int = 0) -> str:
+    return (datetime.now(UTC) - timedelta(seconds=seconds_ago)).isoformat()
+
+
 def test_ops_health_and_detail(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "gateway.local":
@@ -66,7 +120,7 @@ def test_ops_health_and_detail(tmp_path: Path) -> None:
                         "gym_id": "gym-gz-01",
                         "online": True,
                         "health_status": "healthy",
-                        "checked_at": "2026-04-15T09:00:00+00:00",
+                        "checked_at": fresh_checked_at(5),
                         "component_total": 3,
                         "healthy_components": 3,
                         "degraded_components": 0,
@@ -83,7 +137,7 @@ def test_ops_health_and_detail(tmp_path: Path) -> None:
                             "display_name": "边缘处理主服务",
                             "online": True,
                             "health_status": "healthy",
-                            "checked_at": "2026-04-15T09:00:00+00:00",
+                            "checked_at": fresh_checked_at(5),
                             "detail": "running",
                         }
                     ],
@@ -130,7 +184,7 @@ def test_ops_health_and_detail(tmp_path: Path) -> None:
                         "module_type": "backend",
                         "online": True,
                         "health_status": "healthy",
-                        "checked_at": "2026-04-15T09:00:02+00:00",
+                        "checked_at": fresh_checked_at(3),
                         "component_total": 4,
                         "healthy_components": 4,
                         "degraded_components": 0,
@@ -147,7 +201,7 @@ def test_ops_health_and_detail(tmp_path: Path) -> None:
                             "display_name": "后台 API",
                             "online": True,
                             "health_status": "healthy",
-                            "checked_at": "2026-04-15T09:00:02+00:00",
+                            "checked_at": fresh_checked_at(3),
                             "detail": "process alive",
                         }
                     ],
@@ -222,7 +276,7 @@ def test_ops_alert_close_flow(tmp_path: Path) -> None:
                         "module_type": "gateway",
                         "online": True,
                         "health_status": "healthy",
-                        "checked_at": "2026-04-16T00:26:00+00:00",
+                        "checked_at": fresh_checked_at(5),
                         "component_total": 1,
                         "healthy_components": 1,
                         "degraded_components": 0,
@@ -239,7 +293,7 @@ def test_ops_alert_close_flow(tmp_path: Path) -> None:
                             "display_name": "边缘处理主服务",
                             "online": True,
                             "health_status": "healthy",
-                            "checked_at": "2026-04-16T00:26:00+00:00",
+                            "checked_at": fresh_checked_at(5),
                         }
                     ],
                 )
@@ -295,7 +349,7 @@ def test_ops_observer_logs_in_before_polling_protected_backend(tmp_path: Path) -
                         "module_type": "gateway",
                         "online": True,
                         "health_status": "healthy",
-                        "checked_at": "2026-04-15T09:00:00+00:00",
+                        "checked_at": fresh_checked_at(5),
                         "component_total": 1,
                         "healthy_components": 1,
                         "degraded_components": 0,
@@ -312,7 +366,7 @@ def test_ops_observer_logs_in_before_polling_protected_backend(tmp_path: Path) -
                             "display_name": "边缘处理主服务",
                             "online": True,
                             "health_status": "healthy",
-                            "checked_at": "2026-04-15T09:00:00+00:00",
+                            "checked_at": fresh_checked_at(5),
                         }
                     ],
                 )
@@ -343,7 +397,7 @@ def test_ops_observer_logs_in_before_polling_protected_backend(tmp_path: Path) -
                         "module_type": "backend",
                         "online": True,
                         "health_status": "healthy",
-                        "checked_at": "2026-04-15T09:00:02+00:00",
+                        "checked_at": fresh_checked_at(3),
                         "component_total": 1,
                         "healthy_components": 1,
                         "degraded_components": 0,
@@ -360,7 +414,7 @@ def test_ops_observer_logs_in_before_polling_protected_backend(tmp_path: Path) -
                             "display_name": "后台 API",
                             "online": True,
                             "health_status": "healthy",
-                            "checked_at": "2026-04-15T09:00:02+00:00",
+                            "checked_at": fresh_checked_at(3),
                         }
                     ],
                 )
@@ -420,3 +474,152 @@ def test_upstream_ws_message_triggers_refresh(tmp_path: Path) -> None:
     assert asyncio.run(service._build_ws_url(settings.upstream_modules[0])) == "ws://gateway.local/ops/ws?token=token-123"
 
     asyncio.run(service._http_client.aclose())
+
+
+def test_ops_api_requires_admin_bearer_token_when_enabled(tmp_path: Path) -> None:
+    secret = "ops-observer-access-secret"
+    admin_token = build_access_token(secret=secret, role="admin")
+    teacher_token = build_access_token(secret=secret, role="teacher")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "gateway.local" and request.url.path.endswith("/ops/v1/health"):
+            return httpx.Response(
+                200,
+                json={
+                    "module_id": "gateway:gw-001",
+                    "module_type": "gateway",
+                    "online": True,
+                    "health_status": "healthy",
+                    "checked_at": fresh_checked_at(5),
+                    "component_total": 0,
+                    "healthy_components": 0,
+                    "degraded_components": 0,
+                    "offline_components": 0,
+                },
+            )
+        if request.url.host == "gateway.local" and request.url.path.endswith("/ops/v1/health/components"):
+            return httpx.Response(200, json=[])
+        if request.url.host == "gateway.local" and request.url.path.endswith("/ops/v1/stats"):
+            return httpx.Response(200, json={"module_id": "gateway:gw-001", "module_type": "gateway"})
+        if request.url.host == "backend.local" and request.url.path.endswith("/ops/v1/health"):
+            return httpx.Response(
+                200,
+                json={
+                    "module_id": "backend:api-main",
+                    "module_type": "backend",
+                    "online": True,
+                    "health_status": "healthy",
+                    "checked_at": fresh_checked_at(4),
+                    "component_total": 0,
+                    "healthy_components": 0,
+                    "degraded_components": 0,
+                    "offline_components": 0,
+                },
+            )
+        if request.url.host == "backend.local" and request.url.path.endswith("/ops/v1/health/components"):
+            return httpx.Response(200, json=[])
+        if request.url.host == "backend.local" and request.url.path.endswith("/ops/v1/stats"):
+            return httpx.Response(200, json={"module_id": "backend:api-main", "module_type": "backend"})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    app = create_app(
+        build_settings(
+            tmp_path / "ops_api_auth.sqlite3",
+            enforce_rest_auth=True,
+            access_secret=secret,
+        ),
+        http_client=client,
+    )
+
+    with TestClient(app) as test_client:
+        assert test_client.get("/api/v1/ops/health").status_code == 401
+        assert test_client.get(
+            "/api/v1/ops/health",
+            headers={"Authorization": "Bearer invalid-token"},
+        ).status_code == 401
+        assert test_client.get(
+            "/api/v1/ops/health",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        ).status_code == 403
+
+        response = test_client.get(
+            "/api/v1/ops/health",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert response.status_code == 200
+        assert len(response.json()["items"]) == 2
+
+    asyncio.run(client.aclose())
+
+
+def test_ops_websocket_requires_admin_token_when_enabled(tmp_path: Path) -> None:
+    secret = "ops-observer-access-secret"
+    admin_token = build_access_token(secret=secret, role="admin")
+    student_token = build_access_token(secret=secret, role="student")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "gateway.local" and request.url.path.endswith("/ops/v1/health"):
+            return httpx.Response(
+                200,
+                json={
+                    "module_id": "gateway:gw-001",
+                    "module_type": "gateway",
+                    "online": True,
+                    "health_status": "healthy",
+                    "checked_at": fresh_checked_at(5),
+                    "component_total": 0,
+                    "healthy_components": 0,
+                    "degraded_components": 0,
+                    "offline_components": 0,
+                },
+            )
+        if request.url.host == "gateway.local" and request.url.path.endswith("/ops/v1/health/components"):
+            return httpx.Response(200, json=[])
+        if request.url.host == "gateway.local" and request.url.path.endswith("/ops/v1/stats"):
+            return httpx.Response(200, json={"module_id": "gateway:gw-001", "module_type": "gateway"})
+        if request.url.host == "backend.local" and request.url.path.endswith("/ops/v1/health"):
+            return httpx.Response(
+                200,
+                json={
+                    "module_id": "backend:api-main",
+                    "module_type": "backend",
+                    "online": True,
+                    "health_status": "healthy",
+                    "checked_at": fresh_checked_at(4),
+                    "component_total": 0,
+                    "healthy_components": 0,
+                    "degraded_components": 0,
+                    "offline_components": 0,
+                },
+            )
+        if request.url.host == "backend.local" and request.url.path.endswith("/ops/v1/health/components"):
+            return httpx.Response(200, json=[])
+        if request.url.host == "backend.local" and request.url.path.endswith("/ops/v1/stats"):
+            return httpx.Response(200, json={"module_id": "backend:api-main", "module_type": "backend"})
+        raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    app = create_app(
+        build_settings(
+            tmp_path / "ops_ws_auth.sqlite3",
+            enforce_ws_auth=True,
+            access_secret=secret,
+        ),
+        http_client=client,
+    )
+
+    with TestClient(app) as test_client:
+        for path in ("/api/ws/ops", "/api/ws/ops?token=invalid-token", f"/api/ws/ops?token={student_token}"):
+            try:
+                with test_client.websocket_connect(path) as websocket:
+                    websocket.receive_json()
+            except Exception:
+                continue
+            raise AssertionError(f"websocket should fail for path: {path}")
+
+        with test_client.websocket_connect(f"/api/ws/ops?token={admin_token}") as websocket:
+            message = websocket.receive_json()
+            assert message["type"] == "ops_snapshot"
+
+    asyncio.run(client.aclose())

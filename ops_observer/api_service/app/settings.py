@@ -29,6 +29,18 @@ class AlertThresholdSettings(BaseModel):
     emit_recovery_alert: bool = True
 
 
+class JwtAuthSettings(BaseModel):
+    access_secret: str | None = None
+
+
+class OpsApiAuthSettings(BaseModel):
+    enforce_rest: bool = False
+    enforce_ws: bool = False
+    issuer: str = "motion_sense_backend"
+    audience: str = "motion_sense_api"
+    jwt: JwtAuthSettings = Field(default_factory=JwtAuthSettings)
+
+
 class RuntimeSettings(BaseModel):
     app_name: str = "motion-sense-ops-observer-api-service"
     host: str = "0.0.0.0"
@@ -40,6 +52,7 @@ class RuntimeSettings(BaseModel):
     upstream_ws_ping_interval_s: int = Field(default=20, ge=1)
     upstream_ws_retry_interval_s: int = Field(default=5, ge=1)
     alert_threshold: AlertThresholdSettings = Field(default_factory=AlertThresholdSettings)
+    auth: OpsApiAuthSettings = Field(default_factory=OpsApiAuthSettings)
     upstream_modules: list[UpstreamModuleSettings] = Field(default_factory=list)
 
 
@@ -58,6 +71,8 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSetti
 
 
 def _apply_env_overrides(raw: dict[str, Any]) -> None:
+    auth = raw.setdefault("auth", {})
+    auth_jwt = auth.setdefault("jwt", {})
     upstream_modules = raw.setdefault("upstream_modules", [])
     if value := os.environ.get("OPS_OBSERVER_HOST"):
         raw["host"] = value
@@ -75,6 +90,16 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         raw["upstream_ws_ping_interval_s"] = int(value)
     if value := os.environ.get("OPS_OBSERVER_UPSTREAM_WS_RETRY_INTERVAL_S"):
         raw["upstream_ws_retry_interval_s"] = int(value)
+    if value := os.environ.get("OPS_OBSERVER_AUTH_ENFORCE_REST"):
+        auth["enforce_rest"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("OPS_OBSERVER_AUTH_ENFORCE_WS"):
+        auth["enforce_ws"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("OPS_OBSERVER_AUTH_ISSUER"):
+        auth["issuer"] = value
+    if value := os.environ.get("OPS_OBSERVER_AUTH_AUDIENCE"):
+        auth["audience"] = value
+    if value := os.environ.get("OPS_OBSERVER_AUTH_ACCESS_SECRET"):
+        auth_jwt["access_secret"] = value
     _apply_upstream_override(upstream_modules, "gateway", "base_url", os.environ.get("OPS_OBSERVER_GATEWAY_BASE_URL"))
     _apply_upstream_override(upstream_modules, "backend", "base_url", os.environ.get("OPS_OBSERVER_BACKEND_BASE_URL"))
     _apply_upstream_override(upstream_modules, "gateway", "auth_token", os.environ.get("OPS_OBSERVER_GATEWAY_AUTH_TOKEN"))
