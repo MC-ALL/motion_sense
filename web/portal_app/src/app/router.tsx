@@ -1,6 +1,6 @@
 import type { ComponentType, LazyExoticComponent } from 'react';
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, NavLink, Outlet } from 'react-router-dom';
+import { Navigate, createBrowserRouter, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Layout, Spin } from 'antd';
 
 import { AuthSessionPanel } from '../components/auth_session_panel';
@@ -22,6 +22,12 @@ const RealtimeDashboardPage = lazy(async () =>
 const EquipmentPage = lazy(async () =>
   import('../pages/equipment_page').then((module) => ({
     default: module.EquipmentPage
+  }))
+);
+
+const WristbandPage = lazy(async () =>
+  import('../pages/wristband_page').then((module) => ({
+    default: module.WristbandPage
   }))
 );
 
@@ -55,6 +61,12 @@ const LoginPage = lazy(async () =>
   }))
 );
 
+const ProfilePage = lazy(async () =>
+  import('../pages/profile_page').then((module) => ({
+    default: module.ProfilePage
+  }))
+);
+
 function RouteFallback() {
   return (
     <section className="panel_surface loading_surface">
@@ -73,9 +85,14 @@ function render_lazy_page(PageComponent: LazyExoticComponent<ComponentType>) {
 
 function AppLayout() {
   const runtime_config = get_runtime_config();
+  const location = useLocation();
   const session = use_auth_store((state) => state.session);
   const is_admin = session?.user.role === 'admin';
   const can_view_business_alerts = session?.user.role !== 'student';
+
+  if (!session && location.pathname === '/') {
+    return <Navigate to="/login" replace state={{ from: '/dashboard' }} />;
+  }
 
   return (
     <Layout className="app_layout">
@@ -93,6 +110,9 @@ function AppLayout() {
           </NavLink>
           <NavLink to="/equipment" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
             器材管理
+          </NavLink>
+          <NavLink to="/wristband" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
+            手环管理
           </NavLink>
           <NavLink to="/env-quality" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
             环境质量
@@ -142,10 +162,15 @@ export const router = createBrowserRouter([
       { index: true, element: render_lazy_page(RealtimeDashboardPage) },
       { path: 'dashboard', element: render_lazy_page(RealtimeDashboardPage) },
       { path: 'equipment', element: render_lazy_page(EquipmentPage) },
+      { path: 'equipment/:device_id', element: render_lazy_page(EquipmentPage) },
+      { path: 'wristband', element: render_lazy_page(WristbandPage) },
+      { path: 'wristband/:device_id', element: render_lazy_page(WristbandPage) },
       { path: 'env-quality', element: render_lazy_page(EnvQualityPage) },
+      { path: 'env-quality/:device_id', element: render_lazy_page(EnvQualityPage) },
       { path: 'alerts', element: render_lazy_page(AlertsPage) },
       { path: 'device-registry', element: render_lazy_page(DeviceRegistryPage) },
       { path: 'user-management', element: render_lazy_page(UserManagementPage) },
+      { path: 'profile', element: render_lazy_page(ProfilePage) },
       { path: 'health-center', element: render_lazy_page(HealthCenterPage) }
     ]
   }

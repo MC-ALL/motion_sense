@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Button,
+  Collapse,
   Form,
   Input,
   Modal,
+  Popover,
   Popconfirm,
   Select,
   Space,
@@ -14,6 +16,7 @@ import {
   Tag,
   type TableProps
 } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 
 import {
   create_user,
@@ -269,61 +272,63 @@ export function UserManagementPage() {
       <section className="hero_banner compact_hero_banner">
         <div>
           <div className="eyebrow">06 网页端 / 用户管理</div>
-          <h1>后台账号与角色生命周期</h1>
-          <p>这里直接对接后台 <code>/api/v1/users</code>，用于创建业务账号、调整角色以及删除停用账号。</p>
+          <h1>账号都在这里</h1>
+          <p>统一管理后台账号与角色范围。</p>
         </div>
-        <Space>
-          <Button onClick={() => void load_users()} loading={loading || submitting}>
-            刷新列表
-          </Button>
-          <Button type="primary" onClick={() => set_create_open(true)}>
-            新建用户
-          </Button>
-        </Space>
       </section>
 
       {error ? <Alert type="error" message="用户管理异常" description={error} showIcon /> : null}
 
-      <section className="content_grid">
-        <div className="left_column">
-          <div className="panel_surface">
-            <div className="panel_header compact_panel_header">
-              <div>
-                <div className="eyebrow">账号清单</div>
-                <h3>当前用户</h3>
-              </div>
-            </div>
-            {loading ? (
-              <div className="loading_surface"><Spin size="large" /></div>
-            ) : (
-              <Table<UserSummary>
-                rowKey="username"
-                dataSource={users}
-                columns={columns}
-                pagination={false}
-                scroll={{ x: 1100 }}
-              />
-            )}
+      <div className="panel_surface full_width_panel">
+        <div className="panel_header compact_panel_header">
+          <div>
+            <div className="eyebrow">账号清单</div>
+            <h3>当前用户</h3>
           </div>
+          <Space wrap>
+            <Button onClick={() => void load_users()} loading={loading || submitting}>
+              刷新列表
+            </Button>
+            <Button type="primary" onClick={() => set_create_open(true)}>
+              新建用户
+            </Button>
+            <Popover
+              title="角色说明"
+              content={
+                <Space direction="vertical" size="small" style={{ maxWidth: 320 }}>
+                  <span>
+                    <code>admin</code> 不受场馆与设备归属限制，可访问全部现有后台接口，并管理 <code>/api/v1/users</code>。
+                  </span>
+                  <span>
+                    <code>teacher</code> 可访问 <code>gym_ids</code> 归属场馆下的业务数据，也可访问 <code>device_ids</code> 明确绑定的设备。
+                  </span>
+                  <span>
+                    <code>student</code> 仅可访问 <code>device_ids</code> 明确绑定的设备数据；<code>gym_ids</code> 不会自动放开全馆数据。
+                  </span>
+                  <span>
+                    部署生成的 <code>bootstrap admin</code> 不能在这里改密、降权或删除。
+                  </span>
+                </Space>
+              }
+            >
+              <Button type="text" icon={<QuestionCircleOutlined />} className="panel_hint_button">
+                角色说明
+              </Button>
+            </Popover>
+          </Space>
         </div>
-
-        <div className="right_column">
-          <div className="panel_surface">
-            <div className="panel_header compact_panel_header">
-              <div>
-                <div className="eyebrow">角色说明</div>
-                <h3>当前权限边界</h3>
-              </div>
-            </div>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Alert type="info" showIcon message="admin" description="不受场馆与设备归属限制，可访问全部现有后台接口，并管理 `/api/v1/users`。" />
-              <Alert type="info" showIcon message="teacher" description="可访问 `gym_ids` 归属场馆下的业务数据，也可访问 `device_ids` 明确绑定的设备。" />
-              <Alert type="info" showIcon message="student" description="仅可访问 `device_ids` 明确绑定的设备数据；`gym_ids` 不会自动放开全馆数据。" />
-              <Alert type="warning" showIcon message="bootstrap admin" description="部署生成的 bootstrap admin 不能在这里改密、降权或删除。" />
-            </Space>
-          </div>
-        </div>
-      </section>
+        {loading ? (
+          <div className="loading_surface"><Spin size="large" /></div>
+        ) : (
+          <Table<UserSummary>
+            rowKey="username"
+            dataSource={users}
+            columns={columns}
+            pagination={false}
+            scroll={{ x: 1100 }}
+          />
+        )}
+      </div>
 
       <Modal
         title="新建用户"
@@ -347,22 +352,35 @@ export function UserManagementPage() {
           <Form.Item name="role" label="角色" initialValue="teacher" rules={[{ required: true, message: '请选择角色' }]}> 
             <Select options={role_options} />
           </Form.Item>
-          <Form.Item
-            name="gym_ids"
-            label="场馆归属"
-            tooltip="每行一个 gym_id，也支持逗号或空格分隔"
-            initialValue=""
-          >
-            <Input.TextArea rows={4} placeholder={'gym-gz-01\ngym-sz-02'} />
-          </Form.Item>
-          <Form.Item
-            name="device_ids"
-            label="设备归属"
-            tooltip="每行一个 device_id，也支持逗号或空格分隔"
-            initialValue=""
-          >
-            <Input.TextArea rows={4} placeholder={'wb-001\neq-001\nenv-zone-a'} />
-          </Form.Item>
+          <Collapse
+            className="inline_collapse"
+            items={[
+              {
+                key: 'create-user-scope',
+                label: '归属范围配置',
+                children: (
+                  <>
+                    <Form.Item
+                      name="gym_ids"
+                      label="场馆归属"
+                      tooltip="每行一个 gym_id，也支持逗号或空格分隔"
+                      initialValue=""
+                    >
+                      <Input.TextArea rows={4} placeholder={'gym-gz-01\ngym-sz-02'} />
+                    </Form.Item>
+                    <Form.Item
+                      name="device_ids"
+                      label="设备归属"
+                      tooltip="每行一个 device_id，也支持逗号或空格分隔"
+                      initialValue=""
+                    >
+                      <Input.TextArea rows={4} placeholder={'wb-001\neq-001\nenv-zone-a'} />
+                    </Form.Item>
+                  </>
+                )
+              }
+            ]}
+          />
         </Form>
       </Modal>
 
@@ -388,20 +406,33 @@ export function UserManagementPage() {
           <Form.Item name="role" label="角色" rules={[{ required: true, message: '请选择角色' }]}> 
             <Select options={role_options} />
           </Form.Item>
-          <Form.Item
-            name="gym_ids"
-            label="场馆归属"
-            tooltip="每行一个 gym_id，也支持逗号或空格分隔"
-          >
-            <Input.TextArea rows={4} placeholder={'gym-gz-01\ngym-sz-02'} />
-          </Form.Item>
-          <Form.Item
-            name="device_ids"
-            label="设备归属"
-            tooltip="每行一个 device_id，也支持逗号或空格分隔"
-          >
-            <Input.TextArea rows={4} placeholder={'wb-001\neq-001\nenv-zone-a'} />
-          </Form.Item>
+          <Collapse
+            className="inline_collapse"
+            items={[
+              {
+                key: 'edit-user-scope',
+                label: '归属范围配置',
+                children: (
+                  <>
+                    <Form.Item
+                      name="gym_ids"
+                      label="场馆归属"
+                      tooltip="每行一个 gym_id，也支持逗号或空格分隔"
+                    >
+                      <Input.TextArea rows={4} placeholder={'gym-gz-01\ngym-sz-02'} />
+                    </Form.Item>
+                    <Form.Item
+                      name="device_ids"
+                      label="设备归属"
+                      tooltip="每行一个 device_id，也支持逗号或空格分隔"
+                    >
+                      <Input.TextArea rows={4} placeholder={'wb-001\neq-001\nenv-zone-a'} />
+                    </Form.Item>
+                  </>
+                )
+              }
+            ]}
+          />
         </Form>
       </Modal>
     </section>

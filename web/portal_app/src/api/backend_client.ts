@@ -186,6 +186,13 @@ export async function fetch_env_telemetry(device_id: string, params?: Record<str
   return response.data;
 }
 
+export async function fetch_wristband_telemetry(device_id: string, params?: Record<string, unknown>): Promise<TelemetryRecord[]> {
+  const response = await backend_client.get<TelemetryRecord[]>(`/api/v1/telemetry/wristband/${device_id}`, {
+    params
+  });
+  return response.data;
+}
+
 export async function fetch_env_aggregate(device_id: string, params?: Record<string, unknown>): Promise<EnvTelemetryAggregateRecord[]> {
   const response = await backend_client.get<EnvTelemetryAggregateRecord[]>(
     `/api/v1/telemetry/env/${device_id}/aggregate`,

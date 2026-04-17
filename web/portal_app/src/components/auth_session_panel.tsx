@@ -19,13 +19,25 @@ export function AuthSessionPanel() {
     hydrate();
   }, [hydrate]);
 
+  const redirect_state = {
+    from: `${location.pathname}${location.search}${location.hash}`
+  };
+
   return (
     <div className="auth_panel">
-      <div>
+      <button
+        type="button"
+        className="auth_identity_button"
+        onClick={() =>
+          navigate(session ? '/profile' : '/login', {
+            state: redirect_state
+          })
+        }
+      >
         <div className="eyebrow">后台认证</div>
         <strong>{session ? session.user.username : '匿名访问'}</strong>
         <div className="scope_hint">数据范围：{scope_description}</div>
-      </div>
+      </button>
       <Space wrap>
         <Tag color={session ? 'green' : 'default'}>{session ? session.user.role : 'anonymous'}</Tag>
         {session?.user.role === 'admin' ? <Tag color="gold">全部范围</Tag> : null}
@@ -35,19 +47,24 @@ export function AuthSessionPanel() {
         {session?.user.device_ids.map((device_id) => (
           <Tag key={`device-${device_id}`}>device:{device_id}</Tag>
         ))}
+      </Space>
+      <Space wrap>
         {session ? (
-          <Button size="small" onClick={() => void logout()} loading={loading}>
-            退出
-          </Button>
+          <>
+            <Button size="small" onClick={() => navigate('/profile')}>
+              个人中心
+            </Button>
+            <Button size="small" onClick={() => void logout()} loading={loading}>
+              退出
+            </Button>
+          </>
         ) : (
           <Button
             size="small"
             type="primary"
             onClick={() =>
               navigate('/login', {
-                state: {
-                  from: `${location.pathname}${location.search}${location.hash}`
-                }
+                state: redirect_state
               })
             }
           >

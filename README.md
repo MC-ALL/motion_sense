@@ -28,9 +28,10 @@
 - 网关真实 Broker 重启后的自动重连回归，以及规则热重载端到端回归
 - `ops_observer` 轮询 + 订阅网关与后台 `/ops/v1/*` / `/ops/ws`，并对外提供 `GET /api/v1/ops/*`、`PATCH /api/v1/ops/alerts/{id}/close`、`WS /api/ws/ops`
 - `web/portal_app` 已落地运维门户骨架、健康中心页面、运行时配置注入与前端构建拆包
-- `web/portal_app` 已接入实时仪表盘、器材管理、环境质量、告警管理、用户管理、设备注册，以及后台 JWT 登录与业务 WebSocket
-- `web/portal_app` 已新增独立登录页 `/login`，并统一未登录跳转与登录后回跳
-- `web/portal_app` 已按角色收敛页面可见性：学生隐藏“告警管理”，教师 / 学生在器材与环境页隐藏配置下发控件
+- `web/portal_app` 已接入实时仪表盘、器材总览/实例详情、手环总览/实例详情、环境总览/实例详情、告警管理、用户管理、设备注册，以及后台 JWT 登录与业务 WebSocket
+- `web/portal_app` 已新增独立登录页 `/login`，统一未登录跳转与登录后回跳，并补齐个人中心入口
+- `web/portal_app` 已按角色收敛页面可见性：学生隐藏“告警管理”，教师 / 学生在器材、手环、环境实例页隐藏配置下发控件
+- `web/portal_app` 已将通用时序图切换为轻量 SVG 实现，实时仪表盘改为状态汇总页，系统健康中心支持卡片二级视图
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图、`ops_observer` 聚合健康视图，以及网页端入口与运行时配置
@@ -88,6 +89,16 @@
 - `POST /api/v1/system/health/report`、`GET /api/v1/system/health*`
 - `GET /api/ws`
 - `GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`
+
+网页端当前主要入口分为：
+
+- `/login`：独立登录页
+- `/dashboard`：实时仪表盘
+- `/equipment`、`/equipment/:device_id`：器材总览与单台器材实例详情
+- `/wristband`、`/wristband/:device_id`：手环总览与单只手环实例详情
+- `/env-quality`、`/env-quality/:device_id`：环境总览与单个环境节点实例详情
+- `/alerts`：统一告警管理
+- `/health-center`：系统健康中心
 
 默认部署配置下：
 

@@ -68,8 +68,8 @@ export function LoginPage() {
         </div>
         <div className="login_hero_copy">
           <div className="eyebrow">独立登录页</div>
-          <h1>先登录，再进入业务与运维页面</h1>
-          <p>当前前端统一复用后台 JWT。登录后会自动恢复到你刚才尝试访问的页面，并沿用同一份会话访问业务 API 与运维 API。</p>
+          <h1>先登录，再进入页面</h1>
+          <p>统一使用后台认证进入业务与运维页面。</p>
         </div>
         <Space wrap>
           <Tag color="gold">admin</Tag>

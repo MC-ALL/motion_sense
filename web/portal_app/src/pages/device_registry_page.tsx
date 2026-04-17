@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Button,
+  Collapse,
   Form,
   Input,
   Modal,
+  Popover,
   Popconfirm,
   Select,
   Space,
@@ -15,6 +17,7 @@ import {
   type TableProps
 } from 'antd';
 import type { AxiosError } from 'axios';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 
 import {
   create_device_registration,
@@ -323,72 +326,72 @@ export function DeviceRegistryPage() {
       <section className="hero_banner compact_hero_banner">
         <div>
           <div className="eyebrow">06 网页端 / 设备注册</div>
-          <h1>后台设备注册与元数据维护</h1>
-          <p>这里直接对接后台 <code>GET/POST/PATCH/DELETE /api/v1/devices</code>，用于维护设备所属场馆、网关映射、显示名称、位置与自定义元数据。</p>
+          <h1>设备都在这里</h1>
+          <p>统一管理设备注册与元数据维护。</p>
         </div>
-        <Space wrap>
-          <Select
-            value={type_filter}
-            options={device_type_filter_options}
-            onChange={(value) => set_type_filter(value as 'all' | DeviceRegistryType)}
-            style={{ minWidth: 160 }}
-          />
-          <Button onClick={() => void load_devices()} loading={loading || submitting}>
-            刷新列表
-          </Button>
-          <Button
-            type="primary"
-            onClick={() => {
-              create_form.setFieldsValue(build_device_form_values(null));
-              set_create_open(true);
-            }}
-          >
-            注册设备
-          </Button>
-        </Space>
       </section>
 
       {error ? <Alert type="error" message="设备注册异常" description={error} showIcon /> : null}
 
-      <section className="content_grid">
-        <div className="left_column">
-          <div className="panel_surface">
-            <div className="panel_header compact_panel_header">
-              <div>
-                <div className="eyebrow">设备清单</div>
-                <h3>当前注册与在线快照</h3>
-              </div>
-            </div>
-            {loading ? (
-              <div className="loading_surface"><Spin size="large" /></div>
-            ) : (
-              <Table<DeviceSummary>
-                rowKey="device_id"
-                dataSource={filtered_devices}
-                columns={columns}
-                pagination={{ pageSize: 10 }}
-                scroll={{ x: 1240 }}
-              />
-            )}
+      <div className="panel_surface full_width_panel">
+        <div className="panel_header compact_panel_header">
+          <div>
+            <div className="eyebrow">设备清单</div>
+            <h3>当前注册与在线快照</h3>
           </div>
+          <Space wrap>
+            <Select
+              value={type_filter}
+              options={device_type_filter_options}
+              onChange={(value) => set_type_filter(value as 'all' | DeviceRegistryType)}
+              style={{ minWidth: 160 }}
+            />
+            <Button onClick={() => void load_devices()} loading={loading || submitting}>
+              刷新列表
+            </Button>
+            <Button
+              type="primary"
+              onClick={() => {
+                create_form.setFieldsValue(build_device_form_values(null));
+                set_create_open(true);
+              }}
+            >
+              注册设备
+            </Button>
+            <Popover
+              title="维护约束"
+              content={
+                <Space direction="vertical" size="small" style={{ maxWidth: 320 }}>
+                  <span>
+                    非网关设备必须绑定所属网关；网关设备默认使用自己的 <code>device_id</code> 作为 <code>gateway_id</code>。
+                  </span>
+                  <span>
+                    <code>metadata</code> 采用 JSON 对象编辑，提交前会做语法校验。
+                  </span>
+                  <span>
+                    列表同时展示注册元数据和最新在线状态；未上报过的设备会显示为 <code>registered / offline</code>。
+                  </span>
+                </Space>
+              }
+            >
+              <Button type="text" icon={<QuestionCircleOutlined />} className="panel_hint_button">
+                维护约束
+              </Button>
+            </Popover>
+          </Space>
         </div>
-
-        <div className="right_column">
-          <div className="panel_surface">
-            <div className="panel_header compact_panel_header">
-              <div>
-                <div className="eyebrow">维护约束</div>
-                <h3>当前实现边界</h3>
-              </div>
-            </div>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Alert type="info" showIcon message="gateway_id 规则" description="非网关设备必须绑定所属网关；网关设备默认使用自己的 device_id 作为 gateway_id。" />
-              <Alert type="info" showIcon message="metadata 编辑" description="页面使用 JSON 对象编辑 metadata；提交前会做语法校验。" />
-              <Alert type="warning" showIcon message="列表含实时快照" description="设备表同时展示注册元数据和最新在线状态；未上报过的设备会显示为 registered / offline。" />
-            </Space>
-          </div>
-        </div>
-      </section>
+        {loading ? (
+          <div className="loading_surface"><Spin size="large" /></div>
+        ) : (
+          <Table<DeviceSummary>
+            rowKey="device_id"
+            dataSource={filtered_devices}
+            columns={columns}
+            pagination={{ pageSize: 10 }}
+            scroll={{ x: 1240 }}
+          />
+        )}
+      </div>
 
       <Modal
         title="注册设备"
@@ -427,9 +430,20 @@ export function DeviceRegistryPage() {
           <Form.Item name="location" label="位置描述">
             <Input autoComplete="off" />
           </Form.Item>
-          <Form.Item name="metadata_json" label="metadata(JSON)" rules={[{ required: true, message: '请输入 metadata JSON' }]}>
-            <Input.TextArea rows={8} spellCheck={false} />
-          </Form.Item>
+          <Collapse
+            className="inline_collapse"
+            items={[
+              {
+                key: 'create-device-metadata',
+                label: 'metadata（JSON）',
+                children: (
+                  <Form.Item name="metadata_json" noStyle rules={[{ required: true, message: '请输入 metadata JSON' }]}>
+                    <Input.TextArea rows={8} spellCheck={false} />
+                  </Form.Item>
+                )
+              }
+            ]}
+          />
         </Form>
       </Modal>
 
@@ -470,9 +484,20 @@ export function DeviceRegistryPage() {
           <Form.Item name="location" label="位置描述">
             <Input autoComplete="off" />
           </Form.Item>
-          <Form.Item name="metadata_json" label="metadata(JSON)" rules={[{ required: true, message: '请输入 metadata JSON' }]}>
-            <Input.TextArea rows={8} spellCheck={false} />
-          </Form.Item>
+          <Collapse
+            className="inline_collapse"
+            items={[
+              {
+                key: 'edit-device-metadata',
+                label: 'metadata（JSON）',
+                children: (
+                  <Form.Item name="metadata_json" noStyle rules={[{ required: true, message: '请输入 metadata JSON' }]}>
+                    <Input.TextArea rows={8} spellCheck={false} />
+                  </Form.Item>
+                )
+              }
+            ]}
+          />
         </Form>
       </Modal>
     </section>

@@ -28,6 +28,9 @@ influxdb_host_port="${INFLUXDB_HOST_PORT:-18181}"
 edge_health_interval_s="${EDGE_PROCESSOR_HEALTH_INTERVAL_S:-5}"
 network_subnet="${CONTAINER_NETWORK_SUBNET:-192.168.65.0/24}"
 network_gateway="${CONTAINER_NETWORK_GATEWAY:-192.168.65.1}"
+container_cpus="${CONTAINER_CPUS:-2}"
+container_memory="${CONTAINER_MEMORY:-512M}"
+container_resource_args="--cpus ${container_cpus} --memory ${container_memory}"
 
 if [ -n "${BACKEND_REALTIME_BACKEND:-}" ]; then
   backend_realtime_backend="${BACKEND_REALTIME_BACKEND}"
@@ -90,6 +93,7 @@ if [ "${backend_storage_backend}" = "postgres" ]; then
     --name timescaledb \
     --remove \
     -d \
+    ${container_resource_args} \
     --network "${network_name}" \
     -p "${timescaledb_host_port}:5432" \
     --env "POSTGRES_DB=motion_sense" \
@@ -101,6 +105,7 @@ if [ "${backend_storage_backend}" = "postgres" ]; then
     --name redis \
     --remove \
     -d \
+    ${container_resource_args} \
     --network "${network_name}" \
     -p "${redis_host_port}:6379" \
     redis:8.6-alpine \
@@ -121,6 +126,7 @@ backend_args="
   --name backend
   --remove
   -d
+  ${container_resource_args}
   --network ${network_name}
   -p ${backend_host_port}:8000
   --mount type=bind,source=${backend_config_root},target=/runtime/config
@@ -148,6 +154,7 @@ container run \
   --name influxdb \
   --remove \
   -d \
+  ${container_resource_args} \
   --network "${network_name}" \
   -p "${influxdb_host_port}:8181" \
   --mount "type=bind,source=${config_root},target=/runtime/config" \
@@ -158,6 +165,7 @@ container run \
   --name mosquitto \
   --remove \
   -d \
+  ${container_resource_args} \
   --network "${network_name}" \
   -p 1883:1883 \
   --mount "type=bind,source=${config_root},target=/runtime/config" \
@@ -188,6 +196,7 @@ container run \
   --name edge_processor \
   --remove \
   -d \
+  ${container_resource_args} \
   --network "${network_name}" \
   -p "${gateway_host_port}:8080" \
   --env "EDGE_PROCESSOR_BACKEND_BASE_URL=http://${backend_ip}:8000/api/v1" \
@@ -209,6 +218,7 @@ container run \
   --name ops_observer \
   --remove \
   -d \
+  ${container_resource_args} \
   --network "${network_name}" \
   -p "${ops_host_port}:8090" \
   --env "OPS_OBSERVER_GATEWAY_BASE_URL=http://${edge_processor_ip}:8080" \
@@ -244,6 +254,7 @@ container run \
   --name web_portal \
   --remove \
   -d \
+  ${container_resource_args} \
   --network "${network_name}" \
   -p "${web_host_port}:8080" \
   --mount "type=bind,source=${web_config_root},target=/runtime/config" \

@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react';
-import { Alert, Button, Layout, Spin, Statistic } from 'antd';
+import { lazy, Suspense, useMemo, useState } from 'react';
+import { Alert, Button, Drawer, Layout, Spin, Statistic } from 'antd';
+import { useNavigate } from 'react-router-dom';
 
 import { ModuleSummaryList } from '../components/module_summary_list';
 import { use_auth_store } from '../store/auth_store';
@@ -18,15 +19,47 @@ const ModuleDetailPanel = lazy(async () =>
   }))
 );
 
-const OpsAlertPanel = lazy(async () =>
-  import('../components/ops_alert_panel').then((module) => ({
-    default: module.OpsAlertPanel
-  }))
-);
+type ModuleFilter = 'all' | 'healthy' | 'degraded' | 'offline';
+
+function filter_summaries<T extends { health_status: string }>(items: T[], filter: ModuleFilter): T[] {
+  if (filter === 'all') {
+    return items;
+  }
+  return items.filter((item) => item.health_status === filter);
+}
+
+function HealthMetricCard({
+  title,
+  value,
+  on_open
+}: {
+  title: string;
+  value: number;
+  on_open: (() => void) | null;
+}) {
+  const is_clickable = value > 0 && on_open !== null;
+
+  if (!is_clickable) {
+    return (
+      <div className="panel_surface metric_card metric_card_disabled">
+        <Statistic title={title} value={value === 0 ? '无' : value} />
+      </div>
+    );
+  }
+
+  return (
+    <button type="button" className="panel_surface metric_card interactive_metric_card" onClick={on_open}>
+      <Statistic title={title} value={value} />
+    </button>
+  );
+}
 
 export function HealthCenterPage() {
+  const navigate = useNavigate();
   const session = use_auth_store((state) => state.session);
   const is_admin = session?.user.role === 'admin';
+  const [drawer_filter, set_drawer_filter] = useState<ModuleFilter>('all');
+  const [drawer_open, set_drawer_open] = useState(false);
 
   use_ops_bootstrap({ enabled: is_admin });
 
@@ -39,7 +72,6 @@ export function HealthCenterPage() {
   const selected_module_id = use_ops_store((state) => state.selected_module_id);
   const bootstrap = use_ops_store((state) => state.bootstrap);
   const select_module = use_ops_store((state) => state.select_module);
-  const close_alert = use_ops_store((state) => state.close_alert);
 
   if (!session || !is_admin) {
     return (
@@ -64,6 +96,12 @@ export function HealthCenterPage() {
   const healthy_count = summaries.filter((item) => item.health_status === 'healthy').length;
   const degraded_count = summaries.filter((item) => item.health_status === 'degraded').length;
   const offline_count = summaries.filter((item) => item.health_status === 'offline').length;
+  const drawer_items = useMemo(() => filter_summaries(summaries, drawer_filter), [drawer_filter, summaries]);
+
+  function open_module_drawer(filter: ModuleFilter) {
+    set_drawer_filter(filter);
+    set_drawer_open(true);
+  }
 
   return (
     <Layout className="page_shell">
@@ -71,10 +109,7 @@ export function HealthCenterPage() {
         <div>
           <div className="eyebrow">06 网页端 / 系统健康中心</div>
           <h1>基础设施正在被看见</h1>
-          <p>
-            统一查看网关、后台与关键组件的健康状态，告警关闭与状态刷新都直接对接
-            <code>ops_observer</code>。
-          </p>
+          <p>统一查看网关、后台与关键组件的健康状态。</p>
         </div>
         <div className="hero_actions">
           <Button type="primary" size="large" onClick={() => void bootstrap()}>
@@ -86,14 +121,21 @@ export function HealthCenterPage() {
 
       {error ? <Alert type="error" message="加载失败" description={error} showIcon /> : null}
 
-      <section className="metric_grid">
-        <div className="panel_surface metric_card"><Statistic title="模块总数" value={summaries.length} /></div>
-        <div className="panel_surface metric_card"><Statistic title="健康模块" value={healthy_count} /></div>
-        <div className="panel_surface metric_card"><Statistic title="降级模块" value={degraded_count} /></div>
-        <div className="panel_surface metric_card"><Statistic title="离线模块" value={offline_count} /></div>
+      <section className="metric_grid metric_grid_five">
+        <HealthMetricCard title="模块总数" value={summaries.length} on_open={summaries.length > 0 ? () => open_module_drawer('all') : null} />
+        <HealthMetricCard title="健康模块" value={healthy_count} on_open={healthy_count > 0 ? () => open_module_drawer('healthy') : null} />
+        <HealthMetricCard title="降级模块" value={degraded_count} on_open={degraded_count > 0 ? () => open_module_drawer('degraded') : null} />
+        <HealthMetricCard title="离线模块" value={offline_count} on_open={offline_count > 0 ? () => open_module_drawer('offline') : null} />
+        <button
+          type="button"
+          className="panel_surface metric_card interactive_metric_card"
+          onClick={() => navigate('/alerts?tab=ops')}
+        >
+          <Statistic title="运维告警" value={alerts.length} />
+        </button>
       </section>
 
-      <section className="content_grid">
+      <section className="content_grid health_content_grid">
         <div className="left_column">
           <div className="panel_surface chart_surface">
             <div className="panel_header">
@@ -101,6 +143,7 @@ export function HealthCenterPage() {
                 <div className="eyebrow">健康占比</div>
                 <h3>模块状态分布</h3>
               </div>
+              <Button onClick={() => open_module_drawer('all')}>打开模块列表</Button>
             </div>
             <Suspense
               fallback={
@@ -112,11 +155,6 @@ export function HealthCenterPage() {
               <HealthOverviewChart summaries={summaries} />
             </Suspense>
           </div>
-          <ModuleSummaryList
-            summaries={summaries}
-            selected_module_id={selected_module_id}
-            on_select={(module_id) => void select_module(module_id)}
-          />
         </div>
 
         <div className="right_column">
@@ -135,17 +173,25 @@ export function HealthCenterPage() {
               <ModuleDetailPanel detail={detail} />
             </Suspense>
           )}
-          <Suspense
-            fallback={
-              <div className="panel_surface loading_surface">
-                <Spin size="large" />
-              </div>
-            }
-          >
-            <OpsAlertPanel alerts={alerts} on_close={(alert_id) => void close_alert(alert_id)} />
-          </Suspense>
         </div>
       </section>
+
+      <Drawer
+        title={`模块列表 · ${drawer_filter === 'all' ? '全部' : drawer_filter}`}
+        placement="right"
+        width={420}
+        onClose={() => set_drawer_open(false)}
+        open={drawer_open}
+      >
+        <ModuleSummaryList
+          summaries={drawer_items}
+          selected_module_id={selected_module_id}
+          on_select={(module_id) => {
+            void select_module(module_id);
+            set_drawer_open(false);
+          }}
+        />
+      </Drawer>
     </Layout>
   );
 }
