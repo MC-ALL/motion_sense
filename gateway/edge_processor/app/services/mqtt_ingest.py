@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 from collections.abc import Awaitable, Callable
 
@@ -46,6 +47,7 @@ async def mqtt_ingest_loop(
 
                 async for message in client.messages:
                     topic = str(message.topic)
+                    received_at_s = int(time.time())
                     payload = _decode_json_payload(topic, message.payload)
                     parsed = parse_topic(topic)
 
@@ -56,6 +58,8 @@ async def mqtt_ingest_loop(
 
                     if parsed.action not in {"telemetry", "alert", "binding", "status"}:
                         continue
+
+                    payload = _enrich_payload(payload, gateway_received_ts=received_at_s)
 
                     if _is_internal_edge_event(parsed, payload):
                         continue
@@ -83,3 +87,9 @@ def _is_internal_edge_event(parsed_topic: ParsedTopic, payload: dict[str, Any]) 
     if parsed_topic.action not in {"alert", "status"}:
         return False
     return payload.get("source") == EDGE_INTERNAL_SOURCE
+
+
+def _enrich_payload(payload: dict[str, Any], *, gateway_received_ts: int) -> dict[str, Any]:
+    enriched = dict(payload)
+    enriched["gateway_received_ts"] = gateway_received_ts
+    return enriched

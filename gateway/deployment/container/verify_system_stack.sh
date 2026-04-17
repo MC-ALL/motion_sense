@@ -80,7 +80,7 @@ sh gateway/deployment/container/publish_sample_telemetry.sh \
 
 device_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/devices/eq-001" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["device_id"]=="eq-001"; assert body["online"] is True' \
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["device_id"]=="eq-001"; assert body["online"] is True; assert isinstance(body["last_payload"].get("gateway_received_ts"), int)' \
   60 \
   "$backend_auth_header")"
 

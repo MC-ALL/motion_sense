@@ -274,6 +274,59 @@ rules_reload_alert_json="$(wait_for_json \
   60 \
   "${backend_auth_header}")"
 
+container exec edge_processor python -c '
+from pathlib import Path
+import yaml
+
+path = Path("/runtime/config/edge_processor/rules.yaml")
+data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+rules = data.setdefault("alert_rules", {})
+co2 = rules.setdefault("CO2_HIGH", {})
+co2["enabled"] = True
+co2["threshold_ppm"] = 600
+co2["window_s"] = 2
+co2["level"] = "warning"
+global_config = data.setdefault("global", {})
+global_config["time_source"] = "gateway_received_ts"
+path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=False), encoding="utf-8")
+'
+
+sleep $((restore_wait_s + 2))
+
+time_source_payload_a_file="$(mktemp)"
+time_source_payload_b_file="$(mktemp)"
+
+cleanup_payloads_with_time_source() {
+  rm -f "${reconnect_payload_file}" "${rule_payload_a_file}" "${rule_payload_b_file}" \
+    "${time_source_payload_a_file}" "${time_source_payload_b_file}"
+}
+
+trap 'cleanup_payloads_with_time_source; cleanup' EXIT INT TERM
+
+cat > "${time_source_payload_a_file}" <<EOF
+{"ts":100,"device_id":"env-time-source-01","co2_ppm":700,"temperature_c":26.5,"humidity":52.0}
+EOF
+cat > "${time_source_payload_b_file}" <<EOF
+{"ts":101,"device_id":"env-time-source-01","co2_ppm":710,"temperature_c":26.7,"humidity":51.0}
+EOF
+
+sh gateway/deployment/container/publish_sample_telemetry.sh \
+  "gym/gym-gz-01/env/env-time-source-01/telemetry" \
+  "${time_source_payload_a_file}"
+
+sleep 3
+
+sh gateway/deployment/container/publish_sample_telemetry.sh \
+  "gym/gym-gz-01/env/env-time-source-01/telemetry" \
+  "${time_source_payload_b_file}"
+
+time_source_alert_json="$(wait_for_json \
+  "http://127.0.0.1:${backend_host_port}/api/v1/alerts?device_id=env-time-source-01" \
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert any(item["device_id"]=="env-time-source-01" and item["code"]=="CO2_HIGH" for item in body)' \
+  60 \
+  "${backend_auth_header}")"
+
 printf 'Broker 重连验证通过: %s\n' "${broker_reconnect_json}"
 printf '规则热重载前无命中验证通过: %s\n' "${pre_reload_alerts_json}"
 printf '规则热重载后告警验证通过: %s\n' "${rules_reload_alert_json}"
+printf 'time_source=gateway_received_ts 验证通过: %s\n' "${time_source_alert_json}"

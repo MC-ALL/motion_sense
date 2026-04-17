@@ -28,6 +28,21 @@ def test_gateway_config_rewrites_rules_file(tmp_path: Path, monkeypatch) -> None
     assert "DEVICE_OFFLINE" in rules_path.read_text(encoding="utf-8")
 
 
+def test_gateway_config_updates_rule_global_settings(tmp_path: Path, monkeypatch) -> None:
+    rules_path = tmp_path / "rules.yaml"
+    rules_path.write_text("alert_rules: {}\nglobal:\n  time_source: payload_ts\n", encoding="utf-8")
+
+    settings = RuntimeSettings()
+    manager = RuntimeConfigManager(settings)
+    monkeypatch.setattr(manager, "_rules_path", rules_path)
+
+    manager.update_from_gateway_config({"global": {"check_interval_s": 2}, "time_source": "gateway_received_ts"})
+
+    rendered = rules_path.read_text(encoding="utf-8")
+    assert "check_interval_s: 2" in rendered
+    assert "time_source: gateway_received_ts" in rendered
+
+
 def test_poll_rules_reload_only_reports_actual_changes(tmp_path: Path, monkeypatch) -> None:
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text("alert_rules: {}\n", encoding="utf-8")

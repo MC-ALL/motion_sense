@@ -24,9 +24,18 @@ class RuntimeConfigManager:
 
     def update_from_gateway_config(self, payload: dict[str, Any]) -> None:
         alert_rules = payload.get("alert_rules")
-        if isinstance(alert_rules, dict):
+        rule_global = payload.get("global")
+        time_source = payload.get("time_source")
+        if isinstance(alert_rules, dict) or isinstance(rule_global, dict) or isinstance(time_source, str):
             current = self._read_yaml(self._rules_path)
-            current["alert_rules"] = alert_rules
+            if isinstance(alert_rules, dict):
+                current["alert_rules"] = alert_rules
+            if isinstance(rule_global, dict):
+                current_global = current.setdefault("global", {})
+                current_global.update(rule_global)
+            if isinstance(time_source, str):
+                current_global = current.setdefault("global", {})
+                current_global["time_source"] = time_source
             self._rules_path.write_text(
                 yaml.safe_dump(current, sort_keys=False, allow_unicode=False),
                 encoding="utf-8",

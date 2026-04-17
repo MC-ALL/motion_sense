@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+import time
 
 import yaml
 
@@ -10,6 +12,8 @@ from app.utils.topic_parser import ParsedTopic
 
 
 DEFAULT_RULES_PATH = Path("/runtime/config/edge_processor/rules.yaml")
+DEFAULT_TIME_SOURCE = "payload_ts"
+VALID_TIME_SOURCES = {"payload_ts", "gateway_received_ts", "backend_received_at"}
 
 
 @dataclass(slots=True, frozen=True)
@@ -61,11 +65,17 @@ class RuleEngine:
         self._global = raw_global if isinstance(raw_global, dict) else {}
         self._prune_window_state()
 
-    def evaluate_telemetry(self, parsed_topic: ParsedTopic, payload: dict[str, Any]) -> list[EmittedAlert]:
+    def evaluate_telemetry(
+        self,
+        parsed_topic: ParsedTopic,
+        payload: dict[str, Any],
+        *,
+        gateway_received_at_s: int | None = None,
+    ) -> list[EmittedAlert]:
         if parsed_topic.action != "telemetry":
             return []
 
-        observed_at_s = _to_unix_seconds(payload.get("ts"))
+        observed_at_s = self._resolve_observed_at_s(payload, gateway_received_at_s)
         emitted: list[EmittedAlert] = []
         emitted.extend(self._evaluate_eq_overload(parsed_topic, payload, observed_at_s))
         emitted.extend(self._evaluate_env_threshold(parsed_topic, payload, observed_at_s, "CO2_HIGH", "co2_ppm", "threshold_ppm"))
@@ -89,6 +99,12 @@ class RuleEngine:
 
     def check_interval_s(self) -> int:
         return max(1, int(_as_number(self._global.get("check_interval_s"), 1.0)))
+
+    def time_source(self) -> str:
+        raw = self._global.get("time_source")
+        if isinstance(raw, str) and raw in VALID_TIME_SOURCES:
+            return raw
+        return DEFAULT_TIME_SOURCE
 
     def _evaluate_eq_overload(
         self,
@@ -217,6 +233,18 @@ class RuleEngine:
         key = (rule_code, parsed_topic.gym_id, parsed_topic.device_type, parsed_topic.device_id)
         self._window_state.pop(key, None)
 
+    def _resolve_observed_at_s(
+        self,
+        payload: dict[str, Any],
+        gateway_received_at_s: int | None,
+    ) -> int:
+        source = self.time_source()
+        if source == "gateway_received_ts":
+            return _resolve_gateway_received_at_s(payload, gateway_received_at_s)
+        if source == "backend_received_at":
+            return _resolve_backend_received_at_s(payload, gateway_received_at_s)
+        return _resolve_payload_ts_s(payload, gateway_received_at_s)
+
     @staticmethod
     def _read_yaml(path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -235,5 +263,33 @@ def _as_number(raw: Any, default: float | None = None) -> float | None:
 def _to_unix_seconds(raw: Any) -> int:
     value = _as_number(raw)
     if value is None:
-        return int(__import__("time").time())
+        return int(time.time())
     return int(value)
+
+
+def _resolve_payload_ts_s(payload: dict[str, Any], gateway_received_at_s: int | None) -> int:
+    raw = payload.get("ts")
+    if _as_number(raw) is None:
+        return _resolve_gateway_received_at_s(payload, gateway_received_at_s)
+    return _to_unix_seconds(raw)
+
+
+def _resolve_gateway_received_at_s(payload: dict[str, Any], gateway_received_at_s: int | None) -> int:
+    if gateway_received_at_s is not None:
+        return int(gateway_received_at_s)
+    raw = payload.get("gateway_received_ts")
+    if _as_number(raw) is None:
+        return int(time.time())
+    return _to_unix_seconds(raw)
+
+
+def _resolve_backend_received_at_s(payload: dict[str, Any], gateway_received_at_s: int | None) -> int:
+    raw = payload.get("backend_received_at")
+    if isinstance(raw, str):
+        try:
+            return int(datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            pass
+    elif _as_number(raw) is not None:
+        return _to_unix_seconds(raw)
+    return _resolve_gateway_received_at_s(payload, gateway_received_at_s)

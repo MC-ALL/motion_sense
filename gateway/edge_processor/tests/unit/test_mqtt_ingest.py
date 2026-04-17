@@ -95,6 +95,7 @@ def test_mqtt_ingest_loop_retries_and_resubscribes(monkeypatch) -> None:
 
     monkeypatch.setattr(mqtt_ingest_module, "Client", fake_client_factory)
     monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(mqtt_ingest_module.time, "time", lambda: 1712640009)
 
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(
@@ -110,4 +111,4 @@ def test_mqtt_ingest_loop_retries_and_resubscribes(monkeypatch) -> None:
     assert sleep_calls == [3]
     assert client_instances[1].subscriptions == [(topic, settings.mqtt.qos) for topic in settings.mqtt.topic_patterns]
     assert len(event_buffer.items) == 1
-    assert received == [("eq-001", {"ts": 1712640000, "power_w": 320.5})]
+    assert received == [("eq-001", {"ts": 1712640000, "power_w": 320.5, "gateway_received_ts": 1712640009})]

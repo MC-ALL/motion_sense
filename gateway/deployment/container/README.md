@@ -119,6 +119,12 @@ BACKEND_ADMIN_USERNAME=admin BACKEND_ADMIN_PASSWORD='<your-password>' \
 sh gateway/deployment/container/verify_gateway_resilience.sh
 ```
 
+执行运维鉴权回归验证：
+
+```bash
+sh gateway/deployment/container/verify_ops_auth_stack.sh
+```
+
 运行网关单元测试：
 
 ```bash
@@ -147,7 +153,9 @@ sh gateway/deployment/container/stop_local_stack.sh
 - `verify_database_stack.sh` 目标验证项包括：refresh session 持久化、TimescaleDB / PostgreSQL 时序与结构化写库、Redis 连通性、Influx 缓冲写入与补发确认
 - `verify_user_scope_stack.sh` 会创建临时 `teacher` / `student` 账号，验证 `gym_ids` / `device_ids` 归属下的设备、遥测、告警、绑定历史与告警确认边界；脚本结束后会自动删除临时账号
 - `verify_gateway_resilience.sh` 目标验证项包括：Mosquitto 异常重启后的网关自动重连，以及 `rules.yaml` 热重载后的 P1 规则生效
-- `verify_regression_stack.sh` 会按 `verify_system_stack.sh -> verify_database_stack.sh -> verify_user_scope_stack.sh -> verify_gateway_resilience.sh` 顺序串行执行，适合作为本地整栈固定回归入口
+- `verify_gateway_resilience.sh` 还会验证 `global.time_source=gateway_received_ts` 时，P1 规则窗口按网关接收时间推进
+- `verify_ops_auth_stack.sh` 会验证网关 `/ops/v1/*` 与 `/ops/ws` 的静态 token 边界，以及 `ops_observer` `/api/v1/ops/*` 与 `/api/ws/ops` 的管理员 JWT 边界
+- `verify_regression_stack.sh` 会按 `verify_system_stack.sh -> verify_database_stack.sh -> verify_user_scope_stack.sh -> verify_gateway_resilience.sh -> verify_ops_auth_stack.sh` 顺序串行执行，适合作为本地整栈固定回归入口
 - 为了覆盖本地 Broker 重连场景，`edge_processor` 在 Apple `container` 联调中会连接宿主机网关地址 `192.168.65.1:1883`，而不是直接连接 `mosquitto` 容器瞬时 IP
 - `start_local_stack.sh` 会解析后台与 InfluxDB 容器 IP，并通过环境变量注入 `edge_processor`；MQTT 入口固定使用宿主机网关地址
 - `start_local_stack.sh` 也会解析 `edge_processor` 与 `backend` 容器 IP，并把后台首次生成的管理员账号注入到 `ops_observer`，用于访问受保护的后台 `/ops/v1/*` 与 `/ops/ws`
