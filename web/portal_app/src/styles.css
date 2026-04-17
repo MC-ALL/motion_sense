@@ -30,6 +30,76 @@ code {
   min-height: 100vh;
 }
 
+.login_page_shell {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.15fr) minmax(320px, 0.85fr);
+  gap: 2rem;
+  min-height: 100vh;
+  padding: 2rem;
+  align-items: stretch;
+}
+
+.login_hero,
+.login_card {
+  border: 1px solid rgba(18, 91, 86, 0.08);
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(75, 55, 34, 0.08);
+}
+
+.login_hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 2.4rem;
+  background:
+    radial-gradient(circle at top left, rgba(247, 169, 75, 0.24), transparent 28%),
+    linear-gradient(145deg, rgba(24, 46, 42, 0.96), rgba(14, 77, 72, 0.88));
+  color: #f5efe4;
+}
+
+.login_brand_block .eyebrow {
+  color: rgba(245, 239, 228, 0.72);
+}
+
+.login_hero_copy h1 {
+  margin: 0.45rem 0 0.75rem;
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 1.02;
+  color: #fff6ea;
+}
+
+.login_hero_copy p {
+  max-width: 680px;
+  margin: 0;
+  color: rgba(245, 239, 228, 0.82);
+}
+
+.login_card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(255, 251, 243, 0.92);
+}
+
+.login_card h2 {
+  margin: 0.35rem 0 0.8rem;
+  color: #203531;
+}
+
+.login_hint {
+  margin: 0 0 1rem;
+  color: #4b6560;
+}
+
+.login_actions {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  margin-top: 0.5rem;
+}
+
 .app_layout {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -355,6 +425,11 @@ code {
 @media (max-width: 960px) {
   .app_layout {
     grid-template-columns: 1fr;
+  }
+
+  .login_page_shell {
+    grid-template-columns: 1fr;
+    padding: 1rem;
   }
 
   .app_sidebar {

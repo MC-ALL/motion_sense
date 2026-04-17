@@ -8,7 +8,6 @@ import { TimeSeriesChart } from '../components/time_series_chart';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, EnvTelemetryAggregateRecord, TelemetryRecord } from '../types/backend';
-import { describe_user_scope } from '../utils/user_scope';
 
 const range_options = [
   { label: '1 小时', value: '1h', interval: '10m' },
@@ -55,7 +54,7 @@ export function EnvQualityPage() {
   const disconnect = use_business_realtime_store((state) => state.disconnect);
   const session = use_auth_store((state) => state.session);
   const can_publish_config = session?.user.role === 'admin';
-  const scope_description = describe_user_scope(session?.user);
+  const is_read_only = Boolean(session && !can_publish_config);
 
   useEffect(() => {
     if (!session) {
@@ -272,42 +271,33 @@ export function EnvQualityPage() {
             </div>
 
             <div className="right_column">
-              <div className="panel_surface">
-                <div className="panel_header compact_panel_header">
-                  <div>
-                    <div className="eyebrow">动态配置</div>
-                    <h3>修改上报周期</h3>
+              {can_publish_config ? (
+                <div className="panel_surface">
+                  <div className="panel_header compact_panel_header">
+                    <div>
+                      <div className="eyebrow">动态配置</div>
+                      <h3>修改上报周期</h3>
+                    </div>
                   </div>
+                  <Form form={form} layout="vertical" onFinish={(values) => void submit_command(values)}>
+                    <Form.Item name="telemetry_interval_s" label="上报周期（秒）" rules={[{ required: true, message: '请输入上报周期' }]}>
+                      <InputNumber min={1} max={3600} style={{ width: '100%' }} />
+                    </Form.Item>
+                    <Button htmlType="submit" type="primary" loading={command_loading} block>
+                      下发到网关
+                    </Button>
+                  </Form>
+                  {command_result ? (
+                    <Alert
+                      className="inline_alert"
+                      type={command_result.status === 'pending' ? 'info' : 'success'}
+                      message={`命令状态：${command_result.status}`}
+                      description={`command_id=${command_result.command_id}`}
+                      showIcon
+                    />
+                  ) : null}
                 </div>
-                {can_publish_config ? (
-                  <>
-                    <Form form={form} layout="vertical" onFinish={(values) => void submit_command(values)}>
-                      <Form.Item name="telemetry_interval_s" label="上报周期（秒）" rules={[{ required: true, message: '请输入上报周期' }]}>
-                        <InputNumber min={1} max={3600} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Button htmlType="submit" type="primary" loading={command_loading} block>
-                        下发到网关
-                      </Button>
-                    </Form>
-                    {command_result ? (
-                      <Alert
-                        className="inline_alert"
-                        type={command_result.status === 'pending' ? 'info' : 'success'}
-                        message={`命令状态：${command_result.status}`}
-                        description={`command_id=${command_result.command_id}`}
-                        showIcon
-                      />
-                    ) : null}
-                  </>
-                ) : (
-                  <Alert
-                    type="info"
-                    message="当前角色为只读模式"
-                    description={`教师和学生当前不能从网页端下发环境节点配置。当前数据范围：${scope_description}`}
-                    showIcon
-                  />
-                )}
-              </div>
+              ) : null}
 
               <div className="panel_surface">
                 <div className="panel_header compact_panel_header">
@@ -315,7 +305,10 @@ export function EnvQualityPage() {
                     <div className="eyebrow">环境快照</div>
                     <h3>最新上报字段</h3>
                   </div>
-                  <Tag color={selected_device.online ? 'green' : 'red'}>{selected_device.status}</Tag>
+                  <Space wrap>
+                    {is_read_only ? <Tag color="default">只读</Tag> : null}
+                    <Tag color={selected_device.online ? 'green' : 'red'}>{selected_device.status}</Tag>
+                  </Space>
                 </div>
                 <pre className="stats_panel">{JSON.stringify(latest_payload, null, 2)}</pre>
               </div>

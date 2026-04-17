@@ -1,4 +1,5 @@
-import { Alert } from 'antd';
+import { Button, Alert } from 'antd';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 type AuthRequiredStateProps = {
   eyebrow: string;
@@ -7,6 +8,9 @@ type AuthRequiredStateProps = {
 };
 
 export function AuthRequiredState({ eyebrow, title, description }: AuthRequiredStateProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   return (
     <section className="page_shell">
       <section className="hero_banner compact_hero_banner">
@@ -15,6 +19,18 @@ export function AuthRequiredState({ eyebrow, title, description }: AuthRequiredS
           <h1>{title}</h1>
           <p>{description}</p>
         </div>
+        <Button
+          type="primary"
+          onClick={() =>
+            navigate('/login', {
+              state: {
+                from: `${location.pathname}${location.search}${location.hash}`
+              }
+            })
+          }
+        >
+          前往登录页
+        </Button>
       </section>
       <Alert
         type="warning"

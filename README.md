@@ -29,6 +29,8 @@
 - `ops_observer` 轮询 + 订阅网关与后台 `/ops/v1/*` / `/ops/ws`，并对外提供 `GET /api/v1/ops/*`、`PATCH /api/v1/ops/alerts/{id}/close`、`WS /api/ws/ops`
 - `web/portal_app` 已落地运维门户骨架、健康中心页面、运行时配置注入与前端构建拆包
 - `web/portal_app` 已接入实时仪表盘、器材管理、环境质量、告警管理、用户管理、设备注册，以及后台 JWT 登录与业务 WebSocket
+- `web/portal_app` 已新增独立登录页 `/login`，并统一未登录跳转与登录后回跳
+- `web/portal_app` 已按角色收敛页面可见性：学生隐藏“告警管理”，教师 / 学生在器材与环境页隐藏配置下发控件
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图、`ops_observer` 聚合健康视图，以及网页端入口与运行时配置

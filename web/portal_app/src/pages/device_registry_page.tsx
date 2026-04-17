@@ -295,16 +295,11 @@ export function DeviceRegistryPage() {
 
   if (!session) {
     return (
-      <section className="page_shell">
-        <section className="hero_banner compact_hero_banner">
-          <div>
-            <div className="eyebrow">06 网页端 / 设备注册</div>
-            <h1>登录后可管理设备注册信息</h1>
-            <p>当前页面仅允许后台管理员访问，未登录时不会发起设备注册接口调用。</p>
-          </div>
-        </section>
-        <Alert type="warning" message="请先登录后台管理员账号" showIcon />
-      </section>
+      <AuthRequiredState
+        eyebrow="06 网页端 / 设备注册"
+        title="登录后可管理设备注册信息"
+        description="当前页面仅允许后台管理员访问，未登录时不会发起设备注册接口调用。"
+      />
     );
   }
 

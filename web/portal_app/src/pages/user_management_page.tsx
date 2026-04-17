@@ -21,6 +21,7 @@ import {
   fetch_users,
   update_user
 } from '../api/backend_client';
+import { AuthRequiredState } from '../components/auth_required_state';
 import { use_auth_store } from '../store/auth_store';
 import type { UserCreateRequest, UserRole, UserSummary, UserUpdateRequest } from '../types/backend';
 import { format_time } from '../utils/time';
@@ -240,16 +241,11 @@ export function UserManagementPage() {
 
   if (!session) {
     return (
-      <section className="page_shell">
-        <section className="hero_banner compact_hero_banner">
-          <div>
-            <div className="eyebrow">06 网页端 / 用户管理</div>
-            <h1>登录后可管理后台账号</h1>
-            <p>当前页面仅允许后台管理员访问，未登录时不会发起用户管理接口调用。</p>
-          </div>
-        </section>
-        <Alert type="warning" message="请先登录后台管理员账号" showIcon />
-      </section>
+      <AuthRequiredState
+        eyebrow="06 网页端 / 用户管理"
+        title="登录后可管理后台账号"
+        description="当前页面仅允许后台管理员访问，未登录时不会发起用户管理接口调用。"
+      />
     );
   }
 

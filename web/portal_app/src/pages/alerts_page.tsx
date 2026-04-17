@@ -166,6 +166,26 @@ export function AlertsPage() {
     );
   }
 
+  if (session.user.role === 'student') {
+    return (
+      <section className="page_shell">
+        <section className="hero_banner compact_hero_banner">
+          <div>
+            <div className="eyebrow">06 网页端 / 告警管理</div>
+            <h1>当前账号没有告警管理权限</h1>
+            <p>学生账号当前不可访问告警管理页面，也不会发起后台告警接口调用。</p>
+          </div>
+        </section>
+        <Alert
+          type="warning"
+          message="该页面仅对管理员和教师开放"
+          description={`当前角色：${session.user.role}；数据范围：${scope_description}`}
+          showIcon
+        />
+      </section>
+    );
+  }
+
   return (
     <section className="page_shell">
       <section className="hero_banner compact_hero_banner">

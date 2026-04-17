@@ -49,6 +49,12 @@ const DeviceRegistryPage = lazy(async () =>
   }))
 );
 
+const LoginPage = lazy(async () =>
+  import('../pages/login_page').then((module) => ({
+    default: module.LoginPage
+  }))
+);
+
 function RouteFallback() {
   return (
     <section className="panel_surface loading_surface">
@@ -69,6 +75,7 @@ function AppLayout() {
   const runtime_config = get_runtime_config();
   const session = use_auth_store((state) => state.session);
   const is_admin = session?.user.role === 'admin';
+  const can_view_business_alerts = session?.user.role !== 'student';
 
   return (
     <Layout className="app_layout">
@@ -90,9 +97,11 @@ function AppLayout() {
           <NavLink to="/env-quality" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
             环境质量
           </NavLink>
-          <NavLink to="/alerts" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
-            告警管理
-          </NavLink>
+          {can_view_business_alerts ? (
+            <NavLink to="/alerts" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
+              告警管理
+            </NavLink>
+          ) : null}
           {is_admin ? (
             <>
               <NavLink to="/device-registry" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
@@ -122,6 +131,10 @@ function AppLayout() {
 }
 
 export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: render_lazy_page(LoginPage)
+  },
   {
     path: '/',
     element: <AppLayout />,
