@@ -10,6 +10,7 @@
 - `web/`：业务与运维一体化门户前端、运行时配置注入
 - `deployment/`：统一部署目录，按模块存放镜像构建资产、专项脚本、整栈联调脚本与正式 Docker Compose 编排
 - `docs/`：系统架构、各子系统规格、接口契约与开发排期
+- Linux 正式部署入口当前支持单条 `docker compose -f deployment/compose/docker-compose.yaml up -d --build` 自举启动
 
 当前机器上已完成并验证：
 
@@ -214,6 +215,12 @@ BACKEND_ADMIN_USERNAME=admin BACKEND_ADMIN_PASSWORD='<your-password>' \
 
 ```bash
 docker compose -f deployment/compose/docker-compose.yaml config
+```
+
+Linux 正式部署启动命令：
+
+```bash
+docker compose -f deployment/compose/docker-compose.yaml up -d --build
 ```
 
 ## 本地平台说明

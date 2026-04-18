@@ -31,14 +31,14 @@ cleanup() {
 trap cleanup INT TERM
 
 if [ ! -f "$token_path" ]; then
-  until token_json="$(influxdb3 create token --admin --host http://127.0.0.1:8181 --format json 2>/dev/null)"; do
-    sleep 1
+  token=""
+  while [ -z "$token" ]; do
+    token_json="$(influxdb3 create token --admin --host http://127.0.0.1:8181 --format json 2>/dev/null || true)"
+    token="$(printf '%s\n' "$token_json" | sed -n 's/^[[:space:]]*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
+    if [ -z "$token" ]; then
+      sleep 1
+    fi
   done
-  token="$(printf '%s\n' "$token_json" | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-  if [ -z "$token" ]; then
-    echo "failed to parse influxdb admin token from create token output" >&2
-    exit 1
-  fi
   printf '%s\n' "$token" >"$token_path"
   chmod 600 "$token_path"
 fi

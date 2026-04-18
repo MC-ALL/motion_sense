@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 DEFAULT_CONFIG_PATH = Path("/runtime/config/edge_processor/app_settings.yaml")
 DEFAULT_INFLUXDB_TOKEN_PATH = Path("/runtime/config/influxdb/admin_token.txt")
+DEFAULT_OPS_TOKEN_PATH = Path("/runtime/secrets/edge_processor_ops_token.txt")
 
 
 class HttpBackendSettings(BaseModel):
@@ -161,3 +162,5 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
 
     if not influxdb.get("auth_token") and DEFAULT_INFLUXDB_TOKEN_PATH.exists():
         influxdb["auth_token"] = DEFAULT_INFLUXDB_TOKEN_PATH.read_text(encoding="utf-8").strip()
+    if not ops_auth.get("token") and DEFAULT_OPS_TOKEN_PATH.exists():
+        ops_auth["token"] = DEFAULT_OPS_TOKEN_PATH.read_text(encoding="utf-8").strip()

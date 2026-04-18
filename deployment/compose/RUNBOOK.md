@@ -1,0 +1,164 @@
+# Linux Compose Runbook
+
+适用范围：
+- 目标环境为 Linux + Docker + Docker Compose v2
+- 正式入口为 `deployment/compose/docker-compose.yaml`
+- 推荐按本文顺序执行，不要跳步
+
+相关文档：
+- 主机初始化：`deployment/compose/SERVER_INIT_CHECKLIST.md`
+- 变量与端口对照：`deployment/compose/PRODUCTION_REFERENCE.md`
+
+## 0. 进入仓库
+
+```bash
+cd /path/to/motion_sense
+```
+
+## 1. 启动前检查
+
+确认 Compose `include`、相对路径与变量解析正常：
+
+```bash
+docker compose -f deployment/compose/docker-compose.yaml config >/tmp/motion_sense.compose.config.yaml
+```
+
+预期结果：
+- 命令退出码为 `0`
+- 没有 `include`、路径、变量解析错误
+
+## 2. 正式起栈
+
+```bash
+sh deployment/compose/start_stack.sh
+```
+
+预期结果：
+- 打印 `runtime init ready: runtime_init`
+- 打印各关键服务 `service ready: ... (healthy)`
+- 打印 `compose services:`
+- 打印 `bootstrap info:`
+- 打印 `stack summary:`
+
+## 3. 记录首登信息
+
+```bash
+sh deployment/compose/print_bootstrap_credentials.sh
+```
+
+记录以下信息：
+- 后台 bootstrap admin 用户名与密码
+- 网关 ops token
+
+## 4. 运维鉴权验收
+
+```bash
+sh deployment/compose/verify_ops_auth_stack.sh
+```
+
+预期结果：
+- 后台管理员登录通过
+- 网关 ops token 校验通过
+- `ops_observer` 管理员 JWT 校验通过
+- gateway / `ops_observer` 运维 WebSocket 鉴权通过
+
+## 5. 业务链路验收
+
+```bash
+sh deployment/compose/verify_system_stack.sh
+```
+
+预期结果：
+- 设备入库通过
+- 健康聚合通过
+- 配置命令闭环通过
+- 网页入口与运维聚合视图通过
+
+## 6. 数据链路验收
+
+```bash
+sh deployment/compose/verify_database_stack.sh
+```
+
+预期结果：
+- refresh session 通过
+- TimescaleDB 写入与查询通过
+- Redis 链路通过
+- Influx 缓冲与补发通过
+
+## 7. 浏览器人工验收
+
+打开：
+
+```text
+http://127.0.0.1:8080/
+```
+
+人工检查：
+- 使用 bootstrap admin 登录网页端
+- “健康中心”显示 backend / gateway 为 `healthy`
+- 关键业务页面可以正常加载
+
+## 8. TLS 补充验收
+
+仅在启用 MQTT TLS 时执行：
+- 检查 `deployment/runtime/certs/`
+- 确认证书文件存在：`server.crt`、`server.key`、`ca.crt`
+- 确认属主与权限符合 Mosquitto 要求
+
+## 快速排障
+
+先看服务状态：
+
+```bash
+docker compose -f deployment/compose/docker-compose.yaml ps
+```
+
+若首启卡住，先看：
+
+```bash
+docker compose -f deployment/compose/docker-compose.yaml logs runtime_init
+```
+
+若某个服务不健康，查看单服务日志：
+
+```bash
+docker compose -f deployment/compose/docker-compose.yaml logs --tail=120 backend_api_service
+docker compose -f deployment/compose/docker-compose.yaml logs --tail=120 gateway_edge_processor
+docker compose -f deployment/compose/docker-compose.yaml logs --tail=120 ops_observer_api_service
+docker compose -f deployment/compose/docker-compose.yaml logs --tail=120 web_portal_app
+```
+
+若表现为鉴权异常，先执行：
+
+```bash
+sh deployment/compose/print_bootstrap_credentials.sh
+sh deployment/compose/verify_ops_auth_stack.sh
+```
+
+若表现为业务链路异常，再执行：
+
+```bash
+sh deployment/compose/verify_system_stack.sh
+```
+
+若表现为数据库或补发异常，再执行：
+
+```bash
+sh deployment/compose/verify_database_stack.sh
+```
+
+## 停栈
+
+正常停栈：
+
+```bash
+sh deployment/compose/stop_stack.sh
+```
+
+仅在明确需要清空时才使用：
+
+```bash
+PURGE_VOLUMES=true sh deployment/compose/stop_stack.sh
+PURGE_RUNTIME=true sh deployment/compose/stop_stack.sh
+```

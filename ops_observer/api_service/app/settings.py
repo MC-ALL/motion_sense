@@ -9,6 +9,9 @@ from pydantic import BaseModel, Field, ValidationError
 
 
 DEFAULT_CONFIG_PATH = Path("/runtime/config/ops_observer/api_service/app_settings.yaml")
+DEFAULT_BACKEND_CONFIG_PATH = Path("/runtime/config/backend/api_service/app_settings.yaml")
+DEFAULT_BACKEND_BOOTSTRAP_PATH = Path("/runtime/config/backend/api_service/bootstrap_admin.txt")
+DEFAULT_GATEWAY_OPS_TOKEN_PATH = Path("/runtime/secrets/edge_processor_ops_token.txt")
 
 
 class UpstreamModuleSettings(BaseModel):
@@ -63,6 +66,7 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSetti
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
     _apply_env_overrides(raw)
+    _apply_runtime_fallbacks(raw)
 
     try:
         return RuntimeSettings.model_validate(raw)
@@ -114,6 +118,32 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
     _apply_upstream_override(upstream_modules, "backend", "ws_path", os.environ.get("OPS_OBSERVER_BACKEND_WS_PATH"))
 
 
+def _apply_runtime_fallbacks(raw: dict[str, Any]) -> None:
+    auth = raw.setdefault("auth", {})
+    auth_jwt = auth.setdefault("jwt", {})
+    upstream_modules = raw.setdefault("upstream_modules", [])
+
+    backend_config = _load_yaml(DEFAULT_BACKEND_CONFIG_PATH)
+    if not auth_jwt.get("access_secret"):
+        backend_secret = (
+            backend_config.get("auth", {})
+            .get("jwt", {})
+            .get("access_secret")
+        )
+        if isinstance(backend_secret, str) and backend_secret:
+            auth_jwt["access_secret"] = backend_secret
+
+    gateway_ops_token = _read_text_file(DEFAULT_GATEWAY_OPS_TOKEN_PATH)
+    if gateway_ops_token:
+        _apply_upstream_fallback(upstream_modules, "gateway", "auth_token", gateway_ops_token)
+
+    backend_username, backend_password = _load_bootstrap_admin(DEFAULT_BACKEND_BOOTSTRAP_PATH)
+    if backend_username:
+        _apply_upstream_fallback(upstream_modules, "backend", "auth_username", backend_username)
+    if backend_password:
+        _apply_upstream_fallback(upstream_modules, "backend", "auth_password", backend_password)
+
+
 def _apply_upstream_override(
     upstream_modules: list[dict[str, Any]],
     module_type: str,
@@ -126,6 +156,47 @@ def _apply_upstream_override(
         if item.get("module_type") == module_type:
             item[key] = value
             return
+
+
+def _apply_upstream_fallback(
+    upstream_modules: list[dict[str, Any]],
+    module_type: str,
+    key: str,
+    value: Any,
+) -> None:
+    if value is None:
+        return
+    for item in upstream_modules:
+        if item.get("module_type") == module_type and not item.get(key):
+            item[key] = value
+            return
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+
+
+def _read_text_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    value = path.read_text(encoding="utf-8").strip()
+    return value or None
+
+
+def _load_bootstrap_admin(path: Path) -> tuple[str | None, str | None]:
+    if not path.exists():
+        return None, None
+
+    username: str | None = None
+    password: str | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("username: "):
+            username = line.removeprefix("username: ").strip() or None
+        elif line.startswith("password: "):
+            password = line.removeprefix("password: ").strip() or None
+    return username, password
 
 
 def _parse_optional_bool(value: str | None) -> bool | None:

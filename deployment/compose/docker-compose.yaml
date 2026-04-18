@@ -5,27 +5,99 @@ include:
   - ../web/compose/docker-compose.yaml
 
 services:
+  runtime_init:
+    image: python:3.13-slim
+    command:
+      - sh
+      - -lc
+      - >
+        mkdir -p
+        /runtime/config
+        /runtime/config/backend/api_service
+        /runtime/config/edge_processor
+        /runtime/config/influxdb
+        /runtime/config/mosquitto
+        /runtime/config/ops_observer/api_service
+        /runtime/config/web/portal_app
+        /runtime/secrets
+        /runtime/certs
+        /runtime/data/ops_observer
+        &&
+        chmod 0777
+        /runtime
+        /runtime/config
+        /runtime/config/backend
+        /runtime/config/backend/api_service
+        /runtime/config/edge_processor
+        /runtime/config/influxdb
+        /runtime/config/mosquitto
+        /runtime/config/ops_observer
+        /runtime/config/ops_observer/api_service
+        /runtime/config/web
+        /runtime/config/web/portal_app
+        /runtime/secrets
+        /runtime/certs
+        /runtime/data
+        /runtime/data/ops_observer
+    restart: "no"
+    volumes:
+      - ../runtime:/runtime
+
+  backend_api_service:
+    depends_on:
+      runtime_init:
+        condition: service_completed_successfully
+
+  gateway_mosquitto:
+    depends_on:
+      runtime_init:
+        condition: service_completed_successfully
+
+  gateway_influxdb:
+    depends_on:
+      runtime_init:
+        condition: service_completed_successfully
+
   gateway_edge_processor:
     depends_on:
-      - backend_api_service
-      - gateway_mosquitto
-      - gateway_influxdb
+      runtime_init:
+        condition: service_completed_successfully
+      backend_api_service:
+        condition: service_healthy
+      gateway_mosquitto:
+        condition: service_healthy
+      gateway_influxdb:
+        condition: service_healthy
     environment:
       EDGE_PROCESSOR_BACKEND_BASE_URL: http://backend_api_service:8000/api/v1
       EDGE_PROCESSOR_INFLUXDB_BASE_URL: http://gateway_influxdb:8181
       EDGE_PROCESSOR_MQTT_HOST: gateway_mosquitto
-      EDGE_PROCESSOR_MQTT_USERNAME: admin
-      EDGE_PROCESSOR_MQTT_PASSWORD: admin123
+      EDGE_PROCESSOR_MQTT_USERNAME: ${MOSQUITTO_USER:-admin}
+      EDGE_PROCESSOR_MQTT_PASSWORD: ${MOSQUITTO_PASSWORD:-admin123}
 
   ops_observer_api_service:
     depends_on:
-      - backend_api_service
-      - gateway_edge_processor
+      runtime_init:
+        condition: service_completed_successfully
+      backend_api_service:
+        condition: service_healthy
+      gateway_edge_processor:
+        condition: service_healthy
     environment:
       OPS_OBSERVER_BACKEND_BASE_URL: http://backend_api_service:8000
       OPS_OBSERVER_GATEWAY_BASE_URL: http://gateway_edge_processor:8080
 
   web_portal_app:
     depends_on:
-      - backend_api_service
-      - ops_observer_api_service
+      runtime_init:
+        condition: service_completed_successfully
+      backend_api_service:
+        condition: service_healthy
+      ops_observer_api_service:
+        condition: service_healthy
+    environment:
+      WEB_PORTAL_BACKEND_BASE_URL: ${WEB_PORTAL_BACKEND_BASE_URL:-}
+      WEB_PORTAL_BACKEND_WS_URL: ${WEB_PORTAL_BACKEND_WS_URL:-/api/ws}
+      WEB_PORTAL_OPS_BASE_URL: ${WEB_PORTAL_OPS_BASE_URL:-}
+      WEB_PORTAL_OPS_WS_URL: ${WEB_PORTAL_OPS_WS_URL:-/api/ws/ops}
+      WEB_PORTAL_REFRESH_INTERVAL_MS: ${WEB_PORTAL_REFRESH_INTERVAL_MS:-15000}

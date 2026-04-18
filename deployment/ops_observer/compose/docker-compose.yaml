@@ -3,9 +3,19 @@ services:
     build:
       context: ../../..
       dockerfile: deployment/ops_observer/api_service/Dockerfile
+    environment:
+      OPS_OBSERVER_AUTH_ENFORCE_REST: "true"
+      OPS_OBSERVER_AUTH_ENFORCE_WS: "true"
     ports:
       - "8090:8090"
     restart: unless-stopped
     volumes:
       - ../../runtime/config:/runtime/config
+      - ../../runtime/secrets:/runtime/secrets
       - ../../runtime/data:/runtime/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s

@@ -3,6 +3,9 @@ services:
     build:
       context: ../../..
       dockerfile: deployment/gateway/mosquitto/Dockerfile
+    environment:
+      MOSQUITTO_USER: ${MOSQUITTO_USER:-admin}
+      MOSQUITTO_PASSWORD: ${MOSQUITTO_PASSWORD:-admin123}
     ports:
       - "1883:1883"
     restart: unless-stopped
@@ -12,6 +15,12 @@ services:
       - ../../runtime/certs:/runtime/certs
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h 127.0.0.1 -p 1883 -u \"$${MOSQUITTO_USER:-admin}\" -P \"$${MOSQUITTO_PASSWORD:-admin123}\" -t healthcheck -m ok >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   gateway_influxdb:
     build:
@@ -23,19 +32,35 @@ services:
     volumes:
       - ../../runtime/config:/runtime/config
       - influxdb_data:/var/lib/influxdb3
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /runtime/config/influxdb/admin_token.txt && influxdb3 show databases --host http://127.0.0.1:8181 --token \"$$(tr -d '\\r\\n' < /runtime/config/influxdb/admin_token.txt)\" >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   gateway_edge_processor:
     build:
       context: ../../..
       dockerfile: deployment/gateway/edge_processor/Dockerfile
     depends_on:
-      - gateway_mosquitto
-      - gateway_influxdb
-    ports:
-      - "8080:8080"
+      gateway_mosquitto:
+        condition: service_healthy
+      gateway_influxdb:
+        condition: service_healthy
+    environment:
+      EDGE_PROCESSOR_OPS_AUTH_ENFORCE_REST: "true"
+      EDGE_PROCESSOR_OPS_AUTH_ENFORCE_WS: "true"
     restart: unless-stopped
     volumes:
       - ../../runtime/config:/runtime/config
+      - ../../runtime/secrets:/runtime/secrets
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
 
 volumes:
   mosquitto_data:
