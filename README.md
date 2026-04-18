@@ -74,6 +74,7 @@
 - `deployment/container/` 放 Apple `container` 整栈联调脚本
 - `deployment/compose/` 放 Linux + Docker 整栈编排
 - `deployment/runtime/` 是唯一运行时目录
+- Linux 正式部署入口为 `deployment/compose/docker-compose.yaml`，通过 Compose `include` 聚合模块编排，要求 Docker Compose `2.20.3+`
 
 ## 路由与数据流总览
 
@@ -207,6 +208,12 @@ sh deployment/container/stop_local_stack.sh
 ```bash
 BACKEND_ADMIN_USERNAME=admin BACKEND_ADMIN_PASSWORD='<your-password>' \
   sh deployment/container/verify_system_stack.sh
+```
+
+迁移到 Linux 主机前，建议先执行：
+
+```bash
+docker compose -f deployment/compose/docker-compose.yaml config
 ```
 
 ## 本地平台说明

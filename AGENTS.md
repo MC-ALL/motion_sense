@@ -1,39 +1,53 @@
 # Repository Guidelines
 
-## 项目结构与模块组织
-仓库同时包含需求文档与第 1 迭代实现代码：
-- `docs/`：系统总览、01-06 子系统规格、07 接口契约、08 排期、09 运维观测端设计。
-- `deployment/runtime/`：统一运行时目录。
-- `deployment/container/`：仓库级 Apple `container` 整栈联调脚本。
-- `deployment/compose/`：仓库级 Linux + Docker 正式部署编排。
-- `gateway/edge_processor/app/`：04 网关端异步服务源码；部署文件在 `deployment/gateway/`。
-- `backend/api_service/app/`：05 后台端异步 FastAPI 服务；部署文件在 `deployment/backend/`。
-- `ops_observer/api_service/app/`：09 运维观测端异步 FastAPI 服务；部署文件在 `deployment/ops_observer/`。
-- `web/portal_app/`：06 网页端 React + Vite 前端；部署文件在 `deployment/web/`。
+## 关键路径
+- 总览与当前范围：`README.md`、`docs/00-系统总览.md`
+- 网关设计：`docs/04-网关端.md`
+- 后台设计：`docs/05-后台端.md`
+- 网页端设计：`docs/06-网页端.md`
+- 接口契约：`docs/07-通讯接口定义.md`
+- 当前进展：`docs/08-开发排期.md`
+- 运维观测：`docs/09-运维观测端.md`
+- 部署规范：`deployment/README.md`、`deployment/container/README.md`、`deployment/compose/README.md`
 
-修改实现时，至少同步检查 `docs/04-网关端.md`、`docs/05-后台端.md`、`docs/07-通讯接口定义.md`；涉及运维健康时还要同步 `docs/09-运维观测端.md` 与 `docs/06-网页端.md`。
+## 项目结构
+- `gateway/edge_processor/app/`：04 网关异步服务；测试在 `gateway/edge_processor/tests/`
+- `gateway/device_simulator/app/`：MQTT 联调用模拟器；测试在 `gateway/device_simulator/tests/`
+- `backend/api_service/app/`：05 后台异步 FastAPI；测试在 `backend/api_service/tests/`
+- `ops_observer/api_service/app/`：09 运维观测端；测试在 `ops_observer/api_service/tests/`
+- `web/portal_app/src/`：06 网页端 React + Vite
+- `deployment/gateway/`、`deployment/backend/`、`deployment/ops_observer/`、`deployment/web/`：模块部署资产
+- `deployment/container/`：Apple `container` 整栈联调入口
+- `deployment/compose/docker-compose.yaml`：Linux + Docker 正式部署入口
+- `deployment/runtime/`：唯一运行时目录
 
-## 构建、测试与开发命令
-- `rg -n "TODO|FIXME|待补充" docs gateway backend ops_observer web`：扫描待补项。
-- `python3 -m compileall backend/api_service/app gateway/edge_processor/app ops_observer/api_service/app`：快速做语法检查。
-- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/backend/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行后台单测。
-- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行网关单测。
-- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/ops_observer/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行运维观测端单测。
-- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/web/portal_app node:24-alpine sh -lc "npm ci && npm run build"`：按锁文件构建网页端。
-- `sh deployment/container/build_local_images.sh && sh deployment/gateway/container/prepare_runtime.sh && sh deployment/container/start_local_stack.sh && sh deployment/container/verify_system_stack.sh && sh deployment/container/stop_local_stack.sh`：运行 Apple `container` 本地整栈联调。
-- `sh deployment/ops_observer/container/verify_ops_observer_api.sh`：校验运行中的运维观测端基础 REST 接口。
+## 开发与验证
+- `python3 -m compileall backend/api_service/app gateway/edge_processor/app ops_observer/api_service/app`
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/backend/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/ops_observer/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/web/portal_app node:24-alpine sh -lc "npm ci && npm run build"`
+- `sh deployment/container/build_local_images.sh && sh deployment/gateway/container/prepare_runtime.sh && sh deployment/container/start_local_stack.sh && sh deployment/container/verify_regression_stack.sh && sh deployment/container/stop_local_stack.sh`
 
-## 代码风格与命名规范
-- Python 服务优先保持异步架构，配置键、模块名、消息字段统一使用 `snake_case`。
-- 所有部署相关资产统一放在仓库根 `deployment/`；其中 `deployment/<module>/` 放模块部署资产，`deployment/runtime/` 为唯一运行时目录。
-- 首次运行生成的运行时文件必须来自 `default_*` 模板。
-- 严禁提交证书、口令文件、运行期 token、`.env` 或其他敏感数据。
-- REST 路径、MQTT topic、字段名必须与 `docs/07-通讯接口定义.md` 保持一致。
+## 约束
+- Python 服务优先保持异步架构；模块名、配置键、消息字段统一使用 `snake_case`
+- 所有部署资产只放在根 `deployment/`，不在源码目录旁散落脚本
+- 首次运行生成的正式配置必须来自 `default_*`
+- 禁止提交证书、口令、token、`.env` 等敏感文件
+- REST 路径、MQTT topic、字段名必须与 `docs/07-通讯接口定义.md` 一致
+- 涉及 `04/05/06/09` 任一实现变更时，至少同步检查对应设计文档与 `docs/08-开发排期.md`
 
-## 测试规范
-- 修改后台逻辑后，至少运行后台单测；修改网关逻辑后，至少运行网关单测。
-- 涉及配置下发时，重点验证“后台建单 -> 网关轮询 -> 本地执行/转发 -> 结果回报”闭环。
-- 涉及接口契约变更时，必须同步更新文档示例与字段说明。
+## 当前工作记忆
+- 已完成：`04/05/06/09` 第 1 迭代核心链路、权限模型、健康观测、Apple `container` 整栈回归
+- 已完成：部署目录统一重构为 `deployment/<module>/` + 仓库级 `deployment/container/`、`deployment/compose/`、单一 `deployment/runtime/`
+- 已完成：文档已同步到当前结构，适合迁移到远端 Linux 主机继续开发
 
-## 提交与合并请求规范
-使用带 scope 的 Conventional Commits，例如 `feat(gateway): add health reporter`、`fix(backend): persist config commands`。PR 说明应包含：改动目的、影响模块、文档是否同步、以及本地验证结果（如 `pytest`、Apple `container` 联调）。
+## 下一步
+- 迁移前在目标主机执行 `docker compose -f deployment/compose/docker-compose.yaml config`，确认 Compose `include` 可用
+- Linux 正式部署时补齐 Mosquitto `acl.conf`、`passwd`、证书文件的属主与权限初始化
+- 继续工作时优先做迁移验证、整栈起栈回归，再进入剩余生产化收尾
+
+## 提交规范
+- 使用带 scope 的 Conventional Commits，例如 `feat(gateway): add health reporter`
+- 提交前清理临时文件、停掉容器
+- PR 说明至少写明：改动目的、影响模块、文档是否同步、本地验证结果
