@@ -49,7 +49,7 @@
 
 ## 运行配置文件生成
 
-- 首次启动会将 `backend/deployment/api_service/defaults/default_app_settings.yaml`
+- 首次启动会将 `deployment/backend/api_service/defaults/default_app_settings.yaml`
   复制到 `/runtime/config/backend/api_service/app_settings.yaml`
 - 首次启动会补齐后台管理员密码哈希、JWT 密钥，并生成
   `/runtime/config/backend/api_service/bootstrap_admin.txt`

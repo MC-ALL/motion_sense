@@ -1,0 +1,47 @@
+services:
+  backend_timescaledb:
+    build:
+      context: ../../..
+      dockerfile: deployment/backend/timescaledb/Dockerfile
+    environment:
+      POSTGRES_DB: motion_sense
+      POSTGRES_USER: motion_sense
+      POSTGRES_PASSWORD: change_me_at_deploy
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+
+  backend_redis:
+    image: redis:8.6-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  backend_api_service:
+    build:
+      context: ../../..
+      dockerfile: deployment/backend/api_service/Dockerfile
+    depends_on:
+      - backend_timescaledb
+      - backend_redis
+    environment:
+      BACKEND_STORAGE_BACKEND: postgres
+      BACKEND_REALTIME_BACKEND: redis
+      BACKEND_DATABASE_HOST: backend_timescaledb
+      BACKEND_DATABASE_PORT: 5432
+      BACKEND_DATABASE_NAME: motion_sense
+      BACKEND_DATABASE_USER: motion_sense
+      BACKEND_DATABASE_PASSWORD: change_me_at_deploy
+      BACKEND_REDIS_HOST: backend_redis
+      BACKEND_REDIS_PORT: 6379
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ../../runtime/config:/runtime/config
+
+volumes:
+  timescaledb_data:

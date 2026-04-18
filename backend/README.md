@@ -86,7 +86,7 @@
 container build \
   --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-backend-api-local \
-  -f backend/deployment/api_service/Dockerfile .
+  -f deployment/backend/api_service/Dockerfile .
 ```
 
 ## 已完成验证

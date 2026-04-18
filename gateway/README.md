@@ -6,9 +6,9 @@
 
 - `edge_processor/`：Python 3.13 异步应用源码与测试
 - `device_simulator/`：独立 Python 3.13 异步 MQTT 设备模拟器源码与测试
-- `mosquitto/defaults/`：Broker 默认配置模板，首次启动复制到运行挂载目录
-- `influxdb/defaults/`：InfluxDB 默认初始化模板
-- `deployment/`：Dockerfile、入口脚本、Compose 与本地测试辅助脚本
+- `../deployment/gateway/mosquitto/defaults/`：Broker 默认配置模板，首次启动复制到运行挂载目录
+- `../deployment/gateway/influxdb/defaults/`：InfluxDB 默认初始化模板
+- `../deployment/gateway/`：Dockerfile、入口脚本、默认模板与网关专项测试脚本
 
 ## 路由与链路逻辑
 
@@ -38,14 +38,14 @@ Linux 部署仍以 Docker Compose 为主。
 container build \
   --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-edge-processor-local \
-  -f gateway/deployment/edge_processor/Dockerfile .
+  -f deployment/gateway/edge_processor/Dockerfile .
 ```
 
-详细命令见 `deployment/container/README.md`。
+整栈联调命令见仓库根目录 `deployment/container/README.md`；网关专项脚本说明见 `deployment/gateway/container/README.md`。
 
 ## 运行时挂载
 
-Compose 约定以下宿主机挂载目录位于 `deployment/compose/runtime/`：
+Compose 约定以下宿主机挂载目录位于 `deployment/runtime/`：
 
 - `config/`
 - `secrets/`

@@ -29,7 +29,7 @@
 ## 运行时配置
 
 - 首次启动自动生成：`/runtime/config/device_simulator/simulator_settings.yaml`
-- 默认模板来源：`gateway/deployment/device_simulator/defaults/default_simulator_settings.yaml`
+- 默认模板来源：`deployment/gateway/device_simulator/defaults/default_simulator_settings.yaml`
 - 修改配置后需要重启容器
 - 当前通过 `mqtt.client_id` 自动派生三个连接标识：
   - `device-simulator-equipment`

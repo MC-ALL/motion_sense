@@ -1,0 +1,11 @@
+services:
+  ops_observer_api_service:
+    build:
+      context: ../../..
+      dockerfile: deployment/ops_observer/api_service/Dockerfile
+    ports:
+      - "8090:8090"
+    restart: unless-stopped
+    volumes:
+      - ../../runtime/config:/runtime/config
+      - ../../runtime/data:/runtime/data

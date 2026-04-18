@@ -5,7 +5,7 @@
 ## 目录
 
 - `api_service/`：运维聚合 FastAPI 服务
-- `deployment/api_service/`：Dockerfile、入口脚本与默认配置模板
+- `../deployment/ops_observer/api_service/`：Dockerfile、入口脚本与默认配置模板
 
 ## 当前能力
 

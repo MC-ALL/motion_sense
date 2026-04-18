@@ -1,0 +1,31 @@
+include:
+  - ../backend/compose/docker-compose.yaml
+  - ../gateway/compose/docker-compose.yaml
+  - ../ops_observer/compose/docker-compose.yaml
+  - ../web/compose/docker-compose.yaml
+
+services:
+  gateway_edge_processor:
+    depends_on:
+      - backend_api_service
+      - gateway_mosquitto
+      - gateway_influxdb
+    environment:
+      EDGE_PROCESSOR_BACKEND_BASE_URL: http://backend_api_service:8000/api/v1
+      EDGE_PROCESSOR_INFLUXDB_BASE_URL: http://gateway_influxdb:8181
+      EDGE_PROCESSOR_MQTT_HOST: gateway_mosquitto
+      EDGE_PROCESSOR_MQTT_USERNAME: admin
+      EDGE_PROCESSOR_MQTT_PASSWORD: admin123
+
+  ops_observer_api_service:
+    depends_on:
+      - backend_api_service
+      - gateway_edge_processor
+    environment:
+      OPS_OBSERVER_BACKEND_BASE_URL: http://backend_api_service:8000
+      OPS_OBSERVER_GATEWAY_BASE_URL: http://gateway_edge_processor:8080
+
+  web_portal_app:
+    depends_on:
+      - backend_api_service
+      - ops_observer_api_service

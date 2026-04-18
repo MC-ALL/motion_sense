@@ -3,10 +3,13 @@
 ## 项目结构与模块组织
 仓库同时包含需求文档与第 1 迭代实现代码：
 - `docs/`：系统总览、01-06 子系统规格、07 接口契约、08 排期、09 运维观测端设计。
-- `gateway/edge_processor/app/`：04 网关端异步服务源码；部署文件在 `gateway/deployment/`。
-- `backend/api_service/app/`：05 后台端异步 FastAPI 服务；部署文件在 `backend/deployment/`。
-- `ops_observer/api_service/app/`：09 运维观测端异步 FastAPI 服务；部署文件在 `ops_observer/deployment/`。
-- `web/portal_app/`：06 网页端 React + Vite 前端；部署文件在 `web/deployment/`。
+- `deployment/runtime/`：统一运行时目录。
+- `deployment/container/`：仓库级 Apple `container` 整栈联调脚本。
+- `deployment/compose/`：仓库级 Linux + Docker 正式部署编排。
+- `gateway/edge_processor/app/`：04 网关端异步服务源码；部署文件在 `deployment/gateway/`。
+- `backend/api_service/app/`：05 后台端异步 FastAPI 服务；部署文件在 `deployment/backend/`。
+- `ops_observer/api_service/app/`：09 运维观测端异步 FastAPI 服务；部署文件在 `deployment/ops_observer/`。
+- `web/portal_app/`：06 网页端 React + Vite 前端；部署文件在 `deployment/web/`。
 
 修改实现时，至少同步检查 `docs/04-网关端.md`、`docs/05-后台端.md`、`docs/07-通讯接口定义.md`；涉及运维健康时还要同步 `docs/09-运维观测端.md` 与 `docs/06-网页端.md`。
 
@@ -17,12 +20,12 @@
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行网关单测。
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/ops_observer/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`：运行运维观测端单测。
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/web/portal_app node:24-alpine sh -lc "npm ci && npm run build"`：按锁文件构建网页端。
-- `sh gateway/deployment/container/build_local_images.sh && sh gateway/deployment/container/prepare_runtime.sh && sh gateway/deployment/container/start_local_stack.sh && sh gateway/deployment/container/verify_system_stack.sh && sh gateway/deployment/container/stop_local_stack.sh`：运行 Apple `container` 本地整栈联调。
-- `sh ops_observer/deployment/container/verify_ops_observer_api.sh`：校验运行中的运维观测端基础 REST 接口。
+- `sh deployment/container/build_local_images.sh && sh deployment/gateway/container/prepare_runtime.sh && sh deployment/container/start_local_stack.sh && sh deployment/container/verify_system_stack.sh && sh deployment/container/stop_local_stack.sh`：运行 Apple `container` 本地整栈联调。
+- `sh deployment/ops_observer/container/verify_ops_observer_api.sh`：校验运行中的运维观测端基础 REST 接口。
 
 ## 代码风格与命名规范
 - Python 服务优先保持异步架构，配置键、模块名、消息字段统一使用 `snake_case`。
-- 部署相关文件一律放在各模块自己的 `deployment/` 下，不在仓库根目录散落脚本。
+- 所有部署相关资产统一放在仓库根 `deployment/`；其中 `deployment/<module>/` 放模块部署资产，`deployment/runtime/` 为唯一运行时目录。
 - 首次运行生成的运行时文件必须来自 `default_*` 模板。
 - 严禁提交证书、口令文件、运行期 token、`.env` 或其他敏感数据。
 - REST 路径、MQTT topic、字段名必须与 `docs/07-通讯接口定义.md` 保持一致。

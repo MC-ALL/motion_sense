@@ -4,10 +4,11 @@
 
 ## 当前状态
 
-- `gateway/`：异步边缘处理服务、Mosquitto、InfluxDB 3 Core 部署资产，以及 Apple `container` 本地测试脚本
+- `gateway/`：异步边缘处理服务、Mosquitto、InfluxDB 3 Core 部署资产
 - `backend/`：异步 FastAPI 后台服务、TimescaleDB 持久化、Redis 实时广播
 - `ops_observer/`：独立运维观测服务、SQLite 持久化、基础设施健康聚合
 - `web/`：业务与运维一体化门户前端、运行时配置注入
+- `deployment/`：统一部署目录，按模块存放镜像构建资产、专项脚本、整栈联调脚本与正式 Docker Compose 编排
 - `docs/`：系统架构、各子系统规格、接口契约与开发排期
 
 当前机器上已完成并验证：
@@ -54,14 +55,25 @@
 ## 目录结构
 
 - `docs/`：需求与接口源文档
+- `deployment/runtime/`：统一运行时目录
+- `deployment/container/`：仓库级 Apple `container` 整栈联调脚本
+- `deployment/compose/`：Linux + Docker 正式部署编排入口
 - `gateway/edge_processor/`：网关 Python 服务
-- `gateway/deployment/`：网关 Dockerfile、入口脚本、Compose 与 Apple `container` 辅助脚本
+- `deployment/gateway/`：网关 Dockerfile、入口脚本、默认配置模板与专项验证脚本
 - `backend/api_service/`：后台 Python 服务
-- `backend/deployment/`：后台 Dockerfile 与部署基线
+- `deployment/backend/`：后台 Dockerfile 与部署基线
 - `ops_observer/api_service/`：运维观测 Python 服务
-- `ops_observer/deployment/`：运维观测 Dockerfile 与默认配置
+- `deployment/ops_observer/`：运维观测 Dockerfile 与默认配置
 - `web/portal_app/`：网页端前端源码
-- `web/deployment/`：网页端 Dockerfile、Nginx 配置与默认运行时配置
+- `deployment/web/`：网页端 Dockerfile、Nginx 配置与默认运行时配置
+
+部署目录规范：
+
+- 所有部署相关资产统一放在仓库根 `deployment/`
+- `deployment/<module>/` 放该模块的 Dockerfile、entrypoint、`default_*` 模板与模块专项脚本
+- `deployment/container/` 放 Apple `container` 整栈联调脚本
+- `deployment/compose/` 放 Linux + Docker 整栈编排
+- `deployment/runtime/` 是唯一运行时目录
 
 ## 路由与数据流总览
 
@@ -119,7 +131,7 @@ Linux / Docker 目标镜像构建：
 container build \
   --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-backend-api-local \
-  -f backend/deployment/api_service/Dockerfile .
+  -f deployment/backend/api_service/Dockerfile .
 ```
 
 构建网关镜像：
@@ -128,7 +140,7 @@ container build \
 container build \
   --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-edge-processor-local \
-  -f gateway/deployment/edge_processor/Dockerfile .
+  -f deployment/gateway/edge_processor/Dockerfile .
 ```
 
 在 Apple `container` 中运行后台单元测试：
@@ -167,7 +179,7 @@ container run --remove \
 container build \
   --build-arg PYTHON_BASE=python:3.13-slim \
   -t motion-sense-ops-observer-local \
-  -f ops_observer/deployment/api_service/Dockerfile .
+  -f deployment/ops_observer/api_service/Dockerfile .
 ```
 
 本地构建网页端镜像：
@@ -177,24 +189,24 @@ container build \
   --build-arg BUILD_BASE=node:24-alpine \
   --build-arg NGINX_BASE=nginx:1.29-alpine \
   -t motion-sense-web-portal-local \
-  -f web/deployment/portal_app/Dockerfile .
+  -f deployment/web/portal_app/Dockerfile .
 ```
 
 启动 `04 / 05 / 06 / 09` 完整本地联调栈：
 
 ```bash
-sh gateway/deployment/container/build_local_images.sh
-sh gateway/deployment/container/prepare_runtime.sh
-sh gateway/deployment/container/start_local_stack.sh
-sh gateway/deployment/container/verify_regression_stack.sh
-sh gateway/deployment/container/stop_local_stack.sh
+sh deployment/container/build_local_images.sh
+sh deployment/gateway/container/prepare_runtime.sh
+sh deployment/container/start_local_stack.sh
+sh deployment/container/verify_regression_stack.sh
+sh deployment/container/stop_local_stack.sh
 ```
 
-联调脚本默认读取 `backend/deployment/compose/runtime/config/backend/api_service/bootstrap_admin.txt` 中首次生成的后台管理员账号；如需覆盖，可在执行前传入：
+联调脚本默认读取 `deployment/runtime/config/backend/api_service/bootstrap_admin.txt` 中首次生成的后台管理员账号；如需覆盖，可在执行前传入：
 
 ```bash
 BACKEND_ADMIN_USERNAME=admin BACKEND_ADMIN_PASSWORD='<your-password>' \
-  sh gateway/deployment/container/verify_system_stack.sh
+  sh deployment/container/verify_system_stack.sh
 ```
 
 ## 本地平台说明

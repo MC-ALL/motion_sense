@@ -1,0 +1,10 @@
+services:
+  web_portal_app:
+    build:
+      context: ../../..
+      dockerfile: deployment/web/portal_app/Dockerfile
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    volumes:
+      - ../../runtime/config:/runtime/config

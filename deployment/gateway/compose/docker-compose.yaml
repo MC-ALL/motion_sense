@@ -1,0 +1,43 @@
+services:
+  gateway_mosquitto:
+    build:
+      context: ../../..
+      dockerfile: deployment/gateway/mosquitto/Dockerfile
+    ports:
+      - "1883:1883"
+    restart: unless-stopped
+    volumes:
+      - ../../runtime/config:/runtime/config
+      - ../../runtime/secrets:/runtime/secrets
+      - ../../runtime/certs:/runtime/certs
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  gateway_influxdb:
+    build:
+      context: ../../..
+      dockerfile: deployment/gateway/influxdb/Dockerfile
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
+    volumes:
+      - ../../runtime/config:/runtime/config
+      - influxdb_data:/var/lib/influxdb3
+
+  gateway_edge_processor:
+    build:
+      context: ../../..
+      dockerfile: deployment/gateway/edge_processor/Dockerfile
+    depends_on:
+      - gateway_mosquitto
+      - gateway_influxdb
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    volumes:
+      - ../../runtime/config:/runtime/config
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  influxdb_data:
