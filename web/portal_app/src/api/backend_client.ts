@@ -218,7 +218,8 @@ export async function publish_device_config(
 
 export function create_business_websocket(): WebSocket {
   const session = get_auth_session();
-  const url = new URL(runtime_config.backend_ws_url);
+  const url = new URL(runtime_config.backend_ws_url, window.location.href);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   if (session?.access_token) {
     url.searchParams.set('token', session.access_token);
   }
