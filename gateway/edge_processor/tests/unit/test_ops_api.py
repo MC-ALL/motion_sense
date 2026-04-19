@@ -61,7 +61,7 @@ def test_gateway_ops_endpoints_return_latest_snapshot(monkeypatch) -> None:
     app = build_app(RuntimeSettings(gateway_id="gw-test-001", gym_id="gym-gz-01"))
     app.state.runner._latest_health_report = _sample_report()
     app.state.runner._last_health_checked_at = "2026-04-15T10:00:00Z"
-    app.state.runner._health_report_success_total = 1
+    app.state.runner._health_check_success_total = 1
     app.state.runner._batch_upload_success_total = 2
     app.state.runner._last_batch_size = 10
     app.state.runner._mqtt_events_received_total = 12
@@ -82,7 +82,7 @@ def test_gateway_ops_endpoints_return_latest_snapshot(monkeypatch) -> None:
         assert stats_response.status_code == 200
         payload = stats_response.json()
         assert payload["module_id"] == "gateway:gw-test-001"
-        assert payload["health_report_success_total"] == 1
+        assert payload["health_check_success_total"] == 1
         assert payload["batch_upload_success_total"] == 2
         assert payload["last_batch_size"] == 10
         assert payload["mqtt_events_received_total"] == 12

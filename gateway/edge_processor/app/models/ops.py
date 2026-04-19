@@ -45,10 +45,10 @@ class GatewayOpsStats(BaseModel):
     last_batch_size: int = Field(default=0, ge=0)
     last_batch_uploaded_at: str | None = None
     last_batch_error: str | None = None
-    health_report_success_total: int = Field(ge=0)
-    health_report_failure_total: int = Field(ge=0)
+    health_check_success_total: int = Field(ge=0)
+    health_check_failure_total: int = Field(ge=0)
     last_health_checked_at: str | None = None
-    last_health_report_error: str | None = None
+    last_health_error: str | None = None
     last_known_health_status: HealthStatus = "unknown"
     batch_interval_s: int = Field(ge=1)
     command_poll_interval_s: int = Field(ge=1)

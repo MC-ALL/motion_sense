@@ -10,7 +10,6 @@ from app.models.device_command import (
     GatewayPendingCommandList,
 )
 from app.models.ingest_item import IngestBatch, IngestItem
-from app.models.system_health import GatewayHealthReportRequest
 from app.settings import RuntimeSettings
 
 
@@ -58,9 +57,3 @@ class BackendClient:
         )
         response.raise_for_status()
         return DeviceConfigCommandRecord.model_validate(response.json())
-
-    async def post_system_health(
-        self,
-        report: GatewayHealthReportRequest,
-    ) -> httpx.Response:
-        return await self._client.post("/system/health/report", json=report.model_dump())

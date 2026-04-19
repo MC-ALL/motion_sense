@@ -41,7 +41,7 @@ class EdgeProcessorRunner:
         self._ops_websocket_manager: OpsWebSocketManager | None = None
         self._started_at = datetime.now(UTC)
         self._latest_health_report = None
-        self._latest_health_report_error: str | None = None
+        self._latest_health_error: str | None = None
         self._last_health_checked_at: str | None = None
         self._mqtt_events_received_total = 0
         self._telemetry_events_total = 0
@@ -58,8 +58,8 @@ class EdgeProcessorRunner:
         self._last_batch_size = 0
         self._last_batch_uploaded_at: str | None = None
         self._last_batch_error: str | None = None
-        self._health_report_success_total = 0
-        self._health_report_failure_total = 0
+        self._health_check_success_total = 0
+        self._health_check_failure_total = 0
 
     def set_ops_websocket_manager(self, manager: OpsWebSocketManager) -> None:
         self._ops_websocket_manager = manager
@@ -110,7 +110,7 @@ class EdgeProcessorRunner:
             task_group.create_task(self._device_offline_monitor_loop(), name="device-offline-loop")
             task_group.create_task(self._rules_reload_loop(), name="rules-reload-loop")
             task_group.create_task(self._command_poll_loop(), name="command-poll-loop")
-            task_group.create_task(self._health_report_loop(), name="health-report-loop")
+            task_group.create_task(self._health_check_loop(), name="health-check-loop")
 
     async def _device_offline_monitor_loop(self) -> None:
         while True:
@@ -150,20 +150,18 @@ class EdgeProcessorRunner:
 
             await asyncio.sleep(self._settings.command_poll_interval_s)
 
-    async def _health_report_loop(self) -> None:
+    async def _health_check_loop(self) -> None:
         while True:
             try:
                 report = await self._health_reporter.collect_report()
                 await self._cache_health_report(report)
-                response = await self._backend_client.post_system_health(report)
-                response.raise_for_status()
-                self._health_report_success_total += 1
-                self._latest_health_report_error = None
+                self._health_check_success_total += 1
+                self._latest_health_error = None
             except Exception:
-                self._health_report_failure_total += 1
-                self._latest_health_report_error = "failed to post system health report"
+                self._health_check_failure_total += 1
+                self._latest_health_error = "failed to collect gateway health snapshot"
                 LOGGER.exception(
-                    "failed to report gateway infrastructure health",
+                    "failed to collect gateway infrastructure health",
                     extra={"gateway_id": self._settings.gateway_id},
                 )
             await asyncio.sleep(self._settings.health_interval_s)
@@ -354,10 +352,10 @@ class EdgeProcessorRunner:
             last_batch_size=self._last_batch_size,
             last_batch_uploaded_at=self._last_batch_uploaded_at,
             last_batch_error=self._last_batch_error,
-            health_report_success_total=self._health_report_success_total,
-            health_report_failure_total=self._health_report_failure_total,
+            health_check_success_total=self._health_check_success_total,
+            health_check_failure_total=self._health_check_failure_total,
             last_health_checked_at=self._last_health_checked_at,
-            last_health_report_error=self._latest_health_report_error,
+            last_health_error=self._latest_health_error,
             last_known_health_status=last_known_health_status,
             batch_interval_s=self._settings.batch_interval_s,
             command_poll_interval_s=self._settings.command_poll_interval_s,
