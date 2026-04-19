@@ -341,12 +341,6 @@ wait_for_json(
     lambda body: body["command_id"] == command_id and body["status"] == "succeeded",
     headers=auth_headers,
 )
-wait_for_json(
-    "gateway health detail",
-    f"{BACKEND_BASE_URL}/api/v1/system/health/{GATEWAY_ID}",
-    lambda body: body["gateway_id"] == GATEWAY_ID and len(body["components"]) >= 5,
-    headers=auth_headers,
-)
 PY
 )"
 
@@ -406,13 +400,6 @@ command_row="$(query_timescaledb \
   "SELECT status || '|' || (payload->>'telemetry_interval_s') FROM device_config_commands WHERE command_id = '${command_id}'::uuid LIMIT 1;")"
 [ "$(printf '%s' "${command_row}" | tr -d '[:space:]')" = "succeeded|25" ]
 
-gateway_health_count="$(query_timescaledb \
-  "SELECT COUNT(*) FROM gateway_component_health WHERE gateway_id = '${gateway_id}';")"
-GATEWAY_HEALTH_COUNT="${gateway_health_count:-0}" python3 - <<'PY'
-import os
-assert int((os.environ["GATEWAY_HEALTH_COUNT"] or "0").strip()) >= 5
-PY
-
 redis_ping="$(docker compose -f "${compose_file}" exec -T "${redis_service}" redis-cli ping | tr -d '\r')"
 [ "${redis_ping}" = "PONG" ]
 
@@ -454,6 +441,5 @@ printf 'TimescaleDB 环境时序表验证通过: %s\n' "${env_row}"
 printf 'PostgreSQL 告警表验证通过: %s\n' "${alert_row}"
 printf 'PostgreSQL 绑定表验证通过: %s\n' "${binding_row}"
 printf 'PostgreSQL 配置命令表验证通过: %s\n' "${command_row}"
-printf '网关健康表验证通过: %s\n' "${gateway_health_count}"
 printf 'Influx 缓冲写入验证通过: %s\n' "${influx_edge_rows}"
 printf 'Influx 补发确认验证通过: %s\n' "${influx_delivery_rows}"

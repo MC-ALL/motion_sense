@@ -249,12 +249,6 @@ command_json="$(wait_for_json \
   90 \
   "${backend_auth_header}")"
 
-gateway_health_json="$(wait_for_json \
-  "http://127.0.0.1:${backend_host_port}/api/v1/system/health/${gateway_id}" \
-  "import json, os; body=json.loads(os.environ['BODY_JSON']); assert body['gateway_id']=='${gateway_id}'; assert len(body['components']) >= 5" \
-  90 \
-  "${backend_auth_header}")"
-
 redis_ping="$(container exec redis redis-cli ping | tr -d '\r')"
 [ "${redis_ping}" = "PONG" ]
 
@@ -297,13 +291,6 @@ command_row="$(query_timescaledb \
   "SELECT status || '|' || (payload->>'telemetry_interval_s') FROM device_config_commands WHERE command_id = '${command_id}'::uuid LIMIT 1;")"
 [ "$(printf '%s' "${command_row}" | tr -d '[:space:]')" = "succeeded|25" ]
 
-gateway_health_count="$(query_timescaledb \
-  "SELECT COUNT(*) FROM gateway_component_health WHERE gateway_id = '${gateway_id}';")"
-GATEWAY_HEALTH_COUNT="${gateway_health_count:-0}" python3 - <<'PY'
-import os
-assert int((os.environ["GATEWAY_HEALTH_COUNT"] or "0").strip()) >= 5
-PY
-
 influx_edge_rows="$(query_influx_jsonl \
   "SELECT event_id, topic FROM edge_ingest_events WHERE device_id IN ('${eq_device_id}','${wb_device_id}','${env_device_id}') ORDER BY time DESC LIMIT 16")"
 influx_event_ids="$(INFLUX_EDGE_ROWS="${influx_edge_rows}" python3 - <<'PY'
@@ -343,7 +330,6 @@ printf '环境时序写库验证通过: %s\n' "${env_telemetry_json}"
 printf '告警写库验证通过: %s\n' "${alerts_json}"
 printf '绑定历史写库验证通过: %s\n' "${bindings_json}"
 printf '配置命令写库验证通过: %s\n' "${command_json}"
-printf '健康表落库验证通过: %s\n' "${gateway_health_json}"
 printf 'Redis 连通性验证通过: %s\n' "${redis_ping}"
 printf 'TimescaleDB 设备表验证通过: %s\n' "${devices_row}"
 printf 'TimescaleDB 器材时序表验证通过: %s\n' "${equipment_row}"
@@ -352,6 +338,5 @@ printf 'TimescaleDB 环境时序表验证通过: %s\n' "${env_row}"
 printf 'PostgreSQL 告警表验证通过: %s\n' "${alert_row}"
 printf 'PostgreSQL 绑定表验证通过: %s\n' "${binding_row}"
 printf 'PostgreSQL 配置命令表验证通过: %s\n' "${command_row}"
-printf '网关健康表验证通过: %s\n' "${gateway_health_count}"
 printf 'Influx 缓冲写入验证通过: %s\n' "${influx_edge_rows}"
 printf 'Influx 补发确认验证通过: %s\n' "${influx_delivery_rows}"

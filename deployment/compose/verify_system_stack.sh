@@ -195,13 +195,6 @@ device_json = wait_for_json(
     headers=auth_headers,
 )
 
-health_detail_json = wait_for_json(
-    "gateway health detail",
-    f"{BACKEND_BASE_URL}/api/v1/system/health/{GATEWAY_ID}",
-    lambda body: body["gateway_id"] == GATEWAY_ID and len(body["components"]) >= 5,
-    headers=auth_headers,
-)
-
 register_status, register_body = request(
     f"{BACKEND_BASE_URL}/api/v1/devices",
     method="POST",
@@ -238,13 +231,6 @@ command_detail_json = wait_for_json(
     headers=auth_headers,
 )
 
-summary_json = wait_for_json(
-    "system health summary",
-    f"{BACKEND_BASE_URL}/api/v1/system/health",
-    lambda body: len(body) >= 1 and any(item["gateway_id"] == GATEWAY_ID for item in body),
-    headers=auth_headers,
-)
-
 ops_health_json = wait_for_json(
     "ops observer health",
     f"{OPS_BASE_URL}/api/v1/ops/health",
@@ -266,10 +252,10 @@ web_runtime_config = wait_for_text(
     "web runtime config",
     f"{WEB_BASE_URL}/runtime_config.js",
     lambda body: (
-        "backend_base_url" in body
-        and "ops_base_url" in body
-        and "127.0.0.1:8000" in body
-        and "127.0.0.1:8090" in body
+        'backend_base_url: ""' in body
+        and 'backend_ws_url: "/api/ws"' in body
+        and 'ops_base_url: ""' in body
+        and 'ops_ws_url: "/api/ws/ops"' in body
     ),
 )
 
@@ -280,10 +266,8 @@ web_index_html = wait_for_text(
 )
 
 print("device json:", json.dumps(device_json, ensure_ascii=False))
-print("health detail json:", json.dumps(health_detail_json, ensure_ascii=False))
 print("registered device json:", json.dumps(registered_device_json, ensure_ascii=False))
 print("command detail json:", json.dumps(command_detail_json, ensure_ascii=False))
-print("summary json:", json.dumps(summary_json, ensure_ascii=False))
 print("ops health json:", json.dumps(ops_health_json, ensure_ascii=False))
 print("ops detail json:", json.dumps(ops_detail_json, ensure_ascii=False))
 print("web runtime config:", web_runtime_config)

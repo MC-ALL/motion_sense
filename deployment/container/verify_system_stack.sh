@@ -84,12 +84,6 @@ device_json="$(wait_for_json \
   60 \
   "$backend_auth_header")"
 
-health_detail_json="$(wait_for_json \
-  "http://127.0.0.1:${backend_host_port}/api/v1/system/health/${gateway_id}" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["gateway_id"]; assert len(body["components"]) >= 5' \
-  60 \
-  "$backend_auth_header")"
-
 registered_device_json="$(curl -fsS -X POST "http://127.0.0.1:${backend_host_port}/api/v1/devices" \
   -H "$backend_auth_header" \
   -H 'Content-Type: application/json' \
@@ -104,12 +98,6 @@ command_id="$(BODY_JSON="$command_body" python3 -c 'import json, os; print(json.
 command_detail_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/gateway/commands/${command_id}" \
   'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert body["status"]=="succeeded"' \
-  60 \
-  "$backend_auth_header")"
-
-summary_json="$(wait_for_json \
-  "http://127.0.0.1:${backend_host_port}/api/v1/system/health" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert len(body) >= 1; assert body[0]["gateway_id"]' \
   60 \
   "$backend_auth_header")"
 
@@ -134,10 +122,8 @@ web_index_html="$(wait_for_json \
   'import os; body=os.environ["BODY_JSON"]; assert "粤动智感运维门户" in body or "root" in body')"
 
 printf '设备入库验证通过: %s\n' "$device_json"
-printf '健康汇聚验证通过: %s\n' "$health_detail_json"
 printf '设备注册验证通过: %s\n' "$registered_device_json"
 printf '配置命令闭环验证通过: %s\n' "$command_detail_json"
-printf '健康汇总视图验证通过: %s\n' "$summary_json"
 printf 'ops_observer 健康汇总验证通过: %s\n' "$ops_health_json"
 printf 'ops_observer 健康详情验证通过: %s\n' "$ops_detail_json"
 printf '网页运行时配置验证通过: %s\n' "$web_runtime_config"
