@@ -14,7 +14,6 @@
 - OTA 预留接口：`POST /api/v1/devices/{id}/ota`、`GET /api/v1/ota/tasks*`
 - 网关命令轮询：`GET /api/v1/gateway/{gateway_id}/commands/pending`
 - 命令结果回报：`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
-- 网关基础设施健康汇聚：`POST /api/v1/system/health/report`、`GET /api/v1/system/health*`
 - AI 预留接口：`POST /api/v1/ai/analyze`、`GET /api/v1/ai/reports*`
 - 存储后端：`memory`、`postgres`
 - 实时广播后端：`local`、`redis`
@@ -31,7 +30,6 @@
 - `/api/v1/alerts/*`：告警查询与确认
 - `/api/v1/telemetry/*`：历史遥测与环境聚合
 - `/api/v1/wristband/*`：手环绑定历史
-- `/api/v1/system/health/*`：网关基础设施健康汇聚与查询
 - `/api/v1/ai/*`：AI 预留接口
 - `/api/ws`：实时推送
 - `/ops/v1/*`、`/ops/ws`：后台自观测接口
@@ -63,12 +61,11 @@
 - 第 1 迭代部署默认 `auth.enforce_rest = true`、`auth.enforce_ws = true`
 - 登录后可获得 `admin`、`teacher`、`student` 角色 JWT，并附带 `gym_ids` / `device_ids` 归属范围
 - `admin` 不受归属限制；`teacher` 可访问 `gym_ids` 对应场馆与 `device_ids` 明确绑定的设备；`student` 仅可访问 `device_ids` 明确绑定的设备
-- `/api/v1/users/*`、`POST/PATCH/DELETE /api/v1/devices*`、`POST /api/v1/devices/{id}/config`、`GET /api/v1/system/health*`、`/ops/v1/*`、`/ops/ws` 仅允许 `admin`
+- `/api/v1/users/*`、`POST/PATCH/DELETE /api/v1/devices*`、`POST /api/v1/devices/{id}/config`、`/ops/v1/*`、`/ops/ws` 仅允许 `admin`
 - `PATCH /api/v1/alerts/{id}/ack`、`POST /api/v1/alerts/batch-ack` 允许 `admin | teacher`
 - 业务读接口与 `GET /api/ws` 会按登录用户的 `gym_ids` / `device_ids` 继续过滤结果
 - 设备查询、告警、遥测、绑定历史、配置下发、健康查询、AI 预留接口、OTA 预留接口、`/api/ws` 会要求 Bearer JWT
 - 网关内网链路暂不加 JWT：
   `POST /api/v1/ingest/batch`、
   `GET /api/v1/gateway/{gateway_id}/commands/pending`、
-  `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`、
-  `POST /api/v1/system/health/report`
+  `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`

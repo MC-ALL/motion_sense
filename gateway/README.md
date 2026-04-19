@@ -61,12 +61,12 @@ Compose 约定以下宿主机挂载目录位于 `deployment/runtime/`：
 - 已支持 P1 规则：`EQ_OVERLOAD`、`CO2_HIGH`、`CO2_CRITICAL`、`PM25_HIGH`、`TEMP_HIGH`
 - 已支持 `DEVICE_OFFLINE` 监控，并发布 MQTT `alert` 与 retained `status`
 - 已支持后台配置命令轮询、失败回报、重试领取与超时收敛
-- 已支持基础设施健康采集并上报后台 `/api/v1/system/health/report`
+- 已支持基础设施健康采集与本地 `/ops/v1/*`、`/ops/ws` 观测输出
 - 已支持网关自观测接口 `/ops/v1/*` 与 `/ops/ws`
 - 在 macOS + Apple `container` 上已验证完整链路：
   `mosquitto -> edge_processor -> InfluxDB 缓冲 -> backend/api_service -> TimescaleDB`
 - 在 macOS + Apple `container` 上已验证：
-  设备入库、健康汇聚、配置命令闭环、健康汇总视图
+  设备入库、配置命令闭环、运维健康汇总视图
 - 设备在线/离线检测改为使用网关接收时间，避免设备时钟漂移导致瞬时误判离线
 - 已新增独立 `device_simulator` 模块骨架，默认可模拟 10 台器材、10 个手环、10 个环境节点，并通过单 MQTT 连接持续发布随机场景数据
 

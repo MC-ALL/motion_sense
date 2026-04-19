@@ -20,9 +20,6 @@
 - `POST /api/v1/ai/analyze`（预留，当前返回 `501`）
 - `GET /api/v1/ai/reports`（预留，当前返回 `501`）
 - `GET /api/v1/ai/reports/{id}`（预留，当前返回 `501`）
-- `GET /api/v1/system/health`
-- `GET /api/v1/system/health/{gateway_id}`
-- `POST /api/v1/system/health/report`
 - `GET /api/v1/alerts`
 - `GET /api/v1/alerts/{id}`
 - `PATCH /api/v1/alerts/{id}/ack`
@@ -51,11 +48,10 @@
 6. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
 7. `bindings.router`：手环绑定历史
 8. `gateway_commands.router`：配置命令轮询与结果回报
-9. `system_health.router`：网关基础设施健康上报与查询
-10. `ota.router`：OTA 预留接口
-11. `ai.router`：AI 预留接口
-12. `websocket.router`：实时推送 `GET /api/ws`
-13. `ops.router`：后台自观测接口 `GET /ops/v1/*`、`WS /ops/ws`
+9. `ota.router`：OTA 预留接口
+10. `ai.router`：AI 预留接口
+11. `websocket.router`：实时推送 `GET /api/ws`
+12. `ops.router`：后台自观测接口 `GET /ops/v1/*`、`WS /ops/ws`
 
 主数据流如下：
 
@@ -66,7 +62,6 @@
 5. 后台调用 `POST /api/v1/devices/{id}/config` 时，创建待执行配置命令
 6. 网关调用 `GET /api/v1/gateway/{gateway_id}/commands/pending` 拉取命令并在本地执行 / 转发 MQTT
 7. 网关调用 `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result` 回报结果
-8. 网关可通过 `POST /api/v1/system/health/report` 上报本地基础设施健康快照
 
 ## 运行模式
 
@@ -100,7 +95,6 @@ container build \
 - `POST /api/v1/alerts/batch-ack` 可批量确认告警
 - `POST /api/v1/devices/{id}/config` 与 `/api/v1/gateway/*/commands/*` 已具备配置命令闭环
 - 配置命令已具备领取租约、失败重试与超时收敛能力
-- `POST /api/v1/system/health/report` 与 `GET /api/v1/system/health*` 已具备基础设施健康汇聚能力
 - `GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws` 已具备后台自观测能力
 - `redis` 实时模式已在 macOS Apple `container` 上验证
 
