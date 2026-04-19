@@ -114,27 +114,6 @@ def test_role_boundaries_for_business_and_ops_routes() -> None:
         )
         assert ingest_response.status_code == 200
 
-        report_response = client.post(
-            "/api/v1/system/health/report",
-            json={
-                "gateway_id": "gw-001",
-                "gym_id": "gym-gz-01",
-                "reported_at": "2026-04-16T09:01:00Z",
-                "components": [
-                    {
-                        "component_id": "mqtt-main",
-                        "component_type": "mqtt_broker",
-                        "display_name": "mqtt broker",
-                        "online": True,
-                        "health_status": "healthy",
-                        "checked_at": "2026-04-16T09:01:00Z",
-                        "endpoint": "mqtt://gw-001:1883",
-                    }
-                ],
-            },
-        )
-        assert report_response.status_code == 200
-
         teacher_token = _login(client, "teacher_one", "teacher123")["access_token"]
         student_token = _login(client, "student_one", "student123")["access_token"]
 
@@ -179,10 +158,6 @@ def test_role_boundaries_for_business_and_ops_routes() -> None:
         teacher_ops = client.get("/ops/v1/health", headers=_headers(teacher_token))
         assert teacher_ops.status_code == 403
         assert teacher_ops.json()["detail"] == "required roles: admin"
-
-        teacher_gateway_health = client.get("/api/v1/system/health", headers=_headers(teacher_token))
-        assert teacher_gateway_health.status_code == 403
-        assert teacher_gateway_health.json()["detail"] == "required roles: admin"
 
         student_devices = client.get("/api/v1/devices", headers=_headers(student_token))
         assert student_devices.status_code == 200

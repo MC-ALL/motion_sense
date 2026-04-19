@@ -16,7 +16,6 @@ from app.api import (
     ingest,
     ops,
     ota,
-    system_health,
     telemetry,
     users,
     websocket,
@@ -96,7 +95,6 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(users.router)
     app.include_router(bindings.router)
     app.include_router(gateway_commands.router)
-    app.include_router(system_health.router)
     app.include_router(ai.router)
     app.include_router(websocket.router)
     app.include_router(ops.router)

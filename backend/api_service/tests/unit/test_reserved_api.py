@@ -142,7 +142,7 @@ def test_gateway_internal_routes_remain_available_when_rest_auth_enabled() -> No
         assert result_response.status_code == 200
         assert result_response.json()["status"] == "succeeded"
 
-        report_response = client.post(
+        removed_report_route = client.post(
             "/api/v1/system/health/report",
             json={
                 "gateway_id": "gw-001",
@@ -156,23 +156,17 @@ def test_gateway_internal_routes_remain_available_when_rest_auth_enabled() -> No
                         "online": True,
                         "health_status": "healthy",
                         "checked_at": "2026-04-16T09:01:00Z",
-                        "endpoint": "mqtt://gw-001:1883",
                     }
                 ],
             },
         )
-        assert report_response.status_code == 200
-        assert report_response.json()["overall_status"] == "healthy"
+        assert removed_report_route.status_code == 404
 
-        unauthorized_health_query = client.get("/api/v1/system/health")
-        assert unauthorized_health_query.status_code == 401
-
-        authorized_health_query = client.get(
+        removed_query_route = client.get(
             "/api/v1/system/health",
             headers={"Authorization": f"Bearer {access_token}"},
         )
-        assert authorized_health_query.status_code == 200
-        assert authorized_health_query.json()[0]["gateway_id"] == "gw-001"
+        assert removed_query_route.status_code == 404
 
 
 def test_refresh_session_survives_auth_service_recreation() -> None:
@@ -195,6 +189,31 @@ def test_refresh_session_survives_auth_service_recreation() -> None:
         await store.close()
 
     asyncio.run(scenario())
+
+
+def test_legacy_system_health_routes_are_removed() -> None:
+    with TestClient(create_app()) as client:
+        assert client.get("/api/v1/system/health").status_code == 404
+        assert client.get("/api/v1/system/health/gw-001").status_code == 404
+        response = client.post(
+            "/api/v1/system/health/report",
+            json={
+                "gateway_id": "gw-001",
+                "gym_id": "gym-gz-01",
+                "reported_at": "2026-04-16T09:01:00Z",
+                "components": [
+                    {
+                        "component_id": "mqtt-main",
+                        "component_type": "mqtt_broker",
+                        "display_name": "mqtt broker",
+                        "online": True,
+                        "health_status": "healthy",
+                        "checked_at": "2026-04-16T09:01:00Z",
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 404
 
 
 def test_ai_reserved_routes_return_501() -> None:

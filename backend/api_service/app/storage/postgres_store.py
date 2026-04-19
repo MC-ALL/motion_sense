@@ -16,13 +16,6 @@ from app.models.ingest import (
     EnvTelemetryAggregateRecord,
     TelemetryRecord,
 )
-from app.models.system_health import (
-    GatewayHealthComponentRecord,
-    GatewayHealthDetail,
-    GatewayHealthReportRequest,
-    GatewayHealthSummary,
-    derive_overall_status,
-)
 from app.models.user import StoredUser, UserRole, UserSummary
 from app.settings import RuntimeSettings
 from app.storage.telemetry_aggregate import aggregate_env_records
@@ -876,115 +869,6 @@ class PostgresStore:
         )
         return aggregate_env_records(records, interval, limit=limit, offset=offset)
 
-    async def upsert_gateway_health_report(
-        self,
-        *,
-        report: GatewayHealthReportRequest,
-    ) -> GatewayHealthDetail:
-        component_ids = [component.component_id for component in report.components]
-        async with self._pool.connection() as connection:
-            async with connection.cursor() as cursor:
-                await cursor.execute(
-                    """
-                    DELETE FROM gateway_component_health
-                    WHERE gateway_id = %s
-                      AND NOT (component_id = ANY(%s))
-                    """,
-                    (report.gateway_id, component_ids),
-                )
-                for component in report.components:
-                    await cursor.execute(
-                        """
-                        INSERT INTO gateway_component_health (
-                            gateway_id,
-                            gym_id,
-                            component_id,
-                            component_type,
-                            display_name,
-                            online,
-                            health_status,
-                            reported_at,
-                            checked_at,
-                            endpoint,
-                            latency_ms,
-                            detail,
-                            extra
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (gateway_id, component_id)
-                        DO UPDATE SET
-                            gym_id = EXCLUDED.gym_id,
-                            component_type = EXCLUDED.component_type,
-                            display_name = EXCLUDED.display_name,
-                            online = EXCLUDED.online,
-                            health_status = EXCLUDED.health_status,
-                            reported_at = EXCLUDED.reported_at,
-                            checked_at = EXCLUDED.checked_at,
-                            endpoint = EXCLUDED.endpoint,
-                            latency_ms = EXCLUDED.latency_ms,
-                            detail = EXCLUDED.detail,
-                            extra = EXCLUDED.extra
-                        """,
-                        (
-                            report.gateway_id,
-                            report.gym_id,
-                            component.component_id,
-                            component.component_type,
-                            component.display_name,
-                            component.online,
-                            component.health_status,
-                            _coerce_timestamptz(report.reported_at),
-                            _coerce_timestamptz(component.checked_at),
-                            component.endpoint,
-                            component.latency_ms,
-                            component.detail,
-                            Jsonb(component.extra),
-                        ),
-                    )
-            await connection.commit()
-
-        detail = await self.get_gateway_health_detail(gateway_id=report.gateway_id)
-        assert detail is not None
-        return detail
-
-    async def list_gateway_health_summaries(
-        self,
-        *,
-        gym_id: str | None = None,
-        gateway_id: str | None = None,
-        component_type: str | None = None,
-        overall_status: str | None = None,
-    ) -> list[GatewayHealthSummary]:
-        details = await self._list_gateway_health_details(
-            gym_id=gym_id,
-            gateway_id=gateway_id,
-            component_type=component_type,
-        )
-        summaries = [
-            GatewayHealthSummary(
-                gateway_id=item.gateway_id,
-                gym_id=item.gym_id,
-                reported_at=item.reported_at,
-                component_count=item.component_count,
-                online_count=item.online_count,
-                unhealthy_count=item.unhealthy_count,
-                overall_status=item.overall_status,
-            )
-            for item in details
-            if overall_status is None or item.overall_status == overall_status
-        ]
-        return summaries
-
-    async def get_gateway_health_detail(
-        self,
-        *,
-        gateway_id: str,
-    ) -> GatewayHealthDetail | None:
-        details = await self._list_gateway_health_details(gateway_id=gateway_id)
-        if not details:
-            return None
-        return details[0]
-
     async def create_device_config_command(
         self,
         *,
@@ -1217,46 +1101,6 @@ class PostgresStore:
             return None
         return _device_config_command_from_row(row)
 
-    async def _list_gateway_health_details(
-        self,
-        *,
-        gym_id: str | None = None,
-        gateway_id: str | None = None,
-        component_type: str | None = None,
-    ) -> list[GatewayHealthDetail]:
-        clauses: list[str] = []
-        params: list[Any] = []
-
-        if gym_id is not None:
-            clauses.append("gym_id = %s")
-            params.append(gym_id)
-        if gateway_id is not None:
-            clauses.append("gateway_id = %s")
-            params.append(gateway_id)
-        if component_type is not None:
-            clauses.append("component_type = %s")
-            params.append(component_type)
-
-        where_clause = ""
-        if clauses:
-            where_clause = "WHERE " + " AND ".join(clauses)
-
-        async with self._pool.connection() as connection:
-            async with connection.cursor() as cursor:
-                await cursor.execute(
-                    f"""
-                    SELECT gateway_id, gym_id, component_id, component_type, display_name, online,
-                           health_status, reported_at, checked_at, endpoint, latency_ms, detail, extra
-                    FROM gateway_component_health
-                    {where_clause}
-                    ORDER BY gateway_id, component_type, component_id
-                    """,
-                    params,
-                )
-                rows = await cursor.fetchall()
-
-        return _group_gateway_health_rows(rows)
-
     async def _bootstrap_schema(self) -> None:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
@@ -1377,26 +1221,6 @@ class PostgresStore:
                         reason TEXT,
                         ts TIMESTAMPTZ NOT NULL,
                         duration_s INTEGER
-                    )
-                    """
-                )
-                await cursor.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS gateway_component_health (
-                        gateway_id TEXT NOT NULL,
-                        gym_id TEXT NOT NULL,
-                        component_id TEXT NOT NULL,
-                        component_type TEXT NOT NULL,
-                        display_name TEXT NOT NULL,
-                        online BOOLEAN NOT NULL,
-                        health_status TEXT NOT NULL,
-                        reported_at TIMESTAMPTZ NOT NULL,
-                        checked_at TIMESTAMPTZ NOT NULL,
-                        endpoint TEXT,
-                        latency_ms INTEGER,
-                        detail TEXT,
-                        extra JSONB NOT NULL DEFAULT '{}'::jsonb,
-                        PRIMARY KEY (gateway_id, component_id)
                     )
                     """
                 )
@@ -1545,12 +1369,6 @@ class PostgresStore:
                     """
                     CREATE INDEX IF NOT EXISTS idx_binding_equipment_ts
                     ON equipment_binding_events (equipment_id, ts DESC)
-                    """
-                )
-                await cursor.execute(
-                    """
-                    CREATE INDEX IF NOT EXISTS idx_gateway_component_health_gateway
-                    ON gateway_component_health (gateway_id, reported_at DESC)
                     """
                 )
                 await cursor.execute(
@@ -1717,50 +1535,6 @@ def _device_config_command_from_row(row: dict[str, Any]) -> DeviceConfigCommandR
         result_payload=row.get("result_payload") or {},
     )
 
-
-def _group_gateway_health_rows(rows: list[dict[str, Any]]) -> list[GatewayHealthDetail]:
-    grouped: dict[str, list[GatewayHealthComponentRecord]] = {}
-    for row in rows:
-        grouped.setdefault(row["gateway_id"], []).append(
-            GatewayHealthComponentRecord(
-                gateway_id=row["gateway_id"],
-                gym_id=row["gym_id"],
-                reported_at=row["reported_at"].isoformat(),
-                component_id=row["component_id"],
-                component_type=row["component_type"],
-                display_name=row["display_name"],
-                online=row["online"],
-                health_status=row["health_status"],
-                checked_at=row["checked_at"].isoformat(),
-                endpoint=row["endpoint"],
-                latency_ms=row["latency_ms"],
-                detail=row["detail"],
-                extra=row.get("extra") or {},
-            )
-        )
-
-    details: list[GatewayHealthDetail] = []
-    for gateway_id, components in grouped.items():
-        components = sorted(components, key=lambda item: (item.component_type, item.component_id))
-        reported_at = max(item.reported_at for item in components)
-        online_count = sum(1 for item in components if item.online)
-        unhealthy_count = sum(
-            1 for item in components if (not item.online) or item.health_status != "healthy"
-        )
-        details.append(
-            GatewayHealthDetail(
-                gateway_id=gateway_id,
-                gym_id=components[0].gym_id,
-                reported_at=reported_at,
-                component_count=len(components),
-                online_count=online_count,
-                unhealthy_count=unhealthy_count,
-                overall_status=derive_overall_status(components),
-                components=components,
-            )
-        )
-
-    return sorted(details, key=lambda item: item.gateway_id)
 
 
 def _resolve_gateway_id(*, device_type: str, device_id: str, payload: dict[str, Any]) -> str | None:

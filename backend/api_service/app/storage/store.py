@@ -11,7 +11,6 @@ from app.models.ingest import (
     EnvTelemetryAggregateRecord,
     TelemetryRecord,
 )
-from app.models.system_health import GatewayHealthDetail, GatewayHealthReportRequest, GatewayHealthSummary
 from app.models.user import StoredUser, UserRole, UserSummary
 
 
@@ -228,27 +227,6 @@ class Store(Protocol):
         limit: int = 1000,
         offset: int = 0,
     ) -> list[EnvTelemetryAggregateRecord]: ...
-
-    async def upsert_gateway_health_report(
-        self,
-        *,
-        report: GatewayHealthReportRequest,
-    ) -> GatewayHealthDetail: ...
-
-    async def list_gateway_health_summaries(
-        self,
-        *,
-        gym_id: str | None = None,
-        gateway_id: str | None = None,
-        component_type: str | None = None,
-        overall_status: str | None = None,
-    ) -> list[GatewayHealthSummary]: ...
-
-    async def get_gateway_health_detail(
-        self,
-        *,
-        gateway_id: str,
-    ) -> GatewayHealthDetail | None: ...
 
     async def create_device_config_command(
         self,
