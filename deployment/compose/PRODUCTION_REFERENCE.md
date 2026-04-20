@@ -35,6 +35,7 @@
 | `WEB_PORTAL_OPS_BASE_URL` | `''` | `web_portal_app` | 网页端访问运维 REST 地址 | 默认保持同源；仅在你明确不用 Nginx 同源代理时再覆盖 |
 | `WEB_PORTAL_OPS_WS_URL` | `/api/ws/ops` | `web_portal_app` | 网页端访问运维 WS 地址 | 默认保持同源 |
 | `WEB_PORTAL_REFRESH_INTERVAL_MS` | `15000` | `web_portal_app` | 网页端轮询刷新间隔 | 按现场负载调整 |
+| `WEB_PORTAL_RUNTIME_CONFIG_MODE` | `render` | `web_portal_app` | 网页运行时配置生成策略 | 默认每次启动按环境变量重渲染；仅在明确要保留宿主机现有文件时改为 `preserve` |
 
 说明：
 - 当前根 Compose 未使用 `.env`，但 Docker Compose 仍支持从当前 shell 环境读取这些变量。
@@ -87,7 +88,7 @@ sh deployment/compose/start_stack.sh
 | `deployment/runtime/config/mosquitto/mosquitto.conf` | `gateway_mosquitto` entrypoint | Broker 运行配置 | 首次从默认模板复制 |
 | `deployment/runtime/config/mosquitto/acl.conf` | `gateway_mosquitto` entrypoint | Broker ACL | 首次按 `MOSQUITTO_USER` 渲染 |
 | `deployment/runtime/config/ops_observer/api_service/app_settings.yaml` | `ops_observer_api_service` entrypoint | 运维端运行时配置 | 首次从默认模板复制 |
-| `deployment/runtime/config/web/portal_app/runtime_config.js` | `web_portal_app` entrypoint | 网页运行时配置 | 首次生成 |
+| `deployment/runtime/config/web/portal_app/runtime_config.js` | `web_portal_app` entrypoint | 网页运行时配置 | 默认随容器启动按环境变量重渲染；`WEB_PORTAL_RUNTIME_CONFIG_MODE=preserve` 时保留现有文件 |
 | `deployment/runtime/secrets/mosquitto.passwd` | `gateway_mosquitto` entrypoint | MQTT 口令文件 | 首次生成 |
 | `deployment/runtime/secrets/edge_processor_ops_token.txt` | `gateway_edge_processor` entrypoint | 网关 ops token | 首次生成，权限 `600` |
 
@@ -141,6 +142,7 @@ sh deployment/compose/start_stack.sh
 | 打印首登信息 | `sh deployment/compose/print_bootstrap_credentials.sh` |
 | 运维鉴权回归 | `sh deployment/compose/verify_ops_auth_stack.sh` |
 | 业务链路回归 | `sh deployment/compose/verify_system_stack.sh` |
+| 训练档案回归 | `sh deployment/compose/verify_training_archive_stack.sh` |
 | 数据链路回归 | `sh deployment/compose/verify_database_stack.sh` |
 | 停栈 | `sh deployment/compose/stop_stack.sh` |
 
