@@ -17,8 +17,11 @@ from app.api import (
     ops,
     ota,
     telemetry,
+    user_wristband_bindings,
+    user_training_profiles,
     users,
     websocket,
+    workout_sessions,
 )
 from app.services.auth_service import AuthService
 from app.services.device_config_service import DeviceConfigService
@@ -93,7 +96,10 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(telemetry.router)
     app.include_router(users.router)
+    app.include_router(user_training_profiles.router)
     app.include_router(bindings.router)
+    app.include_router(user_wristband_bindings.router)
+    app.include_router(workout_sessions.router)
     app.include_router(gateway_commands.router)
     app.include_router(ai.router)
     app.include_router(websocket.router)

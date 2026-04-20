@@ -12,6 +12,15 @@ from app.models.ingest import (
     TelemetryRecord,
 )
 from app.models.user import StoredUser, UserRole, UserSummary
+from app.models.workout import (
+    BindingSource,
+    UserWristbandBindingSummary,
+    WorkoutSessionMetrics,
+    WorkoutSessionSegment,
+    WorkoutSessionSource,
+    WorkoutSessionStatus,
+    WorkoutSessionSummary,
+)
 
 
 class Store(Protocol):
@@ -52,6 +61,83 @@ class Store(Protocol):
         *,
         username: str,
     ) -> bool: ...
+
+    async def create_user_wristband_binding(
+        self,
+        *,
+        username: str,
+        wristband_id: str,
+        gym_id: str,
+        bound_at: str | None,
+        source: BindingSource,
+        note: str | None,
+    ) -> UserWristbandBindingSummary: ...
+
+    async def end_user_wristband_binding(
+        self,
+        *,
+        binding_id: int,
+        unbound_at: str | None,
+        note: str | None,
+    ) -> UserWristbandBindingSummary | None: ...
+
+    async def list_user_wristband_bindings(
+        self,
+        *,
+        username: str | None = None,
+        wristband_id: str | None = None,
+        gym_id: str | None = None,
+        active_only: bool | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[UserWristbandBindingSummary]: ...
+
+    async def create_workout_session(
+        self,
+        *,
+        username: str,
+        wristband_id: str,
+        gym_id: str,
+        status: WorkoutSessionStatus,
+        source: WorkoutSessionSource,
+        started_at: str,
+        ended_at: str | None,
+        equipment_ids: list[str],
+        segments: list[WorkoutSessionSegment],
+        metrics: WorkoutSessionMetrics,
+        notes: str | None,
+    ) -> WorkoutSessionSummary: ...
+
+    async def update_workout_session(
+        self,
+        *,
+        session_id: str,
+        status: WorkoutSessionStatus | None = None,
+        ended_at: str | None = None,
+        equipment_ids: list[str] | None = None,
+        segments: list[WorkoutSessionSegment] | None = None,
+        metrics: WorkoutSessionMetrics | None = None,
+        notes: str | None = None,
+    ) -> WorkoutSessionSummary | None: ...
+
+    async def get_workout_session(
+        self,
+        *,
+        session_id: str,
+    ) -> WorkoutSessionSummary | None: ...
+
+    async def list_workout_sessions(
+        self,
+        *,
+        username: str | None = None,
+        wristband_id: str | None = None,
+        gym_id: str | None = None,
+        status: WorkoutSessionStatus | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[WorkoutSessionSummary]: ...
 
     async def create_refresh_session(
         self,

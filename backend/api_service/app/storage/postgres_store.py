@@ -17,6 +17,15 @@ from app.models.ingest import (
     TelemetryRecord,
 )
 from app.models.user import StoredUser, UserRole, UserSummary
+from app.models.workout import (
+    BindingSource,
+    UserWristbandBindingSummary,
+    WorkoutSessionMetrics,
+    WorkoutSessionSegment,
+    WorkoutSessionSource,
+    WorkoutSessionStatus,
+    WorkoutSessionSummary,
+)
 from app.settings import RuntimeSettings
 from app.storage.telemetry_aggregate import aggregate_env_records
 
@@ -143,6 +152,348 @@ class PostgresStore:
             await connection.commit()
 
         return row is not None
+
+    async def create_user_wristband_binding(
+        self,
+        *,
+        username: str,
+        wristband_id: str,
+        gym_id: str,
+        bound_at: str | None,
+        source: BindingSource,
+        note: str | None,
+    ) -> UserWristbandBindingSummary:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT id
+                    FROM user_wristband_bindings
+                    WHERE is_active = TRUE
+                      AND username = %s
+                    LIMIT 1
+                    """,
+                    (username,),
+                )
+                if await cursor.fetchone() is not None:
+                    raise ValueError("user already has an active wristband binding")
+
+                await cursor.execute(
+                    """
+                    SELECT id
+                    FROM user_wristband_bindings
+                    WHERE is_active = TRUE
+                      AND wristband_id = %s
+                    LIMIT 1
+                    """,
+                    (wristband_id,),
+                )
+                if await cursor.fetchone() is not None:
+                    raise ValueError("wristband already bound to another user")
+
+                await cursor.execute(
+                    """
+                    INSERT INTO user_wristband_bindings (
+                        username,
+                        wristband_id,
+                        gym_id,
+                        is_active,
+                        bound_at,
+                        unbound_at,
+                        source,
+                        note
+                    )
+                    VALUES (%s, %s, %s, TRUE, %s, NULL, %s, %s)
+                    RETURNING id, username, wristband_id, gym_id, is_active, bound_at, unbound_at,
+                              source, note, created_at, updated_at
+                    """,
+                    (
+                        username,
+                        wristband_id,
+                        gym_id,
+                        _coerce_timestamptz(bound_at),
+                        source,
+                        note,
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return _user_wristband_binding_from_row(row)
+
+    async def end_user_wristband_binding(
+        self,
+        *,
+        binding_id: int,
+        unbound_at: str | None,
+        note: str | None,
+    ) -> UserWristbandBindingSummary | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE user_wristband_bindings
+                    SET is_active = FALSE,
+                        unbound_at = COALESCE(unbound_at, %s),
+                        note = COALESCE(%s, note),
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING id, username, wristband_id, gym_id, is_active, bound_at, unbound_at,
+                              source, note, created_at, updated_at
+                    """,
+                    (_coerce_timestamptz(unbound_at), note, binding_id),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            return None
+        return _user_wristband_binding_from_row(row)
+
+    async def list_user_wristband_bindings(
+        self,
+        *,
+        username: str | None = None,
+        wristband_id: str | None = None,
+        gym_id: str | None = None,
+        active_only: bool | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[UserWristbandBindingSummary]:
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        if username is not None:
+            clauses.append("username = %s")
+            params.append(username)
+        if wristband_id is not None:
+            clauses.append("wristband_id = %s")
+            params.append(wristband_id)
+        if gym_id is not None:
+            clauses.append("gym_id = %s")
+            params.append(gym_id)
+        if active_only is not None:
+            clauses.append("is_active = %s")
+            params.append(active_only)
+
+        params.extend([limit, offset])
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    f"""
+                    SELECT id, username, wristband_id, gym_id, is_active, bound_at, unbound_at,
+                           source, note, created_at, updated_at
+                    FROM user_wristband_bindings
+                    {where_clause}
+                    ORDER BY bound_at DESC, id DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params,
+                )
+                rows = await cursor.fetchall()
+
+        return [_user_wristband_binding_from_row(row) for row in rows]
+
+    async def create_workout_session(
+        self,
+        *,
+        username: str,
+        wristband_id: str,
+        gym_id: str,
+        status: WorkoutSessionStatus,
+        source: WorkoutSessionSource,
+        started_at: str,
+        ended_at: str | None,
+        equipment_ids: list[str],
+        segments: list[WorkoutSessionSegment],
+        metrics: WorkoutSessionMetrics,
+        notes: str | None,
+    ) -> WorkoutSessionSummary:
+        normalized_segments = _normalize_segments(segments)
+        normalized_equipment_ids = _normalize_equipment_ids(
+            equipment_ids=equipment_ids,
+            segments=normalized_segments,
+        )
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO workout_sessions (
+                        username,
+                        wristband_id,
+                        gym_id,
+                        status,
+                        source,
+                        started_at,
+                        ended_at,
+                        duration_s,
+                        equipment_ids,
+                        segments,
+                        metrics,
+                        notes
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING session_id, username, wristband_id, gym_id, status, source,
+                              started_at, ended_at, duration_s, equipment_ids, segments, metrics,
+                              notes, created_at, updated_at
+                    """,
+                    (
+                        username,
+                        wristband_id,
+                        gym_id,
+                        status,
+                        source,
+                        _coerce_timestamptz(started_at),
+                        _coerce_timestamptz(ended_at) if ended_at is not None else None,
+                        _session_duration_s(started_at=started_at, ended_at=ended_at),
+                        Jsonb(normalized_equipment_ids),
+                        Jsonb([item.model_dump(exclude_none=True) for item in normalized_segments]),
+                        Jsonb(metrics.model_dump(exclude_none=True)),
+                        notes,
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return _workout_session_from_row(row)
+
+    async def update_workout_session(
+        self,
+        *,
+        session_id: str,
+        status: WorkoutSessionStatus | None = None,
+        ended_at: str | None = None,
+        equipment_ids: list[str] | None = None,
+        segments: list[WorkoutSessionSegment] | None = None,
+        metrics: WorkoutSessionMetrics | None = None,
+        notes: str | None = None,
+    ) -> WorkoutSessionSummary | None:
+        current = await self.get_workout_session(session_id=session_id)
+        if current is None:
+            return None
+
+        next_segments = _normalize_segments(segments) if segments is not None else current.segments
+        next_equipment_ids = _normalize_equipment_ids(
+            equipment_ids=equipment_ids if equipment_ids is not None else current.equipment_ids,
+            segments=next_segments,
+        )
+        next_ended_at = ended_at if ended_at is not None else current.ended_at
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE workout_sessions
+                    SET status = COALESCE(%s, status),
+                        ended_at = COALESCE(%s, ended_at),
+                        duration_s = %s,
+                        equipment_ids = %s,
+                        segments = %s,
+                        metrics = %s,
+                        notes = COALESCE(%s, notes),
+                        updated_at = NOW()
+                    WHERE session_id = %s
+                    RETURNING session_id, username, wristband_id, gym_id, status, source,
+                              started_at, ended_at, duration_s, equipment_ids, segments, metrics,
+                              notes, created_at, updated_at
+                    """,
+                    (
+                        status,
+                        _coerce_timestamptz(ended_at) if ended_at is not None else None,
+                        _session_duration_s(started_at=current.started_at, ended_at=next_ended_at),
+                        Jsonb(next_equipment_ids),
+                        Jsonb([item.model_dump(exclude_none=True) for item in next_segments]),
+                        Jsonb((metrics or current.metrics).model_dump(exclude_none=True)),
+                        notes,
+                        session_id,
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            return None
+        return _workout_session_from_row(row)
+
+    async def get_workout_session(
+        self,
+        *,
+        session_id: str,
+    ) -> WorkoutSessionSummary | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT session_id, username, wristband_id, gym_id, status, source,
+                           started_at, ended_at, duration_s, equipment_ids, segments, metrics,
+                           notes, created_at, updated_at
+                    FROM workout_sessions
+                    WHERE session_id = %s
+                    """,
+                    (session_id,),
+                )
+                row = await cursor.fetchone()
+
+        if row is None:
+            return None
+        return _workout_session_from_row(row)
+
+    async def list_workout_sessions(
+        self,
+        *,
+        username: str | None = None,
+        wristband_id: str | None = None,
+        gym_id: str | None = None,
+        status: WorkoutSessionStatus | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[WorkoutSessionSummary]:
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        if username is not None:
+            clauses.append("username = %s")
+            params.append(username)
+        if wristband_id is not None:
+            clauses.append("wristband_id = %s")
+            params.append(wristband_id)
+        if gym_id is not None:
+            clauses.append("gym_id = %s")
+            params.append(gym_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status)
+        if start is not None:
+            clauses.append("started_at >= %s")
+            params.append(_coerce_timestamptz(start))
+        if end is not None:
+            clauses.append("COALESCE(ended_at, started_at) <= %s")
+            params.append(_coerce_timestamptz(end))
+
+        params.extend([limit, offset])
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    f"""
+                    SELECT session_id, username, wristband_id, gym_id, status, source,
+                           started_at, ended_at, duration_s, equipment_ids, segments, metrics,
+                           notes, created_at, updated_at
+                    FROM workout_sessions
+                    {where_clause}
+                    ORDER BY started_at DESC, created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params,
+                )
+                rows = await cursor.fetchall()
+
+        return [_workout_session_from_row(row) for row in rows]
 
     async def create_refresh_session(
         self,
@@ -1246,6 +1597,44 @@ class PostgresStore:
                 )
                 await cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS user_wristband_bindings (
+                        id BIGSERIAL PRIMARY KEY,
+                        username TEXT NOT NULL,
+                        wristband_id TEXT NOT NULL,
+                        gym_id TEXT NOT NULL,
+                        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                        bound_at TIMESTAMPTZ NOT NULL,
+                        unbound_at TIMESTAMPTZ,
+                        source TEXT NOT NULL DEFAULT 'manual',
+                        note TEXT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS workout_sessions (
+                        session_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        username TEXT NOT NULL,
+                        wristband_id TEXT NOT NULL,
+                        gym_id TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        source TEXT NOT NULL DEFAULT 'manual',
+                        started_at TIMESTAMPTZ NOT NULL,
+                        ended_at TIMESTAMPTZ,
+                        duration_s INTEGER,
+                        equipment_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        segments JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
+                        notes TEXT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+                await cursor.execute(
+                    """
                     ALTER TABLE device_config_commands
                     ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0
                     """
@@ -1369,6 +1758,30 @@ class PostgresStore:
                     """
                     CREATE INDEX IF NOT EXISTS idx_binding_equipment_ts
                     ON equipment_binding_events (equipment_id, ts DESC)
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_user_wristband_bindings_username_active
+                    ON user_wristband_bindings (username, is_active, bound_at DESC)
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_user_wristband_bindings_wristband_active
+                    ON user_wristband_bindings (wristband_id, is_active, bound_at DESC)
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_workout_sessions_username_started_at
+                    ON workout_sessions (username, started_at DESC)
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_workout_sessions_wristband_started_at
+                    ON workout_sessions (wristband_id, started_at DESC)
                     """
                 )
                 await cursor.execute(
@@ -1504,6 +1917,46 @@ def _alert_record_from_row(row: dict[str, Any]) -> AlertRecord:
     )
 
 
+def _user_wristband_binding_from_row(row: dict[str, Any]) -> UserWristbandBindingSummary:
+    return UserWristbandBindingSummary(
+        id=row["id"],
+        username=row["username"],
+        wristband_id=row["wristband_id"],
+        gym_id=row["gym_id"],
+        is_active=row["is_active"],
+        bound_at=row["bound_at"].isoformat(),
+        unbound_at=row["unbound_at"].isoformat() if row.get("unbound_at") is not None else None,
+        source=row["source"],
+        note=row.get("note"),
+        created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
+        updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
+    )
+
+
+def _workout_session_from_row(row: dict[str, Any]) -> WorkoutSessionSummary:
+    segments = [
+        WorkoutSessionSegment.model_validate(item)
+        for item in (row.get("segments") or [])
+    ]
+    return WorkoutSessionSummary(
+        session_id=str(row["session_id"]),
+        username=row["username"],
+        wristband_id=row["wristband_id"],
+        gym_id=row["gym_id"],
+        status=row["status"],
+        source=row["source"],
+        started_at=row["started_at"].isoformat(),
+        ended_at=row["ended_at"].isoformat() if row.get("ended_at") is not None else None,
+        duration_s=row.get("duration_s"),
+        equipment_ids=list(row.get("equipment_ids") or []),
+        segments=segments,
+        metrics=WorkoutSessionMetrics.model_validate(row.get("metrics") or {}),
+        notes=row.get("notes"),
+        created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
+        updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
+    )
+
+
 def _device_config_command_from_row(row: dict[str, Any]) -> DeviceConfigCommandRecord:
     return DeviceConfigCommandRecord(
         command_id=str(row["command_id"]),
@@ -1543,4 +1996,55 @@ def _resolve_gateway_id(*, device_type: str, device_id: str, payload: dict[str, 
         return payload_gateway_id
     if device_type == "gateway":
         return device_id
+    return None
+
+
+def _normalize_segments(segments: list[WorkoutSessionSegment] | None) -> list[WorkoutSessionSegment]:
+    normalized: list[WorkoutSessionSegment] = []
+    for segment in segments or []:
+        duration_s = segment.duration_s
+        normalized_started_at = _coerce_timestamptz(segment.started_at).isoformat()
+        normalized_ended_at = _coerce_timestamptz(segment.ended_at).isoformat() if segment.ended_at is not None else None
+        if duration_s is None and normalized_ended_at is not None:
+            duration_s = _session_duration_s(
+                started_at=normalized_started_at,
+                ended_at=normalized_ended_at,
+            )
+        normalized.append(
+            segment.model_copy(
+                update={
+                    "started_at": normalized_started_at,
+                    "ended_at": normalized_ended_at,
+                    "duration_s": duration_s,
+                }
+            )
+        )
+    return normalized
+
+
+def _normalize_equipment_ids(
+    *,
+    equipment_ids: list[str] | None,
+    segments: list[WorkoutSessionSegment],
+) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in equipment_ids or []:
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    for segment in segments:
+        if segment.equipment_id in seen:
+            continue
+        seen.add(segment.equipment_id)
+        normalized.append(segment.equipment_id)
+    return normalized
+
+
+def _session_duration_s(*, started_at: str, ended_at: str | None) -> int | None:
+    if ended_at is None:
+        return None
+    return max(int((_coerce_timestamptz(ended_at) - _coerce_timestamptz(started_at)).total_seconds()), 0)
     return None

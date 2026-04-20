@@ -14,6 +14,15 @@ from app.models.ingest import (
     TelemetryRecord,
 )
 from app.models.user import StoredUser, UserRole, UserSummary
+from app.models.workout import (
+    BindingSource,
+    UserWristbandBindingSummary,
+    WorkoutSessionMetrics,
+    WorkoutSessionSegment,
+    WorkoutSessionSource,
+    WorkoutSessionStatus,
+    WorkoutSessionSummary,
+)
 from app.storage.telemetry_aggregate import aggregate_env_records
 
 
@@ -25,10 +34,13 @@ class EventStore:
         self._refresh_sessions: dict[str, StoredRefreshSession] = {}
         self._alerts: list[AlertRecord] = []
         self._bindings: list[BindingEventRecord] = []
+        self._user_wristband_bindings: list[UserWristbandBindingSummary] = []
         self._telemetry: list[TelemetryRecord] = []
+        self._workout_sessions: dict[str, WorkoutSessionSummary] = {}
         self._device_config_commands: dict[str, DeviceConfigCommandRecord] = {}
         self._next_alert_id = 1
         self._next_binding_id = 1
+        self._next_user_wristband_binding_id = 1
 
     async def initialize(self) -> None:
         return None
@@ -101,6 +113,224 @@ class EventStore:
     async def delete_user(self, *, username: str) -> bool:
         async with self._lock:
             return self._users.pop(username, None) is not None
+
+    async def create_user_wristband_binding(
+        self,
+        *,
+        username: str,
+        wristband_id: str,
+        gym_id: str,
+        bound_at: str | None,
+        source: BindingSource,
+        note: str | None,
+    ) -> UserWristbandBindingSummary:
+        async with self._lock:
+            self._ensure_active_user_wristband_binding_conflict_locked(
+                username=username,
+                wristband_id=wristband_id,
+            )
+            now = _now_iso()
+            binding = UserWristbandBindingSummary(
+                id=self._next_user_wristband_binding_id,
+                username=username,
+                wristband_id=wristband_id,
+                gym_id=gym_id,
+                is_active=True,
+                bound_at=_normalize_iso(bound_at) or now,
+                unbound_at=None,
+                source=source,
+                note=note,
+                created_at=now,
+                updated_at=now,
+            )
+            self._next_user_wristband_binding_id += 1
+            self._user_wristband_bindings.insert(0, binding)
+            return binding
+
+    async def end_user_wristband_binding(
+        self,
+        *,
+        binding_id: int,
+        unbound_at: str | None,
+        note: str | None,
+    ) -> UserWristbandBindingSummary | None:
+        async with self._lock:
+            for index, binding in enumerate(self._user_wristband_bindings):
+                if binding.id != binding_id:
+                    continue
+                if not binding.is_active:
+                    return binding
+                updated = binding.model_copy(
+                    update={
+                        "is_active": False,
+                        "unbound_at": _normalize_iso(unbound_at) or _now_iso(),
+                        "note": note if note is not None else binding.note,
+                        "updated_at": _now_iso(),
+                    }
+                )
+                self._user_wristband_bindings[index] = updated
+                return updated
+        return None
+
+    async def list_user_wristband_bindings(
+        self,
+        *,
+        username: str | None = None,
+        wristband_id: str | None = None,
+        gym_id: str | None = None,
+        active_only: bool | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[UserWristbandBindingSummary]:
+        async with self._lock:
+            items = list(self._user_wristband_bindings)
+
+        if username is not None:
+            items = [item for item in items if item.username == username]
+        if wristband_id is not None:
+            items = [item for item in items if item.wristband_id == wristband_id]
+        if gym_id is not None:
+            items = [item for item in items if item.gym_id == gym_id]
+        if active_only is not None:
+            items = [item for item in items if item.is_active == active_only]
+
+        return items[offset : offset + limit]
+
+    async def create_workout_session(
+        self,
+        *,
+        username: str,
+        wristband_id: str,
+        gym_id: str,
+        status: WorkoutSessionStatus,
+        source: WorkoutSessionSource,
+        started_at: str,
+        ended_at: str | None,
+        equipment_ids: list[str],
+        segments: list[WorkoutSessionSegment],
+        metrics: WorkoutSessionMetrics,
+        notes: str | None,
+    ) -> WorkoutSessionSummary:
+        async with self._lock:
+            now = _now_iso()
+            normalized_segments = _normalize_segments(segments)
+            normalized_equipment_ids = _normalize_equipment_ids(
+                equipment_ids=equipment_ids,
+                segments=normalized_segments,
+            )
+            session = WorkoutSessionSummary(
+                session_id=str(uuid4()),
+                username=username,
+                wristband_id=wristband_id,
+                gym_id=gym_id,
+                status=status,
+                source=source,
+                started_at=_normalize_iso(started_at) or started_at,
+                ended_at=_normalize_iso(ended_at),
+                duration_s=_session_duration_s(
+                    started_at=_normalize_iso(started_at) or started_at,
+                    ended_at=_normalize_iso(ended_at),
+                ),
+                equipment_ids=normalized_equipment_ids,
+                segments=normalized_segments,
+                metrics=metrics,
+                notes=notes,
+                created_at=now,
+                updated_at=now,
+            )
+            self._workout_sessions[session.session_id] = session
+            return session
+
+    async def update_workout_session(
+        self,
+        *,
+        session_id: str,
+        status: WorkoutSessionStatus | None = None,
+        ended_at: str | None = None,
+        equipment_ids: list[str] | None = None,
+        segments: list[WorkoutSessionSegment] | None = None,
+        metrics: WorkoutSessionMetrics | None = None,
+        notes: str | None = None,
+    ) -> WorkoutSessionSummary | None:
+        async with self._lock:
+            existing = self._workout_sessions.get(session_id)
+            if existing is None:
+                return None
+            next_segments = (
+                _normalize_segments(segments)
+                if segments is not None
+                else existing.segments
+            )
+            next_equipment_ids = _normalize_equipment_ids(
+                equipment_ids=equipment_ids if equipment_ids is not None else existing.equipment_ids,
+                segments=next_segments,
+            )
+            next_ended_at = _normalize_iso(ended_at) if ended_at is not None else existing.ended_at
+            updated = existing.model_copy(
+                update={
+                    "status": status or existing.status,
+                    "ended_at": next_ended_at,
+                    "duration_s": _session_duration_s(
+                        started_at=existing.started_at,
+                        ended_at=next_ended_at,
+                    ),
+                    "equipment_ids": next_equipment_ids,
+                    "segments": next_segments,
+                    "metrics": metrics or existing.metrics,
+                    "notes": notes if notes is not None else existing.notes,
+                    "updated_at": _now_iso(),
+                }
+            )
+            self._workout_sessions[session_id] = updated
+            return updated
+
+    async def get_workout_session(
+        self,
+        *,
+        session_id: str,
+    ) -> WorkoutSessionSummary | None:
+        async with self._lock:
+            return self._workout_sessions.get(session_id)
+
+    async def list_workout_sessions(
+        self,
+        *,
+        username: str | None = None,
+        wristband_id: str | None = None,
+        gym_id: str | None = None,
+        status: WorkoutSessionStatus | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[WorkoutSessionSummary]:
+        async with self._lock:
+            items = sorted(
+                self._workout_sessions.values(),
+                key=lambda item: (item.started_at, item.session_id),
+                reverse=True,
+            )
+
+        if username is not None:
+            items = [item for item in items if item.username == username]
+        if wristband_id is not None:
+            items = [item for item in items if item.wristband_id == wristband_id]
+        if gym_id is not None:
+            items = [item for item in items if item.gym_id == gym_id]
+        if status is not None:
+            items = [item for item in items if item.status == status]
+        if start is not None:
+            start_ts = _parse_isoformat(start)
+            items = [item for item in items if _parse_isoformat(item.started_at) >= start_ts]
+        if end is not None:
+            end_ts = _parse_isoformat(end)
+            items = [
+                item
+                for item in items
+                if _parse_isoformat(item.ended_at or item.started_at) <= end_ts
+            ]
+
+        return items[offset : offset + limit]
 
     async def create_refresh_session(
         self,
@@ -644,6 +874,20 @@ class EventStore:
                 return device
         return None
 
+    def _ensure_active_user_wristband_binding_conflict_locked(
+        self,
+        *,
+        username: str,
+        wristband_id: str,
+    ) -> None:
+        for binding in self._user_wristband_bindings:
+            if not binding.is_active:
+                continue
+            if binding.username == username:
+                raise ValueError("user already has an active wristband binding")
+            if binding.wristband_id == wristband_id:
+                raise ValueError("wristband already bound to another user")
+
 def coerce_online(status: str) -> bool:
     return status not in {"offline", "disconnected"}
 
@@ -714,3 +958,59 @@ def _expire_command_record(
             "result_detail": item.result_detail or "command expired before successful delivery",
         }
     )
+
+
+def _normalize_segments(segments: list[WorkoutSessionSegment] | None) -> list[WorkoutSessionSegment]:
+    normalized: list[WorkoutSessionSegment] = []
+    for segment in segments or []:
+        duration_s = segment.duration_s
+        normalized_started_at = _normalize_iso(segment.started_at) or segment.started_at
+        normalized_ended_at = _normalize_iso(segment.ended_at)
+        if duration_s is None and normalized_ended_at is not None:
+            duration_s = _session_duration_s(
+                started_at=normalized_started_at,
+                ended_at=normalized_ended_at,
+            )
+        normalized.append(
+            segment.model_copy(
+                update={
+                    "started_at": normalized_started_at,
+                    "ended_at": normalized_ended_at,
+                    "duration_s": duration_s,
+                }
+            )
+        )
+    return normalized
+
+
+def _normalize_equipment_ids(
+    *,
+    equipment_ids: list[str] | None,
+    segments: list[WorkoutSessionSegment],
+) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in equipment_ids or []:
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    for segment in segments:
+        if segment.equipment_id in seen:
+            continue
+        seen.add(segment.equipment_id)
+        normalized.append(segment.equipment_id)
+    return normalized
+
+
+def _session_duration_s(*, started_at: str, ended_at: str | None) -> int | None:
+    if ended_at is None:
+        return None
+    return max(int((_parse_isoformat(ended_at) - _parse_isoformat(started_at)).total_seconds()), 0)
+
+
+def _normalize_iso(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return _parse_isoformat(value).isoformat()
