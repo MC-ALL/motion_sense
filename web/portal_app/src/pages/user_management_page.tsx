@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   Alert,
@@ -73,6 +74,7 @@ function render_scope_tags(items: string[], empty_text: string) {
 }
 
 export function UserManagementPage() {
+  const navigate = useNavigate();
   const session = use_auth_store((state) => state.session);
 
   const [loading, set_loading] = useState(true);
@@ -162,6 +164,9 @@ export function UserManagementPage() {
               }}
             >
               编辑
+            </Button>
+            <Button size="small" onClick={() => navigate(`/training-archive/${record.username}`)}>
+              训练档案
             </Button>
             <Popconfirm
               title={`确认删除用户 ${record.username}？`}

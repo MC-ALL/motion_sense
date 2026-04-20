@@ -76,6 +76,7 @@ export function ProfilePage() {
           <Button onClick={() => navigate('/equipment')}>器材管理</Button>
           <Button onClick={() => navigate('/wristband')}>手环管理</Button>
           <Button onClick={() => navigate('/env-quality')}>环境质量</Button>
+          <Button onClick={() => navigate('/training-archive')}>训练档案</Button>
           {session.user.role !== 'student' ? <Button onClick={() => navigate('/alerts')}>告警管理</Button> : null}
           {session.user.role === 'admin' ? <Button onClick={() => navigate('/health-center')}>系统健康中心</Button> : null}
         </Space>

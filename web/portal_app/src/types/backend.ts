@@ -171,6 +171,94 @@ export interface UserUpdateRequest {
   device_ids?: string[] | null;
 }
 
+export interface UserWristbandBindingSummary {
+  id: number;
+  username: string;
+  wristband_id: string;
+  gym_id: string;
+  is_active: boolean;
+  bound_at: string;
+  unbound_at?: string | null;
+  source: 'manual' | 'imported' | 'aggregated';
+  note?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface UserWristbandBindingCreateRequest {
+  username: string;
+  wristband_id: string;
+  gym_id: string;
+  bound_at?: string | null;
+  source?: 'manual' | 'imported' | 'aggregated';
+  note?: string | null;
+}
+
+export interface UserWristbandBindingUnbindRequest {
+  unbound_at?: string | null;
+  note?: string | null;
+}
+
+export interface WorkoutSessionMetrics {
+  avg_heart_rate?: number | null;
+  max_heart_rate?: number | null;
+  total_steps?: number | null;
+  total_rep_count?: number | null;
+  total_energy_wh?: number | null;
+  alert_count?: number | null;
+}
+
+export interface WorkoutSessionSegment {
+  equipment_id: string;
+  started_at: string;
+  ended_at?: string | null;
+  duration_s?: number | null;
+  rep_count?: number | null;
+  energy_wh?: number | null;
+}
+
+export interface WorkoutSessionSummary {
+  session_id: string;
+  username: string;
+  wristband_id: string;
+  gym_id: string;
+  status: 'open' | 'completed' | 'cancelled';
+  source: 'manual' | 'imported' | 'aggregated';
+  started_at: string;
+  ended_at?: string | null;
+  duration_s?: number | null;
+  equipment_ids: string[];
+  segments: WorkoutSessionSegment[];
+  metrics: WorkoutSessionMetrics;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface UserTrainingProfileSummary {
+  total_sessions: number;
+  completed_sessions: number;
+  open_sessions: number;
+  cancelled_sessions: number;
+  total_duration_s: number;
+  total_rep_count: number;
+  total_energy_wh: number;
+  avg_heart_rate?: number | null;
+  max_heart_rate?: number | null;
+  equipment_ids: string[];
+  last_session_at?: string | null;
+}
+
+export interface UserTrainingProfileResponse {
+  user: UserSummary;
+  query_start?: string | null;
+  query_end?: string | null;
+  active_binding?: UserWristbandBindingSummary | null;
+  recent_bindings: UserWristbandBindingSummary[];
+  recent_sessions: WorkoutSessionSummary[];
+  summary: UserTrainingProfileSummary;
+}
+
 export interface BatchAckResult {
   updated: number;
   items: BusinessAlertRecord[];

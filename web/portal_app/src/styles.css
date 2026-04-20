@@ -966,6 +966,50 @@ button.interactive_metric_card {
   color: #47615c;
 }
 
+.archive_filter_panel {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.archive_admin_grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.archive_admin_select {
+  width: 100%;
+}
+
+.archive_admin_actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.archive_session_item {
+  gap: 0.9rem;
+}
+
+.archive_session_tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+
+.archive_note {
+  margin-top: 0.65rem;
+}
+
+.archive_hint_text {
+  margin-top: 0.5rem;
+}
+
 .loading_surface,
 .empty_state,
 .placeholder_page {
@@ -987,6 +1031,10 @@ button.interactive_metric_card {
 
   .metric_grid_five {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .archive_admin_grid {
+    grid-template-columns: 1fr;
   }
 
   .hero_banner {

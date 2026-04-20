@@ -16,6 +16,10 @@ import type {
   LoginRequest,
   TelemetryRecord,
   UserCreateRequest,
+  UserWristbandBindingCreateRequest,
+  UserWristbandBindingSummary,
+  UserWristbandBindingUnbindRequest,
+  UserTrainingProfileResponse,
   UserSummary,
   UserUpdateRequest
 } from '../types/backend';
@@ -121,6 +125,39 @@ export async function update_user(username: string, payload: UserUpdateRequest):
 
 export async function delete_user(username: string): Promise<void> {
   await backend_client.delete(`/api/v1/users/${username}`);
+}
+
+export async function fetch_user_training_profile(
+  username: string,
+  params?: {
+    start?: string;
+    end?: string;
+    binding_limit?: number;
+    session_limit?: number;
+  }
+): Promise<UserTrainingProfileResponse> {
+  const response = await backend_client.get<UserTrainingProfileResponse>(`/api/v1/users/${username}/training-profile`, {
+    params
+  });
+  return response.data;
+}
+
+export async function create_user_wristband_binding(
+  payload: UserWristbandBindingCreateRequest
+): Promise<UserWristbandBindingSummary> {
+  const response = await backend_client.post<UserWristbandBindingSummary>('/api/v1/user-wristband-bindings', payload);
+  return response.data;
+}
+
+export async function end_user_wristband_binding(
+  binding_id: number,
+  payload: UserWristbandBindingUnbindRequest
+): Promise<UserWristbandBindingSummary> {
+  const response = await backend_client.post<UserWristbandBindingSummary>(
+    `/api/v1/user-wristband-bindings/${binding_id}/unbind`,
+    payload
+  );
+  return response.data;
 }
 
 export async function fetch_devices(params?: {

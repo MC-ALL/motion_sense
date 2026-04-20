@@ -67,6 +67,12 @@ const ProfilePage = lazy(async () =>
   }))
 );
 
+const TrainingArchivePage = lazy(async () =>
+  import('../pages/training_archive_page').then((module) => ({
+    default: module.TrainingArchivePage
+  }))
+);
+
 function RouteFallback() {
   return (
     <section className="panel_surface loading_surface">
@@ -116,6 +122,9 @@ function AppLayout() {
           </NavLink>
           <NavLink to="/env-quality" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
             环境质量
+          </NavLink>
+          <NavLink to="/training-archive" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
+            训练档案
           </NavLink>
           {can_view_business_alerts ? (
             <NavLink to="/alerts" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
@@ -168,6 +177,8 @@ export const router = createBrowserRouter([
       { path: 'env-quality', element: render_lazy_page(EnvQualityPage) },
       { path: 'env-quality/:device_id', element: render_lazy_page(EnvQualityPage) },
       { path: 'alerts', element: render_lazy_page(AlertsPage) },
+      { path: 'training-archive', element: render_lazy_page(TrainingArchivePage) },
+      { path: 'training-archive/:username', element: render_lazy_page(TrainingArchivePage) },
       { path: 'device-registry', element: render_lazy_page(DeviceRegistryPage) },
       { path: 'user-management', element: render_lazy_page(UserManagementPage) },
       { path: 'profile', element: render_lazy_page(ProfilePage) },
