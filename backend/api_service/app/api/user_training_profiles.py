@@ -20,7 +20,7 @@ router = APIRouter(
 )
 
 
-@router.get("/{username}/training-profile", response_model=UserTrainingProfileResponse, response_model_exclude_none=True)
+@router.get("/{username}/training-profile", response_model=UserTrainingProfileResponse)
 async def get_user_training_profile(
     username: str,
     start: str | None = Query(default=None),

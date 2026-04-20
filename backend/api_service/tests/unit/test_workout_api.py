@@ -140,6 +140,7 @@ def test_admin_can_manage_user_wristband_bindings_and_workout_sessions() -> None
         )
         assert binding_response.status_code == 201
         binding_payload = binding_response.json()
+        binding_payload = binding_response.json()
         assert binding_payload["is_active"] is True
         assert binding_payload["username"] == "student_one"
 
@@ -463,6 +464,7 @@ def test_training_profile_aggregates_sessions_and_enforces_scope() -> None:
             headers=headers,
         )
         assert binding_response.status_code == 201
+        binding_payload = binding_response.json()
 
         first_session = client.post(
             "/api/v1/workout-sessions",
@@ -568,6 +570,19 @@ def test_training_profile_aggregates_sessions_and_enforces_scope() -> None:
         )
         assert student_self_profile.status_code == 200
         assert student_self_profile.json()["summary"]["total_sessions"] == 2
+
+        client.post(
+            f"/api/v1/user-wristband-bindings/{binding_payload['id']}/unbind",
+            json={"unbound_at": "2026-04-20T12:00:00Z"},
+            headers=headers,
+        )
+        profile_after_unbind = client.get(
+            "/api/v1/users/student_one/training-profile",
+            headers=_headers(teacher_token),
+        )
+        assert profile_after_unbind.status_code == 200
+        assert "active_binding" in profile_after_unbind.json()
+        assert profile_after_unbind.json()["active_binding"] is None
 
         forbidden_other_profile = client.get(
             "/api/v1/users/student_two/training-profile",
