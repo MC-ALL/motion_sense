@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from app.models.ai import AiReportDetail, AiReportStatus, AiReportSummary
 from app.models.auth import StoredRefreshSession
 from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
@@ -138,6 +139,54 @@ class Store(Protocol):
         limit: int = 1000,
         offset: int = 0,
     ) -> list[WorkoutSessionSummary]: ...
+
+    async def create_ai_report(
+        self,
+        *,
+        user_id: str,
+        status: AiReportStatus,
+        start: str,
+        end: str,
+        summary_title: str | None,
+        summary: str | None,
+        insights: list[str],
+        recommendations: list[str],
+        evidence_session_ids: list[str],
+        raw_markdown: str | None,
+        error_message: str | None,
+    ) -> AiReportDetail: ...
+
+    async def update_ai_report(
+        self,
+        *,
+        report_id: str,
+        status: AiReportStatus | None = None,
+        summary_title: str | None = None,
+        summary: str | None = None,
+        insights: list[str] | None = None,
+        recommendations: list[str] | None = None,
+        evidence_session_ids: list[str] | None = None,
+        raw_markdown: str | None = None,
+        error_message: str | None = None,
+        finished_at: str | None = None,
+    ) -> AiReportDetail | None: ...
+
+    async def get_ai_report(
+        self,
+        *,
+        report_id: str,
+    ) -> AiReportDetail | None: ...
+
+    async def list_ai_reports(
+        self,
+        *,
+        user_id: str | None = None,
+        status: AiReportStatus | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[AiReportSummary]: ...
 
     async def create_refresh_session(
         self,

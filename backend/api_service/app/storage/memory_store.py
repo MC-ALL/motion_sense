@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from app.models.ai import AiReportDetail, AiReportStatus, AiReportSummary
 from app.models.auth import StoredRefreshSession
 from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
@@ -37,6 +38,7 @@ class EventStore:
         self._user_wristband_bindings: list[UserWristbandBindingSummary] = []
         self._telemetry: list[TelemetryRecord] = []
         self._workout_sessions: dict[str, WorkoutSessionSummary] = {}
+        self._ai_reports: dict[str, AiReportDetail] = {}
         self._device_config_commands: dict[str, DeviceConfigCommandRecord] = {}
         self._next_alert_id = 1
         self._next_binding_id = 1
@@ -331,6 +333,117 @@ class EventStore:
             ]
 
         return items[offset : offset + limit]
+
+    async def create_ai_report(
+        self,
+        *,
+        user_id: str,
+        status: AiReportStatus,
+        start: str,
+        end: str,
+        summary_title: str | None,
+        summary: str | None,
+        insights: list[str],
+        recommendations: list[str],
+        evidence_session_ids: list[str],
+        raw_markdown: str | None,
+        error_message: str | None,
+    ) -> AiReportDetail:
+        async with self._lock:
+            now = _now_iso()
+            report = AiReportDetail(
+                report_id=str(uuid4()),
+                user_id=user_id,
+                status=status,
+                start=_normalize_iso(start) or start,
+                end=_normalize_iso(end) or end,
+                created_at=now,
+                updated_at=now,
+                finished_at=None,
+                summary_title=summary_title,
+                summary=summary,
+                insights=list(insights),
+                recommendations=list(recommendations),
+                evidence_session_ids=list(evidence_session_ids),
+                raw_markdown=raw_markdown,
+                error_message=error_message,
+            )
+            self._ai_reports[report.report_id] = report
+            return report
+
+    async def update_ai_report(
+        self,
+        *,
+        report_id: str,
+        status: AiReportStatus | None = None,
+        summary_title: str | None = None,
+        summary: str | None = None,
+        insights: list[str] | None = None,
+        recommendations: list[str] | None = None,
+        evidence_session_ids: list[str] | None = None,
+        raw_markdown: str | None = None,
+        error_message: str | None = None,
+        finished_at: str | None = None,
+    ) -> AiReportDetail | None:
+        async with self._lock:
+            existing = self._ai_reports.get(report_id)
+            if existing is None:
+                return None
+            updated = existing.model_copy(
+                update={
+                    "status": status or existing.status,
+                    "summary_title": summary_title if summary_title is not None else existing.summary_title,
+                    "summary": summary if summary is not None else existing.summary,
+                    "insights": list(insights) if insights is not None else existing.insights,
+                    "recommendations": list(recommendations) if recommendations is not None else existing.recommendations,
+                    "evidence_session_ids": list(evidence_session_ids)
+                    if evidence_session_ids is not None
+                    else existing.evidence_session_ids,
+                    "raw_markdown": raw_markdown if raw_markdown is not None else existing.raw_markdown,
+                    "error_message": error_message if error_message is not None else existing.error_message,
+                    "finished_at": _normalize_iso(finished_at) if finished_at is not None else existing.finished_at,
+                    "updated_at": _now_iso(),
+                }
+            )
+            self._ai_reports[report_id] = updated
+            return updated
+
+    async def get_ai_report(self, *, report_id: str) -> AiReportDetail | None:
+        async with self._lock:
+            return self._ai_reports.get(report_id)
+
+    async def list_ai_reports(
+        self,
+        *,
+        user_id: str | None = None,
+        status: AiReportStatus | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[AiReportSummary]:
+        async with self._lock:
+            items = sorted(
+                self._ai_reports.values(),
+                key=lambda item: (item.created_at or "", item.report_id),
+                reverse=True,
+            )
+
+        if user_id is not None:
+            items = [item for item in items if item.user_id == user_id]
+        if status is not None:
+            items = [item for item in items if item.status == status]
+        if start is not None:
+            start_ts = _parse_isoformat(start)
+            items = [item for item in items if _parse_isoformat(item.start) >= start_ts]
+        if end is not None:
+            end_ts = _parse_isoformat(end)
+            items = [item for item in items if _parse_isoformat(item.end) <= end_ts]
+
+        return [
+            AiReportSummary.model_validate(item.model_dump())
+            for item in items[offset : offset + limit]
+        ]
 
     async def create_refresh_session(
         self,

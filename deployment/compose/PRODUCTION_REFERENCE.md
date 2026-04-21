@@ -143,6 +143,7 @@ sh deployment/compose/start_stack.sh
 | 运维鉴权回归 | `sh deployment/compose/verify_ops_auth_stack.sh` |
 | 业务链路回归 | `sh deployment/compose/verify_system_stack.sh` |
 | 训练档案回归 | `sh deployment/compose/verify_training_archive_stack.sh` |
+| 训练会话汇聚回归 | `sh deployment/compose/verify_workout_aggregation_stack.sh` |
 | 数据链路回归 | `sh deployment/compose/verify_database_stack.sh` |
 | 停栈 | `sh deployment/compose/stop_stack.sh` |
 

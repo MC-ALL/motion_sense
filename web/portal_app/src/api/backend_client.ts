@@ -17,7 +17,6 @@ import type {
   DeviceSummary,
   EnvTelemetryAggregateRecord,
   LoginRequest,
-  ReservedApiResponse,
   TelemetryRecord,
   UserCreateRequest,
   UserWristbandBindingOverviewResponse,
@@ -157,8 +156,8 @@ export async function aggregate_workout_sessions(
   return response.data;
 }
 
-export async function analyze_ai_report(payload: AiAnalyzeRequest): Promise<ReservedApiResponse> {
-  const response = await backend_client.post<ReservedApiResponse>('/api/v1/ai/analyze', payload);
+export async function analyze_ai_report(payload: AiAnalyzeRequest): Promise<AiReportDetail> {
+  const response = await backend_client.post<AiReportDetail>('/api/v1/ai/analyze', payload);
   return response.data;
 }
 

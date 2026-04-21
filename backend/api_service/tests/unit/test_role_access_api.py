@@ -174,3 +174,83 @@ def test_role_boundaries_for_business_and_ops_routes() -> None:
         admin_ops = client.get("/ops/v1/health", headers=_headers(admin_token))
         assert admin_ops.status_code == 200
         assert admin_ops.json()["module_id"] == "backend:api-main"
+
+
+def test_ai_report_scope_respects_teacher_and_student_boundaries() -> None:
+    settings = RuntimeSettings(auth=_build_auth_settings())
+
+    with TestClient(create_app(settings)) as client:
+        admin_token = _login(client, "admin", "admin123")["access_token"]
+        _create_user(
+            client,
+            admin_token,
+            "teacher_ai",
+            "teacher123",
+            "teacher",
+            gym_ids=["gym-gz-01"],
+        )
+        _create_user(
+            client,
+            admin_token,
+            "student_ai_one",
+            "student123",
+            "student",
+            gym_ids=["gym-gz-01"],
+            device_ids=["wb-001"],
+        )
+        _create_user(
+            client,
+            admin_token,
+            "student_ai_two",
+            "student123",
+            "student",
+            gym_ids=["gym-sz-01"],
+            device_ids=["wb-002"],
+        )
+
+        first_report = client.post(
+            "/api/v1/ai/analyze",
+            json={
+                "user_id": "student_ai_one",
+                "start": "2026-04-01T00:00:00Z",
+                "end": "2026-04-07T23:59:59Z",
+            },
+            headers=_headers(admin_token),
+        )
+        assert first_report.status_code == 201
+
+        second_report = client.post(
+            "/api/v1/ai/analyze",
+            json={
+                "user_id": "student_ai_two",
+                "start": "2026-04-01T00:00:00Z",
+                "end": "2026-04-07T23:59:59Z",
+            },
+            headers=_headers(admin_token),
+        )
+        assert second_report.status_code == 201
+
+        teacher_token = _login(client, "teacher_ai", "teacher123")["access_token"]
+        student_token = _login(client, "student_ai_one", "student123")["access_token"]
+
+        teacher_list = client.get("/api/v1/ai/reports", headers=_headers(teacher_token))
+        assert teacher_list.status_code == 200
+        assert [item["user_id"] for item in teacher_list.json()] == ["student_ai_one"]
+
+        teacher_forbidden = client.get(
+            f"/api/v1/ai/reports/{second_report.json()['report_id']}",
+            headers=_headers(teacher_token),
+        )
+        assert teacher_forbidden.status_code == 403
+        assert teacher_forbidden.json()["detail"] == "ai report access forbidden"
+
+        student_list = client.get("/api/v1/ai/reports", headers=_headers(student_token))
+        assert student_list.status_code == 200
+        assert [item["user_id"] for item in student_list.json()] == ["student_ai_one"]
+
+        student_forbidden = client.get(
+            f"/api/v1/ai/reports/{second_report.json()['report_id']}",
+            headers=_headers(student_token),
+        )
+        assert student_forbidden.status_code == 403
+        assert student_forbidden.json()["detail"] == "ai report access forbidden"

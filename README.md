@@ -22,11 +22,11 @@
 - 配置命令失败重试、租约领取与 `timed_out` 超时收敛
 - 后台 JWT 登录、刷新、退出接口已实现
 - 后台 `GET/POST/PATCH/DELETE /api/v1/users` 用户管理接口已实现，支持 `admin` / `teacher` / `student`，并支持 `gym_ids` / `device_ids` 归属映射
-- 后台 AI / OTA 预留接口已占位，当前返回 `501 reserved`
+- 后台 AI 已完成最小可用基线：支持 `queued` 报告创建与列表/详情查询；OTA 仍为预留接口并返回 `501 reserved`
 - 网关基于 InfluxDB 的本地缓存与补发链路
 - 网关 P1 规则引擎与规则热重载
 - 网关 `DEVICE_OFFLINE` 告警与 retained 状态发布
-- 网关基础设施健康采集与 `POST /api/v1/system/health/report` 上报
+- 网关与后台基础设施健康统一通过 `/ops/v1/*` 暴露，并由 `ops_observer` 聚合后对外提供运维视图
 - 网关真实 Broker 重启后的自动重连回归，以及规则热重载端到端回归
 - `ops_observer` 轮询 + 订阅网关与后台 `/ops/v1/*` / `/ops/ws`，并对外提供 `GET /api/v1/ops/*`、`PATCH /api/v1/ops/alerts/{id}/close`、`WS /api/ws/ops`
 - `web/portal_app` 已落地运维门户骨架、健康中心页面、运行时配置注入与前端构建拆包
@@ -34,6 +34,7 @@
 - `web/portal_app` 已新增独立登录页 `/login`，统一未登录跳转与登录后回跳，并补齐个人中心入口
 - `web/portal_app` 已按角色收敛页面可见性：学生隐藏“告警管理”，教师 / 学生在器材、手环、环境实例页隐藏配置下发控件
 - `web/portal_app` 已将通用时序图切换为轻量 SVG 实现，实时仪表盘改为状态汇总页，系统健康中心支持卡片二级视图
+- `web/portal_app` 已补齐训练档案与 AI 报告页面；训练档案页可发起 AI 分析请求，报告列表/详情页可直接消费真实 `queued` 记录
 - 本地链路 `mosquitto -> edge_processor -> InfluxDB 缓冲 -> POST /api/v1/ingest/batch -> backend/api_service -> TimescaleDB`
 - Apple `container` 本地脚本 `verify_system_stack.sh` 已验证通过：
   设备入库、健康汇聚、配置命令闭环、健康汇总视图、`ops_observer` 聚合健康视图，以及网页端入口与运行时配置
@@ -50,8 +51,15 @@
 - Linux 正式部署仍需补齐 Mosquitto `acl.conf`、`passwd`、证书文件的属主与权限初始化
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - OTA 当前仅保留接口预留，不纳入后续开发计划
-- AI 当前继续搁置，仅保留预留接口，不纳入本轮开发
+- AI 当前已完成 `queued` 报告创建、列表查询与详情查询；模型推理、流式输出与正式报告内容生成仍未接入
 - Apple `container build` 直接打包仓库根上下文仍可能出现归档兼容性问题；当前已由 `build_local_images.sh` 通过最小临时上下文规避
+
+## 最近工作记录（2026-04-21）
+
+- 后台 AI 从纯占位接口推进到最小可用基线：`POST /api/v1/ai/analyze` 会创建真实 `queued` 报告，并按训练时间窗口回填 `evidence_session_ids`
+- 后台已补齐 `GET /api/v1/ai/reports`、`GET /api/v1/ai/reports/{report_id}`，内存存储与 PostgreSQL 持久化实现保持一致，并按管理员 / 教师 / 学生权限收口可见范围
+- 网页端训练档案页已改为真实排队成功流；AI 报告列表页、详情页已接入真实记录展示，便于后续继续接模型生成链路
+- 文档口径已统一到当前实现：AI 为“排队基线已落地、生成链路未接入”，基础设施健康统一由 `ops_observer` 汇聚
 
 ## 目录结构
 
@@ -94,13 +102,18 @@
 - `GET /healthz`
 - `POST /api/v1/ingest/batch`
 - `GET /api/v1/devices`、`GET /api/v1/devices/{id}`、`POST /api/v1/devices/{id}/config`
+- `POST/PATCH/DELETE /api/v1/devices`
 - `GET /api/v1/gateway/{gateway_id}/commands/pending`、`GET /api/v1/gateway/commands/{command_id}`、`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
 - `GET /api/v1/alerts`、`GET /api/v1/alerts/{id}`、`PATCH /api/v1/alerts/{id}/ack`、`POST /api/v1/alerts/batch-ack`
 - `GET /api/v1/telemetry/wristband/{id}`
 - `GET /api/v1/telemetry/equipment/{id}`
 - `GET /api/v1/telemetry/env/{id}`、`GET /api/v1/telemetry/env/{id}/aggregate`
 - `GET /api/v1/wristband/{id}/bindings`
-- `POST /api/v1/system/health/report`、`GET /api/v1/system/health*`
+- `GET/POST/PATCH/DELETE /api/v1/users`
+- `GET /api/v1/user-wristband-bindings/overview`、`GET/POST /api/v1/user-wristband-bindings`、`POST /api/v1/user-wristband-bindings/{id}/unbind`
+- `GET /api/v1/users/{username}/training-profile`
+- `GET/POST/PATCH /api/v1/workout-sessions`、`GET /api/v1/workout-sessions/{session_id}`、`POST /api/v1/workout-sessions/aggregate`
+- `POST /api/v1/ai/analyze`、`GET /api/v1/ai/reports`、`GET /api/v1/ai/reports/{report_id}`
 - `GET /api/ws`
 - `GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`
 
@@ -113,12 +126,14 @@
 - `/env-quality`、`/env-quality/:device_id`：环境总览与单个环境节点实例详情
 - `/alerts`：统一告警管理
 - `/health-center`：系统健康中心
+- `/training-archive`、`/training-archive/:username`：训练档案
+- `/ai-reports`、`/ai-reports/:report_id`：AI 报告列表与详情
 
 默认部署配置下：
 
 - `GET /api/ws?token={access_token}` 与 `WS /ops/ws?token={access_token}` 需要 JWT
 - 业务查询、设备管理、后台自观测查询都需要 `Authorization: Bearer {access_token}`
-- 仅网关采集、命令轮询 / 结果回报、健康上报这四类内网接口保留免鉴权
+- 仅网关采集与命令轮询 / 结果回报这类内网接口保留免鉴权
 - 业务 `WS /api/ws?token={access_token}` 会继续按用户归属过滤，只推送已授权的 `gym_id` / `device_id` 数据
 
 网关 HTTP 侧目前仅暴露：

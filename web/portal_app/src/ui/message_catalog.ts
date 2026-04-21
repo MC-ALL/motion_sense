@@ -17,6 +17,7 @@ export const page_notice_titles = {
   training_archive_aggregate_result: '训练会话已同步',
   training_archive_ai_reserved: 'AI 分析能力已预留',
   training_archive_ai_ready: 'AI 分析入口已接线',
+  training_archive_ai_queued: 'AI 报告已创建',
   ai_reports_error: 'AI 报告页异常',
   ai_reports_reserved: 'AI 报告功能已预留',
   wristband_list_error: '手环列表加载失败',

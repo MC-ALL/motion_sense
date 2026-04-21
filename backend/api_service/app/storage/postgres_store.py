@@ -7,6 +7,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
+from app.models.ai import AiReportDetail, AiReportStatus, AiReportSummary
 from app.models.auth import StoredRefreshSession
 from app.models.device_config import DeviceConfigCommandRecord, GatewayCommandResultRequest
 from app.models.ingest import (
@@ -494,6 +495,191 @@ class PostgresStore:
                 rows = await cursor.fetchall()
 
         return [_workout_session_from_row(row) for row in rows]
+
+    async def create_ai_report(
+        self,
+        *,
+        user_id: str,
+        status: AiReportStatus,
+        start: str,
+        end: str,
+        summary_title: str | None,
+        summary: str | None,
+        insights: list[str],
+        recommendations: list[str],
+        evidence_session_ids: list[str],
+        raw_markdown: str | None,
+        error_message: str | None,
+    ) -> AiReportDetail:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO ai_reports (
+                        user_id,
+                        status,
+                        start_at,
+                        end_at,
+                        summary_title,
+                        summary,
+                        insights,
+                        recommendations,
+                        evidence_session_ids,
+                        raw_markdown,
+                        error_message,
+                        finished_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING report_id, user_id, status, start_at, end_at, summary_title, summary,
+                              insights, recommendations, evidence_session_ids, raw_markdown, error_message,
+                              created_at, updated_at, finished_at
+                    """,
+                    (
+                        user_id,
+                        status,
+                        _coerce_timestamptz(start),
+                        _coerce_timestamptz(end),
+                        summary_title,
+                        summary,
+                        Jsonb(insights),
+                        Jsonb(recommendations),
+                        Jsonb(evidence_session_ids),
+                        raw_markdown,
+                        error_message,
+                        None,
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        return _ai_report_from_row(row)
+
+    async def update_ai_report(
+        self,
+        *,
+        report_id: str,
+        status: AiReportStatus | None = None,
+        summary_title: str | None = None,
+        summary: str | None = None,
+        insights: list[str] | None = None,
+        recommendations: list[str] | None = None,
+        evidence_session_ids: list[str] | None = None,
+        raw_markdown: str | None = None,
+        error_message: str | None = None,
+        finished_at: str | None = None,
+    ) -> AiReportDetail | None:
+        current = await self.get_ai_report(report_id=report_id)
+        if current is None:
+            return None
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE ai_reports
+                    SET status = COALESCE(%s, status),
+                        summary_title = COALESCE(%s, summary_title),
+                        summary = COALESCE(%s, summary),
+                        insights = %s,
+                        recommendations = %s,
+                        evidence_session_ids = %s,
+                        raw_markdown = COALESCE(%s, raw_markdown),
+                        error_message = COALESCE(%s, error_message),
+                        finished_at = COALESCE(%s, finished_at),
+                        updated_at = NOW()
+                    WHERE report_id = %s
+                    RETURNING report_id, user_id, status, start_at, end_at, summary_title, summary,
+                              insights, recommendations, evidence_session_ids, raw_markdown, error_message,
+                              created_at, updated_at, finished_at
+                    """,
+                    (
+                        status,
+                        summary_title,
+                        summary,
+                        Jsonb(insights if insights is not None else current.insights),
+                        Jsonb(recommendations if recommendations is not None else current.recommendations),
+                        Jsonb(
+                            evidence_session_ids
+                            if evidence_session_ids is not None
+                            else current.evidence_session_ids
+                        ),
+                        raw_markdown,
+                        error_message,
+                        _coerce_timestamptz(finished_at) if finished_at is not None else None,
+                        report_id,
+                    ),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            return None
+        return _ai_report_from_row(row)
+
+    async def get_ai_report(self, *, report_id: str) -> AiReportDetail | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT report_id, user_id, status, start_at, end_at, summary_title, summary,
+                           insights, recommendations, evidence_session_ids, raw_markdown, error_message,
+                           created_at, updated_at, finished_at
+                    FROM ai_reports
+                    WHERE report_id = %s
+                    """,
+                    (report_id,),
+                )
+                row = await cursor.fetchone()
+
+        if row is None:
+            return None
+        return _ai_report_from_row(row)
+
+    async def list_ai_reports(
+        self,
+        *,
+        user_id: str | None = None,
+        status: AiReportStatus | None = None,
+        start: str | None = None,
+        end: str | None = None,
+        limit: int = 1000,
+        offset: int = 0,
+    ) -> list[AiReportSummary]:
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        if user_id is not None:
+            clauses.append("user_id = %s")
+            params.append(user_id)
+        if status is not None:
+            clauses.append("status = %s")
+            params.append(status)
+        if start is not None:
+            clauses.append("start_at >= %s")
+            params.append(_coerce_timestamptz(start))
+        if end is not None:
+            clauses.append("end_at <= %s")
+            params.append(_coerce_timestamptz(end))
+
+        params.extend([limit, offset])
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    f"""
+                    SELECT report_id, user_id, status, start_at, end_at, summary_title,
+                           created_at, updated_at, finished_at
+                    FROM ai_reports
+                    {where_clause}
+                    ORDER BY created_at DESC, report_id DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params,
+                )
+                rows = await cursor.fetchall()
+
+        return [_ai_report_summary_from_row(row) for row in rows]
 
     async def create_refresh_session(
         self,
@@ -1635,6 +1821,27 @@ class PostgresStore:
                 )
                 await cursor.execute(
                     """
+                    CREATE TABLE IF NOT EXISTS ai_reports (
+                        report_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        start_at TIMESTAMPTZ NOT NULL,
+                        end_at TIMESTAMPTZ NOT NULL,
+                        summary_title TEXT,
+                        summary TEXT,
+                        insights JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        recommendations JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        evidence_session_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                        raw_markdown TEXT,
+                        error_message TEXT,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        finished_at TIMESTAMPTZ
+                    )
+                    """
+                )
+                await cursor.execute(
+                    """
                     ALTER TABLE device_config_commands
                     ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0
                     """
@@ -1782,6 +1989,18 @@ class PostgresStore:
                     """
                     CREATE INDEX IF NOT EXISTS idx_workout_sessions_wristband_started_at
                     ON workout_sessions (wristband_id, started_at DESC)
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_ai_reports_user_created_at
+                    ON ai_reports (user_id, created_at DESC)
+                    """
+                )
+                await cursor.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_ai_reports_status_created_at
+                    ON ai_reports (status, created_at DESC)
                     """
                 )
                 await cursor.execute(
@@ -1954,6 +2173,32 @@ def _workout_session_from_row(row: dict[str, Any]) -> WorkoutSessionSummary:
         notes=row.get("notes"),
         created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
         updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
+    )
+
+
+def _ai_report_summary_from_row(row: dict[str, Any]) -> AiReportSummary:
+    return AiReportSummary(
+        report_id=str(row["report_id"]),
+        user_id=row["user_id"],
+        status=row["status"],
+        start=row["start_at"].isoformat(),
+        end=row["end_at"].isoformat(),
+        created_at=row["created_at"].isoformat() if row.get("created_at") is not None else None,
+        updated_at=row["updated_at"].isoformat() if row.get("updated_at") is not None else None,
+        finished_at=row["finished_at"].isoformat() if row.get("finished_at") is not None else None,
+        summary_title=row.get("summary_title"),
+    )
+
+
+def _ai_report_from_row(row: dict[str, Any]) -> AiReportDetail:
+    return AiReportDetail(
+        **_ai_report_summary_from_row(row).model_dump(),
+        summary=row.get("summary"),
+        insights=list(row.get("insights") or []),
+        recommendations=list(row.get("recommendations") or []),
+        evidence_session_ids=list(row.get("evidence_session_ids") or []),
+        raw_markdown=row.get("raw_markdown"),
+        error_message=row.get("error_message"),
     )
 
 

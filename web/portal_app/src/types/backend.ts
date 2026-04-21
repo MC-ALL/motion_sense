@@ -262,6 +262,8 @@ export interface AiAnalyzeRequest {
   end: string;
 }
 
+export type AiReportStatus = 'queued' | 'generating' | 'completed' | 'failed';
+
 export interface ReservedApiResponse {
   status: string;
   detail: string;
@@ -272,10 +274,11 @@ export interface ReservedApiResponse {
 export interface AiReportSummary {
   report_id: string;
   user_id: string;
-  status: string;
+  status: AiReportStatus;
   start: string;
   end: string;
   created_at: string;
+  updated_at?: string | null;
   finished_at?: string | null;
   summary_title?: string | null;
 }
@@ -286,6 +289,7 @@ export interface AiReportDetail extends AiReportSummary {
   recommendations?: string[] | null;
   evidence_session_ids?: string[] | null;
   raw_markdown?: string | null;
+  error_message?: string | null;
 }
 
 export interface UserTrainingProfileSummary {

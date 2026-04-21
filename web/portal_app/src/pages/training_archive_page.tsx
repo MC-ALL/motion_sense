@@ -16,6 +16,7 @@ import { AuthRequiredState } from '../components/auth_required_state';
 import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
 import type {
+  AiReportDetail,
   ReservedApiResponse,
   UserTrainingProfileResponse,
   WorkoutSessionAggregateResult,
@@ -27,7 +28,7 @@ import { format_time } from '../utils/time';
 import { describe_user_scope } from '../utils/user_scope';
 
 type WindowKey = '7d' | '30d' | 'all';
-type AiLaunchState = 'idle' | 'submitting' | 'reserved' | 'failed';
+type AiLaunchState = 'idle' | 'submitting' | 'queued' | 'reserved' | 'failed';
 
 const window_options: Array<{ label: string; value: WindowKey }> = [
   { label: '近 7 天', value: '7d' },
@@ -190,6 +191,7 @@ export function TrainingArchivePage() {
   const [candidate_usernames, set_candidate_usernames] = useState<string[]>([]);
   const [ai_launch_state, set_ai_launch_state] = useState<AiLaunchState>('idle');
   const [ai_feedback, set_ai_feedback] = useState<string | null>(null);
+  const [ai_created_report, set_ai_created_report] = useState<AiReportDetail | null>(null);
 
   const target_username = route_username ?? session?.user.username ?? null;
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
@@ -266,6 +268,7 @@ export function TrainingArchivePage() {
       set_aggregate_summary(null);
       set_ai_launch_state('idle');
       set_ai_feedback(null);
+      set_ai_created_report(null);
       return;
     }
 
@@ -300,6 +303,7 @@ export function TrainingArchivePage() {
   useEffect(() => {
     set_ai_launch_state('idle');
     set_ai_feedback(null);
+    set_ai_created_report(null);
   }, [target_username, window_key]);
 
   async function reload_profile(username: string) {
@@ -337,14 +341,16 @@ export function TrainingArchivePage() {
 
     set_ai_launch_state('submitting');
     set_ai_feedback(null);
+    set_ai_created_report(null);
     try {
       const result = await analyze_ai_report({
         user_id: profile.user.username,
         start: pick_ai_start_time(profile, window_key),
         end: profile.query_end ?? new Date().toISOString()
       });
-      set_ai_launch_state('reserved');
-      set_ai_feedback(result.detail);
+      set_ai_launch_state('queued');
+      set_ai_created_report(result);
+      set_ai_feedback(`报告 ${result.report_id} 已创建，当前状态为 ${result.status}。`);
     } catch (submit_error) {
       const response_detail = (submit_error as AxiosError<{ detail?: ReservedApiResponse }>).response?.data?.detail;
       if (
@@ -586,7 +592,7 @@ export function TrainingArchivePage() {
                     <PageNotice
                       tone="info"
                       title={page_notice_titles.training_archive_ai_ready}
-                      description="本阶段前端已接入 AI 触发入口；当前版本会优先校验鉴权、请求参数与预留态返回，为后续真实模型接入保留稳定页面位置。"
+                      description="当前版本会先创建一条真实的 queued 报告记录，并保留与旧版 reserved 返回的兼容处理，为后续模型生成链路预留稳定入口。"
                     />
                   ) : null}
                   {ai_launch_state === 'reserved' ? (
@@ -595,6 +601,33 @@ export function TrainingArchivePage() {
                       title={page_notice_titles.training_archive_ai_reserved}
                       description={ai_feedback ?? '后台 AI 接口已预留，当前版本尚未接入模型推理与报告落库。'}
                     />
+                  ) : null}
+                  {ai_launch_state === 'queued' ? (
+                    <>
+                      <PageNotice
+                        tone="success"
+                        title={page_notice_titles.training_archive_ai_queued}
+                        description={ai_feedback ?? 'AI 报告已入队，可在历史报告页继续查看当前状态。'}
+                      />
+                      {ai_created_report ? (
+                        <div className="archive_admin_actions">
+                          <Button type="primary" onClick={() => navigate(`/ai-reports/${ai_created_report.report_id}`)}>
+                            打开报告详情
+                          </Button>
+                          <Button
+                            onClick={() =>
+                              navigate(
+                                ai_created_report.user_id === session.user.username
+                                  ? '/ai-reports'
+                                  : `/ai-reports?username=${encodeURIComponent(ai_created_report.user_id)}`
+                              )
+                            }
+                          >
+                            查看历史报告
+                          </Button>
+                        </div>
+                      ) : null}
+                    </>
                   ) : null}
                   {ai_launch_state === 'failed' ? (
                     <PageNotice

@@ -86,6 +86,28 @@ sh deployment/compose/verify_database_stack.sh
 - Redis 链路通过
 - Influx 缓冲与补发通过
 
+## 6.1 训练档案验收
+
+```bash
+sh deployment/compose/verify_training_archive_stack.sh
+```
+
+预期结果：
+- 学生训练档案聚合通过
+- 设备管理页中的手环绑定 / 解绑链路通过
+- 学生自助查看训练档案链路通过
+
+## 6.2 训练会话汇聚验收
+
+```bash
+sh deployment/compose/verify_workout_aggregation_stack.sh
+```
+
+预期结果：
+- `binding/unbind` 事件自动汇聚通过
+- 管理员手动回填训练会话通过
+- 训练档案汇总可见自动汇聚结果
+
 ## 7. 浏览器人工验收
 
 打开：
@@ -97,6 +119,7 @@ http://127.0.0.1:8080/
 人工检查：
 - 使用 bootstrap admin 登录网页端
 - “健康中心”显示 backend / gateway 为 `healthy`
+- “训练档案”可以正常展示绑定与训练摘要
 - 关键业务页面可以正常加载
 
 ## 8. TLS 补充验收
@@ -140,6 +163,13 @@ sh deployment/compose/verify_ops_auth_stack.sh
 
 ```bash
 sh deployment/compose/verify_system_stack.sh
+```
+
+若表现为训练档案、绑定维护或训练会话摘要异常，再执行：
+
+```bash
+sh deployment/compose/verify_training_archive_stack.sh
+sh deployment/compose/verify_workout_aggregation_stack.sh
 ```
 
 若表现为数据库或补发异常，再执行：

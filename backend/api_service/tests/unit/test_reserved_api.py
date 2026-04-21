@@ -216,48 +216,48 @@ def test_legacy_system_health_routes_are_removed() -> None:
         assert response.status_code == 404
 
 
-def test_ai_reserved_routes_return_501() -> None:
+def test_ai_report_routes_create_and_read_queued_records() -> None:
     with TestClient(create_app()) as client:
+        create_user_response = client.post(
+            "/api/v1/users",
+            json={
+                "username": "student_ai",
+                "password": "student123",
+                "role": "student",
+                "gym_ids": ["gym-gz-01"],
+                "device_ids": ["wb-001"],
+            },
+        )
+        assert create_user_response.status_code == 201
+
         response = client.post(
             "/api/v1/ai/analyze",
             json={
-                "user_id": "user-001",
+                "user_id": "student_ai",
                 "start": "2026-04-01T00:00:00Z",
                 "end": "2026-04-07T23:59:59Z",
             },
         )
 
-        assert response.status_code == 501
-        detail = response.json()["detail"]
-        assert detail["status"] == "reserved"
-        assert detail["reserved_for"] == "phase_2_ai_integration"
-        assert detail["payload"]["page"] == "training_archive_ai_launcher"
-        assert detail["payload"]["accepted_request"]["user_id"] == "user-001"
+        assert response.status_code == 201
+        created = response.json()
+        assert created["user_id"] == "student_ai"
+        assert created["status"] == "queued"
+        assert created["summary"] == "报告已入队，等待后续 AI 生成流程写入正式内容。"
 
         list_response = client.get("/api/v1/ai/reports")
-        assert list_response.status_code == 501
-        list_detail = list_response.json()["detail"]
-        assert list_detail["payload"]["page"] == "ai_reports_list"
-        assert list_detail["payload"]["filters"]["status_options"] == [
-            "queued",
-            "generating",
-            "completed",
-            "failed",
-        ]
-        assert list_detail["payload"]["items"] == []
+        assert list_response.status_code == 200
+        list_items = list_response.json()
+        assert len(list_items) == 1
+        assert list_items[0]["report_id"] == created["report_id"]
+        assert list_items[0]["status"] == "queued"
 
-        detail_response = client.get("/api/v1/ai/reports/airpt-001")
-        assert detail_response.status_code == 501
-        report_detail = detail_response.json()["detail"]
-        assert report_detail["payload"]["page"] == "ai_report_detail"
-        assert report_detail["payload"]["report_id"] == "airpt-001"
-        assert report_detail["payload"]["sections"] == [
-            "overview",
-            "summary",
-            "insights",
-            "recommendations",
-            "evidence",
-        ]
+        detail_response = client.get(f"/api/v1/ai/reports/{created['report_id']}")
+        assert detail_response.status_code == 200
+        report_detail = detail_response.json()
+        assert report_detail["report_id"] == created["report_id"]
+        assert report_detail["summary_title"] == "student_ai 训练分析待生成"
+        assert report_detail["evidence_session_ids"] == []
 
 
 def test_ota_reserved_routes_return_501() -> None:
