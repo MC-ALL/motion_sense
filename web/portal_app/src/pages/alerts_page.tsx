@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { Alert, Button, Select, Space, Statistic, Table, Tabs, Tag } from 'antd';
+import { Button, Select, Space, Statistic, Table, Tabs, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 
 import { ack_business_alert, batch_ack_business_alerts, fetch_business_alerts, fetch_devices } from '../api/backend_client';
 import { close_ops_alert, fetch_ops_alerts } from '../api/ops_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
 import type { BusinessAlertRecord, DeviceSummary } from '../types/backend';
 import type { OpsAlertRecord } from '../types/ops';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { describe_user_scope } from '../utils/user_scope';
 import { format_time } from '../utils/time';
 
@@ -98,7 +100,7 @@ export function AlertsPage() {
         if (!mounted) {
           return;
         }
-        set_error(load_error instanceof Error ? load_error.message : '告警加载失败');
+        set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.alerts_load_failed);
       } finally {
         if (mounted) {
           set_loading(false);
@@ -127,7 +129,7 @@ export function AlertsPage() {
         }
       } catch (load_error) {
         if (mounted) {
-          set_error(load_error instanceof Error ? load_error.message : '设备筛选项加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.alerts_device_filter_load_failed);
         }
       }
     }
@@ -145,7 +147,7 @@ export function AlertsPage() {
       set_selected_ids((current) => current.filter((item) => item !== alert_id));
       await load_business_alerts();
     } catch (action_error) {
-      set_error(action_error instanceof Error ? action_error.message : '告警确认失败');
+      set_error(action_error instanceof Error ? action_error.message : page_error_fallbacks.alerts_ack_failed);
     } finally {
       set_action_loading(false);
     }
@@ -161,7 +163,7 @@ export function AlertsPage() {
       set_selected_ids([]);
       await load_business_alerts();
     } catch (action_error) {
-      set_error(action_error instanceof Error ? action_error.message : '批量确认失败');
+      set_error(action_error instanceof Error ? action_error.message : page_error_fallbacks.alerts_batch_ack_failed);
     } finally {
       set_action_loading(false);
     }
@@ -174,7 +176,7 @@ export function AlertsPage() {
       set_selected_ops_ids((current) => current.filter((item) => item !== alert_id));
       await load_ops_alert_items();
     } catch (action_error) {
-      set_error(action_error instanceof Error ? action_error.message : '运维告警关闭失败');
+      set_error(action_error instanceof Error ? action_error.message : page_error_fallbacks.ops_alert_close_failed);
     } finally {
       set_action_loading(false);
     }
@@ -190,7 +192,7 @@ export function AlertsPage() {
       set_selected_ops_ids([]);
       await load_ops_alert_items();
     } catch (action_error) {
-      set_error(action_error instanceof Error ? action_error.message : '批量关闭运维告警失败');
+      set_error(action_error instanceof Error ? action_error.message : page_error_fallbacks.ops_alert_batch_close_failed);
     } finally {
       set_action_loading(false);
     }
@@ -316,11 +318,10 @@ export function AlertsPage() {
             <p>学生账号当前不可访问告警管理页面，也不会发起后台告警接口调用。</p>
           </div>
         </section>
-        <Alert
-          type="warning"
-          message="该页面仅对管理员和教师开放"
+        <PageNotice
+          tone="warning"
+          title={page_notice_titles.alerts_access_limited}
           description={`当前角色：${session.user.role}；数据范围：${scope_description}`}
-          showIcon
         />
       </section>
     );
@@ -336,13 +337,12 @@ export function AlertsPage() {
         </div>
       </section>
 
-      {error ? <Alert type="error" message="告警管理异常" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.alerts_error} description={error} /> : null}
       {!can_ack_business_alerts ? (
-        <Alert
-          type="info"
-          message="当前角色为只读模式"
+        <PageNotice
+          tone="info"
+          title={page_notice_titles.readonly_mode}
           description={`当前数据范围：${scope_description}`}
-          showIcon
         />
       ) : null}
 

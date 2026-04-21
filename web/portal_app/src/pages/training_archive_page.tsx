@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Alert, Button, Collapse, Descriptions, Input, List, Select, Space, Spin, Statistic, Tag } from 'antd';
+import { Button, Collapse, Descriptions, Input, List, Select, Space, Spin, Statistic, Tag } from 'antd';
 import type { AxiosError } from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -11,8 +11,11 @@ import {
   fetch_user_training_profile
 } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { NoticeCard } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
 import type { DeviceSummary, UserTrainingProfileResponse, WorkoutSessionSummary } from '../types/backend';
+import type { NoticeTone } from '../ui/ui_semantics';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { format_time } from '../utils/time';
 import { describe_user_scope } from '../utils/user_scope';
 
@@ -63,6 +66,10 @@ function describe_error(error: unknown, fallback: string): string {
     }
   }
   return error instanceof Error ? error.message : fallback;
+}
+
+function render_notice(tone: NoticeTone, title: string, description?: string | null) {
+  return <NoticeCard tone={tone} title={title} description={description} />;
 }
 
 export function TrainingArchivePage() {
@@ -141,7 +148,7 @@ export function TrainingArchivePage() {
       } catch (load_error) {
         if (mounted) {
           set_profile(null);
-          set_error(load_error instanceof Error ? load_error.message : '训练档案加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.training_archive_load_failed);
         }
       } finally {
         if (mounted) {
@@ -176,7 +183,7 @@ export function TrainingArchivePage() {
       } catch (load_error) {
         if (mounted) {
           set_wristband_devices([]);
-          set_wristband_error(describe_error(load_error, '手环设备列表加载失败'));
+          set_wristband_error(describe_error(load_error, page_error_fallbacks.wristband_device_list_load_failed));
         }
       } finally {
         if (mounted) {
@@ -242,7 +249,7 @@ export function TrainingArchivePage() {
       set_binding_feedback(`已将 ${selected_wristband.device_id} 绑定到 ${profile.user.username}`);
       await reload_profile();
     } catch (submit_error) {
-      set_binding_error(describe_error(submit_error, '绑定手环失败'));
+      set_binding_error(describe_error(submit_error, page_error_fallbacks.wristband_bind_failed));
     } finally {
       set_binding_submitting(false);
     }
@@ -263,7 +270,7 @@ export function TrainingArchivePage() {
       set_binding_feedback(`已解绑 ${result.wristband_id}`);
       await reload_profile();
     } catch (submit_error) {
-      set_binding_error(describe_error(submit_error, '解绑手环失败'));
+      set_binding_error(describe_error(submit_error, page_error_fallbacks.wristband_unbind_failed));
     } finally {
       set_binding_submitting(false);
     }
@@ -334,7 +341,7 @@ export function TrainingArchivePage() {
         </Space>
       </div>
 
-      {error ? <Alert type="error" showIcon message="训练档案加载失败" description={error} /> : null}
+      {error ? render_notice('error', page_notice_titles.training_archive_error, error) : null}
       {loading ? <div className="panel_surface loading_surface"><Spin size="large" /></div> : null}
 
       {!loading && profile ? (
@@ -382,9 +389,7 @@ export function TrainingArchivePage() {
                     <Descriptions.Item label="来源">{profile.active_binding.source}</Descriptions.Item>
                     <Descriptions.Item label="备注">{profile.active_binding.note || '--'}</Descriptions.Item>
                   </Descriptions>
-                ) : (
-                  <Alert type="info" showIcon message="当前没有激活中的手环绑定" />
-                )}
+                ) : render_notice('info', '当前没有激活中的手环绑定')}
               </div>
 
               {can_manage_binding ? (
@@ -395,14 +400,24 @@ export function TrainingArchivePage() {
                       <h3>学生手环绑定维护</h3>
                     </div>
                   </div>
-                  <p className="panel_meta_text archive_hint_text">
-                    当前直接调用后台学生-手环绑定接口。提交成功后，本页会立即刷新训练档案聚合结果。
-                  </p>
-                  {wristband_error ? <Alert type="error" showIcon message="手环列表加载失败" description={wristband_error} /> : null}
-                  {binding_error ? <Alert type="error" showIcon message="绑定维护失败" description={binding_error} /> : null}
-                  {binding_feedback ? <Alert type="success" showIcon message={binding_feedback} /> : null}
+                  <div className="archive_notice_stack">
+                    {render_notice(
+                      'info',
+                      '绑定操作说明',
+                      '管理员在这里直接调用后台学生-手环绑定接口。绑定成功后会立即刷新训练档案聚合结果；如果学生当前已有激活绑定，需要先解绑再绑定新手环。'
+                    )}
+                    <div className="archive_binding_steps">
+                      <span>1. 选择手环</span>
+                      <span>2. 填写备注</span>
+                      <span>3. 提交绑定</span>
+                      <span>4. 档案自动刷新</span>
+                    </div>
+                    {wristband_error ? render_notice('error', page_notice_titles.wristband_list_error, wristband_error) : null}
+                    {binding_error ? render_notice('error', page_notice_titles.wristband_binding_error, binding_error) : null}
+                    {binding_feedback ? render_notice('success', binding_feedback) : null}
+                  </div>
                   {wristband_devices.length === 0 ? (
-                    <Alert type="info" showIcon message="当前没有可选手环设备，请先在设备注册页补齐 wristband 设备。" />
+                    render_notice('warning', '当前没有可选手环设备', '请先在设备注册页补齐 wristband 设备。')
                   ) : (
                     <>
                       <div className="archive_admin_grid">
@@ -483,7 +498,7 @@ export function TrainingArchivePage() {
                   </div>
                 </div>
                 {profile.recent_sessions.length === 0 ? (
-                  <Alert type="info" showIcon message="当前查询窗口内还没有训练会话" />
+                  render_notice('info', '当前查询窗口内还没有训练会话')
                 ) : (
                   <List
                     itemLayout="vertical"
@@ -549,7 +564,7 @@ export function TrainingArchivePage() {
                   </div>
                 </div>
                 {profile.recent_bindings.length === 0 ? (
-                  <Alert type="info" showIcon message="当前没有学生-手环绑定历史" />
+                  render_notice('info', '当前没有学生-手环绑定历史')
                 ) : (
                   <List
                     dataSource={profile.recent_bindings}

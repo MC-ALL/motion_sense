@@ -1,8 +1,10 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Alert, Button, Drawer, Layout, Spin, Statistic } from 'antd';
+import { Button, Drawer, Layout, Spin, Statistic } from 'antd';
 import { useNavigate } from 'react-router-dom';
 
 import { ModuleSummaryList } from '../components/module_summary_list';
+import { PageNotice } from '../components/notice_card';
+import { page_notice_titles } from '../ui/message_catalog';
 import { use_auth_store } from '../store/auth_store';
 import { use_ops_bootstrap } from '../hooks/use_ops_bootstrap';
 import { use_ops_store } from '../store/ops_store';
@@ -83,11 +85,10 @@ export function HealthCenterPage() {
             <p>运维健康视图当前仅对 <code>admin</code> 角色开放。</p>
           </div>
         </section>
-        <Alert
-          type="warning"
-          message={session ? '需要管理员权限' : '请先登录后台管理员账号'}
+        <PageNotice
+          tone="warning"
+          title={session ? page_notice_titles.admin_required : page_notice_titles.auth_admin_required}
           description={session ? `当前角色：${session.user.role}` : '未登录时不会访问 ops_observer 接口'}
-          showIcon
         />
       </Layout>
     );
@@ -119,7 +120,7 @@ export function HealthCenterPage() {
         </div>
       </section>
 
-      {error ? <Alert type="error" message="加载失败" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.health_center_error} description={error} /> : null}
 
       <section className="metric_grid metric_grid_five">
         <HealthMetricCard title="模块总数" value={summaries.length} on_open={summaries.length > 0 ? () => open_module_drawer('all') : null} />

@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { Alert, Button, Card, Form, Input, Space, Tag } from 'antd';
+import { Button, Card, Form, Input, Space, Tag } from 'antd';
 
+import { InlineNotice } from '../components/notice_card';
 import { get_runtime_config } from '../config/runtime_config';
 import { use_auth_store } from '../store/auth_store';
 import { describe_user_scope } from '../utils/user_scope';
@@ -83,7 +84,7 @@ export function LoginPage() {
         <h2>登录后台账号</h2>
         <p className="login_hint">登录成功后将跳转到：<code>{redirect_target}</code></p>
 
-        {error ? <Alert type="error" message={error} showIcon className="inline_alert" /> : null}
+        {error ? <InlineNotice tone="error" title={error} /> : null}
 
         <Form form={form} layout="vertical" onFinish={(values) => void handle_submit(values)}>
           <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
@@ -103,11 +104,9 @@ export function LoginPage() {
         </Form>
 
         {session ? (
-          <Alert
-            type="success"
-            showIcon
-            className="inline_alert"
-            message={`当前已登录：${session.user.username}`}
+          <InlineNotice
+            tone="success"
+            title={`当前已登录：${session.user.username}`}
             description={`角色：${session.user.role}；数据范围：${describe_user_scope(session.user)}`}
           />
         ) : null}

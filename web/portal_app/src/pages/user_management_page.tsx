@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import {
-  Alert,
   Button,
   Collapse,
   Form,
@@ -26,6 +25,8 @@ import {
   update_user
 } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { PageNotice } from '../components/notice_card';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { use_auth_store } from '../store/auth_store';
 import type { UserCreateRequest, UserRole, UserSummary, UserUpdateRequest } from '../types/backend';
 import { format_time } from '../utils/time';
@@ -93,7 +94,7 @@ export function UserManagementPage() {
       const response = await fetch_users();
       set_users(response);
     } catch (load_error) {
-      set_error(load_error instanceof Error ? load_error.message : '用户列表加载失败');
+      set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.user_list_load_failed);
     } finally {
       set_loading(false);
     }
@@ -202,7 +203,7 @@ export function UserManagementPage() {
       create_form.resetFields();
       await load_users();
     } catch (submit_error) {
-      set_error(submit_error instanceof Error ? submit_error.message : '创建用户失败');
+      set_error(submit_error instanceof Error ? submit_error.message : page_error_fallbacks.user_create_failed);
     } finally {
       set_submitting(false);
     }
@@ -228,7 +229,7 @@ export function UserManagementPage() {
       edit_form.resetFields();
       await load_users();
     } catch (submit_error) {
-      set_error(submit_error instanceof Error ? submit_error.message : '更新用户失败');
+      set_error(submit_error instanceof Error ? submit_error.message : page_error_fallbacks.user_update_failed);
     } finally {
       set_submitting(false);
     }
@@ -241,7 +242,7 @@ export function UserManagementPage() {
       await delete_user(username);
       await load_users();
     } catch (submit_error) {
-      set_error(submit_error instanceof Error ? submit_error.message : '删除用户失败');
+      set_error(submit_error instanceof Error ? submit_error.message : page_error_fallbacks.user_delete_failed);
     } finally {
       set_submitting(false);
     }
@@ -267,7 +268,7 @@ export function UserManagementPage() {
             <p>当前仅 <code>admin</code> 角色允许访问 <code>/api/v1/users</code>。</p>
           </div>
         </section>
-        <Alert type="error" message="需要管理员权限" description={`当前角色：${session.user.role}`} showIcon />
+        <PageNotice tone="warning" title={page_notice_titles.admin_required} description={`当前角色：${session.user.role}`} />
       </section>
     );
   }
@@ -282,7 +283,7 @@ export function UserManagementPage() {
         </div>
       </section>
 
-      {error ? <Alert type="error" message="用户管理异常" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.user_management_error} description={error} /> : null}
 
       <div className="panel_surface full_width_panel">
         <div className="panel_header compact_panel_header">

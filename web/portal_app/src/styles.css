@@ -991,6 +991,78 @@ button.interactive_metric_card {
   margin-top: 1rem;
 }
 
+.notice_card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(18, 91, 86, 0.1);
+  border-radius: 20px;
+  background: rgba(255, 251, 243, 0.88);
+}
+
+.notice_card strong {
+  color: #203531;
+}
+
+.notice_card p {
+  margin: 0;
+  color: #47615c;
+}
+
+.notice_card.info {
+  background: linear-gradient(135deg, rgba(18, 91, 86, 0.08), rgba(255, 251, 243, 0.94));
+}
+
+.notice_card.success {
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.12), rgba(255, 251, 243, 0.94));
+}
+
+.notice_card.error {
+  background: linear-gradient(135deg, rgba(185, 28, 28, 0.12), rgba(255, 251, 243, 0.94));
+}
+
+.notice_card.warning {
+  background: linear-gradient(135deg, rgba(217, 119, 6, 0.12), rgba(255, 251, 243, 0.94));
+}
+
+.notice_card + .notice_card {
+  margin-top: 0.8rem;
+}
+
+.archive_notice_stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.archive_binding_steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.archive_binding_steps span {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(18, 91, 86, 0.12);
+  border-radius: 999px;
+  background: rgba(18, 91, 86, 0.05);
+  color: #2f4b46;
+  font-size: 0.9rem;
+}
+
+.device_status_stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.device_status_hint {
+  font-size: 0.82rem;
+  color: #6b7f7b;
+}
+
 .archive_session_item {
   gap: 0.9rem;
 }

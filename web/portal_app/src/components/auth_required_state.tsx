@@ -1,5 +1,7 @@
-import { Button, Alert } from 'antd';
+import { Button } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { PageNotice } from './notice_card';
+import { page_notice_titles } from '../ui/message_catalog';
 
 type AuthRequiredStateProps = {
   eyebrow: string;
@@ -32,11 +34,10 @@ export function AuthRequiredState({ eyebrow, title, description }: AuthRequiredS
           前往登录页
         </Button>
       </section>
-      <Alert
-        type="warning"
-        message="请先登录后台账号"
+      <PageNotice
+        tone="warning"
+        title={page_notice_titles.auth_required}
         description="左侧栏提供“登录后台”入口；登录成功后会自动恢复当前页面的数据请求。"
-        showIcon
       />
     </section>
   );
