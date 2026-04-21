@@ -104,6 +104,22 @@ class WorkoutSessionUpdateRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=1000)
 
 
+class WorkoutSessionAggregateRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=3, max_length=64)
+    wristband_id: str | None = Field(default=None, min_length=1, max_length=128)
+    gym_id: str | None = Field(default=None, min_length=1, max_length=128)
+    start: str | None = None
+    end: str | None = None
+
+
+class WorkoutSessionAggregateResult(BaseModel):
+    processed_bindings: int = 0
+    created_sessions: int = 0
+    updated_sessions: int = 0
+    skipped_segments: int = 0
+    sessions: list[WorkoutSessionSummary] = Field(default_factory=list)
+
+
 class UserTrainingProfileSummary(BaseModel):
     total_sessions: int = 0
     completed_sessions: int = 0

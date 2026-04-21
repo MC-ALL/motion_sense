@@ -2,14 +2,23 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import get_event_store, require_admin_user, require_rest_user, user_can_access_scope
+from app.api.deps import (
+    get_event_store,
+    get_workout_aggregation_service,
+    require_admin_user,
+    require_rest_user,
+    user_can_access_scope,
+)
 from app.models.auth import AuthUser
 from app.models.workout import (
+    WorkoutSessionAggregateRequest,
+    WorkoutSessionAggregateResult,
     WorkoutSessionCreateRequest,
     WorkoutSessionStatus,
     WorkoutSessionSummary,
     WorkoutSessionUpdateRequest,
 )
+from app.services.workout_aggregation_service import WorkoutAggregationService
 from app.storage.store import Store
 
 
@@ -44,6 +53,25 @@ async def list_workout_sessions(
         offset=offset,
     )
     return [item for item in items if _workout_session_visible_to_user(user, item)]
+
+
+@router.post(
+    "/aggregate",
+    response_model=WorkoutSessionAggregateResult,
+    response_model_exclude_none=True,
+)
+async def aggregate_workout_sessions(
+    payload: WorkoutSessionAggregateRequest,
+    _: object = Depends(require_admin_user),
+    workout_aggregation_service: WorkoutAggregationService = Depends(get_workout_aggregation_service),
+) -> WorkoutSessionAggregateResult:
+    return await workout_aggregation_service.aggregate_sessions(
+        username=payload.username,
+        wristband_id=payload.wristband_id,
+        gym_id=payload.gym_id,
+        start=payload.start,
+        end=payload.end,
+    )
 
 
 @router.get("/{session_id}", response_model=WorkoutSessionSummary, response_model_exclude_none=True)

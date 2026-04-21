@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.models.ingest import IngestBatch
 from app.services.ops_service import BackendOpsService
 from app.services.realtime_service import RealtimeService
+from app.services.workout_aggregation_service import WorkoutAggregationService
 from app.services.topic_parser import parse_topic
 from app.storage.memory_store import coerce_online, payload_triggered_at, payload_ts
 from app.storage.store import Store
@@ -14,10 +15,12 @@ class IngestService:
         store: Store,
         realtime_service: RealtimeService,
         ops_service: BackendOpsService | None = None,
+        workout_aggregation_service: WorkoutAggregationService | None = None,
     ) -> None:
         self._store = store
         self._realtime_service = realtime_service
         self._ops_service = ops_service
+        self._workout_aggregation_service = workout_aggregation_service
 
     async def ingest_batch(self, batch: IngestBatch) -> int:
         if self._ops_service is not None:
@@ -53,6 +56,15 @@ class IngestService:
                         reason=item.payload.get("reason"),
                         ts=payload_ts(item.payload),
                     )
+                    if (
+                        self._workout_aggregation_service is not None
+                        and str(item.payload.get("action", "bind")).lower() == "unbind"
+                    ):
+                        await self._workout_aggregation_service.aggregate_recent_wristband_activity(
+                            wristband_id=str(item.payload.get("wristband_id", parsed.device_id)),
+                            gym_id=parsed.gym_id,
+                            end=payload_triggered_at(item.payload),
+                        )
 
                 if item.kind == "telemetry":
                     await self._store.record_telemetry(

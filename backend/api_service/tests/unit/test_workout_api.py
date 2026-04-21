@@ -230,6 +230,198 @@ def test_admin_can_manage_user_wristband_bindings_and_workout_sessions() -> None
         assert after_unbind_overview_payload["binding_history"][0]["is_active"] is False
 
 
+def test_ingest_unbind_auto_aggregates_workout_sessions_and_supports_manual_backfill() -> None:
+    settings = RuntimeSettings(auth=_build_auth_settings())
+
+    with TestClient(create_app(settings)) as client:
+        headers = _admin_headers(client)
+        _create_user(
+            client,
+            headers=headers,
+            username="student_one",
+            password="student123",
+            role="student",
+            gym_ids=["gym-gz-01"],
+            device_ids=["wb-001", "eq-001", "eq-002"],
+        )
+        _register_device(
+            client,
+            headers=headers,
+            gym_id="gym-gz-01",
+            device_type="wristband",
+            device_id="wb-001",
+            gateway_id="gw-001",
+        )
+        _register_device(
+            client,
+            headers=headers,
+            gym_id="gym-gz-01",
+            device_type="equipment",
+            device_id="eq-001",
+            gateway_id="gw-001",
+        )
+        _register_device(
+            client,
+            headers=headers,
+            gym_id="gym-gz-01",
+            device_type="equipment",
+            device_id="eq-002",
+            gateway_id="gw-001",
+        )
+        binding_response = client.post(
+            "/api/v1/user-wristband-bindings",
+            json={
+                "username": "student_one",
+                "wristband_id": "wb-001",
+                "gym_id": "gym-gz-01",
+                "bound_at": "1970-01-01T00:00:00Z",
+            },
+            headers=headers,
+        )
+        assert binding_response.status_code == 201
+
+        ingest_response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "1970-01-01T00:02:10Z",
+                "items": [
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/telemetry",
+                        "payload": {"ts": 100, "heart_rate": 120, "step_count": 100},
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/equipment/eq-001/telemetry",
+                        "payload": {"ts": 100, "rep_count": 0, "energy_wh": 0.0},
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/binding",
+                        "payload": {
+                            "ts": 100,
+                            "wristband_id": "wb-001",
+                            "equipment_id": "eq-001",
+                            "action": "bind",
+                            "reason": "ble_connected",
+                        },
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/telemetry",
+                        "payload": {"ts": 105, "heart_rate": 130, "step_count": 120},
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/equipment/eq-001/telemetry",
+                        "payload": {"ts": 105, "rep_count": 12, "energy_wh": 1.25},
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/equipment/eq-001/telemetry",
+                        "payload": {"ts": 110, "rep_count": 12, "energy_wh": 1.25},
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/binding",
+                        "payload": {
+                            "ts": 110,
+                            "wristband_id": "wb-001",
+                            "equipment_id": "eq-001",
+                            "action": "unbind",
+                            "reason": "exercise_completed",
+                        },
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/binding",
+                        "payload": {
+                            "ts": 112,
+                            "wristband_id": "wb-001",
+                            "equipment_id": "eq-002",
+                            "action": "bind",
+                            "reason": "ble_connected",
+                        },
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/equipment/eq-002/telemetry",
+                        "payload": {"ts": 112, "rep_count": 0, "energy_wh": 0.0},
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/telemetry",
+                        "payload": {"ts": 115, "heart_rate": 140, "step_count": 150},
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/telemetry",
+                        "payload": {"ts": 120, "heart_rate": 138, "step_count": 160},
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/equipment/eq-002/telemetry",
+                        "payload": {"ts": 120, "rep_count": 8, "energy_wh": 0.75},
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-001/binding",
+                        "payload": {
+                            "ts": 120,
+                            "wristband_id": "wb-001",
+                            "equipment_id": "eq-002",
+                            "action": "unbind",
+                            "reason": "exercise_completed",
+                        },
+                    },
+                ],
+            },
+        )
+        assert ingest_response.status_code == 200
+
+        sessions_response = client.get(
+            "/api/v1/workout-sessions",
+            params={"username": "student_one"},
+            headers=headers,
+        )
+        assert sessions_response.status_code == 200
+        sessions_payload = sessions_response.json()
+        assert len(sessions_payload) == 1
+        session = sessions_payload[0]
+        assert session["source"] == "aggregated"
+        assert session["status"] == "completed"
+        assert session["duration_s"] == 20
+        assert session["equipment_ids"] == ["eq-001", "eq-002"]
+        assert len(session["segments"]) == 2
+        assert session["segments"][0]["equipment_id"] == "eq-001"
+        assert session["segments"][0]["duration_s"] == 10
+        assert session["segments"][0]["rep_count"] == 12
+        assert session["segments"][0]["energy_wh"] == 1.25
+        assert session["segments"][1]["equipment_id"] == "eq-002"
+        assert session["segments"][1]["duration_s"] == 8
+        assert session["segments"][1]["rep_count"] == 8
+        assert session["segments"][1]["energy_wh"] == 0.75
+        assert session["metrics"]["avg_heart_rate"] == 132.0
+        assert session["metrics"]["max_heart_rate"] == 140
+        assert session["metrics"]["total_steps"] == 60
+        assert session["metrics"]["total_rep_count"] == 20
+        assert session["metrics"]["total_energy_wh"] == 2.0
+
+        aggregate_response = client.post(
+            "/api/v1/workout-sessions/aggregate",
+            json={"username": "student_one", "wristband_id": "wb-001", "gym_id": "gym-gz-01"},
+            headers=headers,
+        )
+        assert aggregate_response.status_code == 200
+        aggregate_payload = aggregate_response.json()
+        assert aggregate_payload["processed_bindings"] == 1
+        assert aggregate_payload["created_sessions"] == 0
+        assert aggregate_payload["updated_sessions"] == 1
+        assert len(aggregate_payload["sessions"]) == 1
+        assert aggregate_payload["sessions"][0]["session_id"] == session["session_id"]
+
+
 def test_scope_filters_user_wristband_bindings_and_workout_sessions() -> None:
     settings = RuntimeSettings(auth=_build_auth_settings())
 
