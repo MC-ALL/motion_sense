@@ -59,6 +59,19 @@ ai:
 - 如已启动栈并修改了 `deployment/runtime/config/backend/api_service/app_settings.yaml`，需执行 `docker compose -f deployment/compose/docker-compose.yaml up -d --build backend_api_service` 使配置生效
 - `deepseek-reasoner` 仍走 OpenAI 兼容的 `chat/completions` 路径，不需要改成其他 REST endpoint
 
+如果只想一条命令切换模型档位，可直接执行：
+
+```bash
+sh deployment/compose/switch_backend_ai_model.sh reasoner
+sh deployment/compose/switch_backend_ai_model.sh chat
+```
+
+如 `deployment/runtime/` 由 root 初始化过，可改用：
+
+```bash
+sudo sh deployment/compose/switch_backend_ai_model.sh reasoner
+```
+
 ## 2. 正式起栈
 
 ```bash

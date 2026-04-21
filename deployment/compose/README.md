@@ -66,6 +66,13 @@ sh deployment/compose/verify_workout_aggregation_stack.sh
 sh deployment/compose/verify_ai_stack.sh
 ```
 
+如需在 `reasoner / chat` 之间切换后台 AI 模型档位，可执行：
+
+```bash
+sh deployment/compose/switch_backend_ai_model.sh reasoner
+sh deployment/compose/switch_backend_ai_model.sh chat
+```
+
 如需验证 TimescaleDB、Redis、Influx 的落盘与补发链路，可执行：
 
 ```bash

@@ -62,6 +62,7 @@
 - 后台已新增自动 AI 处理服务，默认使用内置规则化生成器将报告从 `queued` 推进到 `completed`，并预留 OpenAI 兼容配置位给后续 DeepSeek / OpenAI 接入
 - Linux Compose 已完成外部 AI provider 实测：后台可从 `deployment/runtime/secrets/backend_ai_api_key.txt` 读取 token，并通过 `sh deployment/compose/verify_ai_stack.sh` 验证真实训练会话汇聚、AI 报告生成与网页 AI 路由
 - 外部 AI 当前默认通过运行时开关 `ai.model_variant` 选择 `reasoner/chat`；默认值为 `reasoner`，接口路径仍使用 OpenAI 兼容的 `chat/completions`
+- Linux Compose 可直接使用 `sh deployment/compose/switch_backend_ai_model.sh reasoner|chat` 一条命令切换后台 AI 模型档位
 - 网页端训练档案页已改为真实排队成功流；AI 报告列表页、详情页已接入真实记录展示、自动刷新与摘要/建议/失败原因展示
 - 文档口径已统一到当前实现：AI 为“自动生成闭环与外部模型接入基线已落地、流式输出待补”，基础设施健康统一由 `ops_observer` 汇聚
 
