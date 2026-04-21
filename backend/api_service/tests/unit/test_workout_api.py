@@ -144,6 +144,16 @@ def test_admin_can_manage_user_wristband_bindings_and_workout_sessions() -> None
         assert binding_payload["is_active"] is True
         assert binding_payload["username"] == "student_one"
 
+        overview_response = client.get(
+            "/api/v1/user-wristband-bindings/overview",
+            headers=headers,
+        )
+        assert overview_response.status_code == 200
+        overview_payload = overview_response.json()
+        assert len(overview_payload["active_bindings"]) == 1
+        assert overview_payload["active_bindings"][0]["id"] == binding_payload["id"]
+        assert any(item["id"] == binding_payload["id"] for item in overview_payload["binding_history"])
+
         conflict_response = client.post(
             "/api/v1/user-wristband-bindings",
             json={
@@ -208,6 +218,16 @@ def test_admin_can_manage_user_wristband_bindings_and_workout_sessions() -> None
         assert unbind_response.status_code == 200
         assert unbind_response.json()["is_active"] is False
         assert unbind_response.json()["unbound_at"] == "2026-04-19T09:00:00+00:00"
+
+        after_unbind_overview_response = client.get(
+            "/api/v1/user-wristband-bindings/overview",
+            headers=headers,
+        )
+        assert after_unbind_overview_response.status_code == 200
+        after_unbind_overview_payload = after_unbind_overview_response.json()
+        assert after_unbind_overview_payload["active_bindings"] == []
+        assert after_unbind_overview_payload["binding_history"][0]["id"] == binding_payload["id"]
+        assert after_unbind_overview_payload["binding_history"][0]["is_active"] is False
 
 
 def test_scope_filters_user_wristband_bindings_and_workout_sessions() -> None:

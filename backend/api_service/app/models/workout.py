@@ -26,6 +26,11 @@ class UserWristbandBindingSummary(BaseModel):
     updated_at: str | None = None
 
 
+class UserWristbandBindingOverviewResponse(BaseModel):
+    active_bindings: list[UserWristbandBindingSummary] = Field(default_factory=list)
+    binding_history: list[UserWristbandBindingSummary] = Field(default_factory=list)
+
+
 class UserWristbandBindingCreateRequest(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     wristband_id: str = Field(min_length=1, max_length=128)

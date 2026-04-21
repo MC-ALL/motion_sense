@@ -6,6 +6,7 @@ from app.api.deps import get_event_store, require_admin_user, require_rest_user,
 from app.models.auth import AuthUser
 from app.models.workout import (
     UserWristbandBindingCreateRequest,
+    UserWristbandBindingOverviewResponse,
     UserWristbandBindingSummary,
     UserWristbandBindingUnbindRequest,
 )
@@ -39,6 +40,41 @@ async def list_user_wristband_bindings(
         offset=offset,
     )
     return [item for item in items if _binding_visible_to_user(user, item)]
+
+
+@router.get(
+    "/overview",
+    response_model=UserWristbandBindingOverviewResponse,
+    response_model_exclude_none=True,
+)
+async def get_user_wristband_binding_overview(
+    username: str | None = Query(default=None),
+    wristband_id: str | None = Query(default=None),
+    gym_id: str | None = Query(default=None),
+    active_limit: int = Query(default=500, ge=1, le=5000),
+    history_limit: int = Query(default=1000, ge=1, le=5000),
+    user: AuthUser = Depends(require_rest_user),
+    store: Store = Depends(get_event_store),
+) -> UserWristbandBindingOverviewResponse:
+    active_items = await store.list_user_wristband_bindings(
+        username=username,
+        wristband_id=wristband_id,
+        gym_id=gym_id,
+        active_only=True,
+        limit=active_limit,
+        offset=0,
+    )
+    history_items = await store.list_user_wristband_bindings(
+        username=username,
+        wristband_id=wristband_id,
+        gym_id=gym_id,
+        limit=history_limit,
+        offset=0,
+    )
+    return UserWristbandBindingOverviewResponse(
+        active_bindings=[item for item in active_items if _binding_visible_to_user(user, item)],
+        binding_history=[item for item in history_items if _binding_visible_to_user(user, item)],
+    )
 
 
 @router.post(
