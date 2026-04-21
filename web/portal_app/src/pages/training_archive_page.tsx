@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import type { AxiosError } from 'axios';
 import { Button, Collapse, Descriptions, List, Select, Space, Spin, Statistic, Tag } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import {
+  analyze_ai_report,
   aggregate_workout_sessions,
   fetch_user_training_profile,
   fetch_user_wristband_bindings,
@@ -14,6 +16,7 @@ import { AuthRequiredState } from '../components/auth_required_state';
 import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
 import type {
+  ReservedApiResponse,
   UserTrainingProfileResponse,
   WorkoutSessionAggregateResult,
   WorkoutSessionSegment,
@@ -24,6 +27,7 @@ import { format_time } from '../utils/time';
 import { describe_user_scope } from '../utils/user_scope';
 
 type WindowKey = '7d' | '30d' | 'all';
+type AiLaunchState = 'idle' | 'submitting' | 'reserved' | 'failed';
 
 const window_options: Array<{ label: string; value: WindowKey }> = [
   { label: '近 7 天', value: '7d' },
@@ -54,6 +58,50 @@ function format_duration(duration_s?: number | null): string {
     return `${minutes} 分 ${seconds} 秒`;
   }
   return `${seconds} 秒`;
+}
+
+function describe_error(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const detail = (error as AxiosError<{ detail?: string | ReservedApiResponse }>).response?.data?.detail;
+    if (typeof detail === 'string' && detail) {
+      return detail;
+    }
+    if (detail && typeof detail === 'object' && typeof detail.detail === 'string' && detail.detail) {
+      return detail.detail;
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+function pick_ai_start_time(profile: UserTrainingProfileResponse, window_key: WindowKey): string {
+  const window_start = build_start_time(window_key);
+  if (window_start) {
+    return window_start;
+  }
+  if (profile.query_start) {
+    return profile.query_start;
+  }
+  if (profile.recent_sessions.length > 0) {
+    return profile.recent_sessions
+      .map((item) => item.started_at)
+      .slice()
+      .sort((left, right) => left.localeCompare(right))[0];
+  }
+  if (profile.active_binding?.bound_at) {
+    return profile.active_binding.bound_at;
+  }
+  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function build_ai_scope_text(profile: UserTrainingProfileResponse, window_key: WindowKey): string {
+  const current_window = window_options.find((item) => item.value === window_key);
+  const time_label = current_window?.label ?? '当前窗口';
+  return [
+    `${time_label}`,
+    `${profile.summary.total_sessions} 次训练`,
+    `${format_duration(profile.summary.total_duration_s)}`,
+    `${profile.summary.equipment_ids.length} 台器材`
+  ].join(' · ');
 }
 
 function session_status_color(status: WorkoutSessionSummary['status']): string {
@@ -140,11 +188,16 @@ export function TrainingArchivePage() {
   const [profile, set_profile] = useState<UserTrainingProfileResponse | null>(null);
   const [window_key, set_window_key] = useState<WindowKey>('30d');
   const [candidate_usernames, set_candidate_usernames] = useState<string[]>([]);
+  const [ai_launch_state, set_ai_launch_state] = useState<AiLaunchState>('idle');
+  const [ai_feedback, set_ai_feedback] = useState<string | null>(null);
 
   const target_username = route_username ?? session?.user.username ?? null;
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
   const can_manage_binding = session?.user.role === 'admin' && profile?.user.role === 'student';
   const can_aggregate_sessions = session?.user.role === 'admin' && profile?.user.role === 'student';
+  const ai_supported_target = profile?.user.role === 'student';
+  const has_training_data = (profile?.recent_sessions.length ?? 0) > 0;
+  const can_request_ai = Boolean(profile && ai_supported_target && has_training_data);
 
   async function request_profile(username: string): Promise<UserTrainingProfileResponse> {
     return fetch_user_training_profile(username, {
@@ -211,6 +264,8 @@ export function TrainingArchivePage() {
       set_profile(null);
       set_error(null);
       set_aggregate_summary(null);
+      set_ai_launch_state('idle');
+      set_ai_feedback(null);
       return;
     }
 
@@ -242,6 +297,11 @@ export function TrainingArchivePage() {
     };
   }, [session, target_username, window_key]);
 
+  useEffect(() => {
+    set_ai_launch_state('idle');
+    set_ai_feedback(null);
+  }, [target_username, window_key]);
+
   async function reload_profile(username: string) {
     const response = await request_profile(username);
     set_profile(response);
@@ -267,6 +327,38 @@ export function TrainingArchivePage() {
       );
     } finally {
       set_syncing_sessions(false);
+    }
+  }
+
+  async function handle_ai_analyze() {
+    if (!profile || !can_request_ai) {
+      return;
+    }
+
+    set_ai_launch_state('submitting');
+    set_ai_feedback(null);
+    try {
+      const result = await analyze_ai_report({
+        user_id: profile.user.username,
+        start: pick_ai_start_time(profile, window_key),
+        end: profile.query_end ?? new Date().toISOString()
+      });
+      set_ai_launch_state('reserved');
+      set_ai_feedback(result.detail);
+    } catch (submit_error) {
+      const response_detail = (submit_error as AxiosError<{ detail?: ReservedApiResponse }>).response?.data?.detail;
+      if (
+        (submit_error as AxiosError).response?.status === 501 &&
+        response_detail &&
+        typeof response_detail === 'object' &&
+        response_detail.status === 'reserved'
+      ) {
+        set_ai_launch_state('reserved');
+        set_ai_feedback(response_detail.detail);
+        return;
+      }
+      set_ai_launch_state('failed');
+      set_ai_feedback(describe_error(submit_error, page_error_fallbacks.training_archive_ai_failed));
     }
   }
 
@@ -443,6 +535,65 @@ export function TrainingArchivePage() {
                   </div>
                 </div>
               ) : null}
+
+              <div className="panel_surface">
+                <div className="panel_header compact_panel_header">
+                  <div>
+                    <div className="eyebrow">AI 分析</div>
+                    <h3>训练总结入口</h3>
+                  </div>
+                </div>
+                <div className="archive_ai_panel">
+                  <div className="archive_ai_summary">
+                    <strong>当前分析范围</strong>
+                    <span>{build_ai_scope_text(profile, window_key)}</span>
+                  </div>
+                  <div className="archive_ai_summary">
+                    <strong>当前对象</strong>
+                    <span>{profile.user.username} {profile.active_binding ? `· 手环 ${profile.active_binding.wristband_id}` : '· 当前无激活手环'}</span>
+                  </div>
+                  <div className="archive_admin_actions">
+                    <Button type="primary" loading={ai_launch_state === 'submitting'} disabled={!can_request_ai} onClick={() => void handle_ai_analyze()}>
+                      生成 AI 报告
+                    </Button>
+                  </div>
+                  {!ai_supported_target ? (
+                    <PageNotice
+                      tone="warning"
+                      title="当前仅支持学生训练档案"
+                      description="AI 报告将围绕学生训练会话、绑定状态与器材分段生成；管理员和教师账号自身暂不纳入分析对象。"
+                    />
+                  ) : null}
+                  {ai_supported_target && !has_training_data ? (
+                    <PageNotice
+                      tone="info"
+                      title="当前窗口内暂无可分析训练数据"
+                      description="请先切换到存在训练会话的时间窗口，或先执行“同步训练会话”补齐历史汇聚结果。"
+                    />
+                  ) : null}
+                  {can_request_ai && ai_launch_state === 'idle' ? (
+                    <PageNotice
+                      tone="info"
+                      title={page_notice_titles.training_archive_ai_ready}
+                      description="本阶段前端已接入 AI 触发入口；当前版本会优先校验鉴权、请求参数与预留态返回，为后续真实模型接入保留稳定页面位置。"
+                    />
+                  ) : null}
+                  {ai_launch_state === 'reserved' ? (
+                    <PageNotice
+                      tone="info"
+                      title={page_notice_titles.training_archive_ai_reserved}
+                      description={ai_feedback ?? '后台 AI 接口已预留，当前版本尚未接入模型推理与报告落库。'}
+                    />
+                  ) : null}
+                  {ai_launch_state === 'failed' ? (
+                    <PageNotice
+                      tone="error"
+                      title="AI 分析请求失败"
+                      description={ai_feedback ?? page_error_fallbacks.training_archive_ai_failed}
+                    />
+                  ) : null}
+                </div>
+              </div>
             </div>
 
             <div className="right_column">

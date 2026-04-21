@@ -256,6 +256,19 @@ export interface WorkoutSessionAggregateResult {
   sessions: WorkoutSessionSummary[];
 }
 
+export interface AiAnalyzeRequest {
+  user_id: string;
+  start: string;
+  end: string;
+}
+
+export interface ReservedApiResponse {
+  status: string;
+  detail: string;
+  reserved_for: string;
+  docs_ref: string;
+}
+
 export interface UserTrainingProfileSummary {
   total_sessions: number;
   completed_sessions: number;

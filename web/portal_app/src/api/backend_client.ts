@@ -2,6 +2,7 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 
 import { get_runtime_config } from '../config/runtime_config';
 import type {
+  AiAnalyzeRequest,
   AuthTokenPair,
   BatchAckResult,
   BindingEventRecord,
@@ -14,6 +15,7 @@ import type {
   DeviceSummary,
   EnvTelemetryAggregateRecord,
   LoginRequest,
+  ReservedApiResponse,
   TelemetryRecord,
   UserCreateRequest,
   UserWristbandBindingOverviewResponse,
@@ -150,6 +152,11 @@ export async function aggregate_workout_sessions(
   payload: WorkoutSessionAggregateRequest
 ): Promise<WorkoutSessionAggregateResult> {
   const response = await backend_client.post<WorkoutSessionAggregateResult>('/api/v1/workout-sessions/aggregate', payload);
+  return response.data;
+}
+
+export async function analyze_ai_report(payload: AiAnalyzeRequest): Promise<ReservedApiResponse> {
+  const response = await backend_client.post<ReservedApiResponse>('/api/v1/ai/analyze', payload);
   return response.data;
 }
 

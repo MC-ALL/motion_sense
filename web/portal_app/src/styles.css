@@ -991,6 +991,30 @@ button.interactive_metric_card {
   margin-top: 1rem;
 }
 
+.archive_ai_panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.archive_ai_summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(18, 91, 86, 0.12);
+  border-radius: 16px;
+  background: rgba(18, 91, 86, 0.04);
+}
+
+.archive_ai_summary strong {
+  color: #203531;
+}
+
+.archive_ai_summary span {
+  color: #47615c;
+}
+
 .notice_card {
   display: flex;
   flex-direction: column;
