@@ -10,6 +10,10 @@ from pydantic import BaseModel, Field, ValidationError
 
 DEFAULT_CONFIG_PATH = Path("/runtime/config/backend/api_service/app_settings.yaml")
 DEFAULT_AI_API_KEY_PATH = Path("/runtime/secrets/backend_ai_api_key.txt")
+AI_MODEL_VARIANT_MAPPING = {
+    "chat": "deepseek-chat",
+    "reasoner": "deepseek-reasoner",
+}
 
 
 class DatabaseSettings(BaseModel):
@@ -76,7 +80,8 @@ class AiSettings(BaseModel):
     batch_size: int = 4
     provider: str = "builtin"
     base_url: str | None = None
-    model: str = "deepseek-chat"
+    model_variant: str = "reasoner"
+    model: str | None = None
     api_key: str | None = None
     api_key_file: str | None = None
     request_timeout_s: int = 60
@@ -202,6 +207,8 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         ai["provider"] = value
     if value := os.environ.get("BACKEND_AI_BASE_URL"):
         ai["base_url"] = value
+    if value := os.environ.get("BACKEND_AI_MODEL_VARIANT"):
+        ai["model_variant"] = value
     if value := os.environ.get("BACKEND_AI_MODEL"):
         ai["model"] = value
     if value := os.environ.get("BACKEND_AI_API_KEY"):
@@ -211,7 +218,30 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
     if value := os.environ.get("BACKEND_AI_REQUEST_TIMEOUT_S"):
         ai["request_timeout_s"] = int(value)
 
+    _apply_ai_model_variant(ai)
     _apply_ai_secret_file(ai)
+
+
+def _apply_ai_model_variant(ai: dict[str, Any]) -> None:
+    configured_model = ai.get("model")
+    if isinstance(configured_model, str) and configured_model.strip():
+        ai["model"] = configured_model.strip()
+        return
+
+    configured_variant = ai.get("model_variant")
+    variant = configured_variant.strip() if isinstance(configured_variant, str) else ""
+    if not variant:
+        variant = "reasoner"
+
+    resolved_model = AI_MODEL_VARIANT_MAPPING.get(variant)
+    if resolved_model is None:
+        raise RuntimeError(
+            "invalid backend ai model_variant: "
+            f"{variant} (expected one of: {', '.join(sorted(AI_MODEL_VARIANT_MAPPING))})"
+        )
+
+    ai["model_variant"] = variant
+    ai["model"] = resolved_model
 
 
 def _apply_ai_secret_file(ai: dict[str, Any]) -> None:

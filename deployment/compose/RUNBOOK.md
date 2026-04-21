@@ -45,15 +45,19 @@ sudo sh deployment/compose/write_backend_ai_api_key.sh
 ai:
   provider: openai_compatible
   base_url: https://api.deepseek.com/v1
-  model: deepseek-chat
+  model_variant: reasoner
+  model: null
   api_key: null
 ```
 
 说明：
 - token 文件由后台容器在启动时自动读取，不需要把明文写入仓库内 YAML
+- 常规切换推荐只改 `model_variant`：`reasoner` 或 `chat`
+- 如需使用厂商新模型名，再显式写 `model`
 - 如需改路径，可额外设置 `BACKEND_AI_API_KEY_FILE`
 - 如未投放 token 文件，后台会继续使用内置规则化生成器离线生成报告
 - 如已启动栈并修改了 `deployment/runtime/config/backend/api_service/app_settings.yaml`，需执行 `docker compose -f deployment/compose/docker-compose.yaml up -d --build backend_api_service` 使配置生效
+- `deepseek-reasoner` 仍走 OpenAI 兼容的 `chat/completions` 路径，不需要改成其他 REST endpoint
 
 ## 2. 正式起栈
 

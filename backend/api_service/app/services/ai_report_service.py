@@ -133,41 +133,45 @@ class AiReportService:
             if base_url.endswith("/v1")
             else f"{base_url}/v1/chat/completions"
         )
+        model_name = self._settings.ai.model.strip()
+        is_reasoner_model = model_name == "deepseek-reasoner"
         request_body = {
-            "model": self._settings.ai.model,
-            "temperature": 0.2,
+            "model": model_name,
             "stream": False,
             "response_format": {"type": "json_object"},
             "messages": [
                 {
                     "role": "system",
                     "content": (
-                        "你是一名运动训练分析助手。请严格输出 JSON 对象，包含 summary_title、summary、"
-                        "insights、recommendations、raw_markdown 五个字段。insights 和 recommendations 必须是字符串数组。"
+                        "你是一名高校智慧体育系统的训练分析助手。"
+                        "你必须只输出一个合法 JSON 对象，不要输出 Markdown 代码块，不要输出额外解释。"
+                        "所有自然语言字段必须使用简体中文。"
+                        "JSON 必须包含 summary_title、summary、insights、recommendations、raw_markdown 五个字段。"
+                        "其中 summary_title 和 summary 必须是字符串；"
+                        "insights 和 recommendations 必须是非空字符串数组；"
+                        "raw_markdown 必须是中文 Markdown 文本，内容要与前述字段一致。"
+                        "如果训练样本不足，也要明确说明数据不足，并给出中文建议。"
                     ),
                 },
                 {
                     "role": "user",
-                    "content": json.dumps(
-                        {
-                            "user": {
-                                "username": target_user.username,
-                                "role": target_user.role,
-                                "gym_ids": target_user.gym_ids,
-                                "device_ids": target_user.device_ids,
-                            },
-                            "report": {
-                                "report_id": report.report_id,
-                                "start": report.start,
-                                "end": report.end,
-                            },
-                            "sessions": [item.model_dump(exclude_none=True) for item in sessions],
-                        },
-                        ensure_ascii=False,
+                    "content": (
+                        "请基于以下训练数据生成中文训练分析报告，并严格按要求返回 JSON。\n"
+                        "输出要求：\n"
+                        "1. `summary_title`：简短中文标题。\n"
+                        "2. `summary`：1 段中文总结，优先概括训练时长、动作量、心率、能耗、器材覆盖。\n"
+                        "3. `insights`：2 到 5 条中文观察结论。\n"
+                        "4. `recommendations`：2 到 5 条中文训练建议。\n"
+                        "5. `raw_markdown`：完整中文 Markdown 报告。\n"
+                        "6. 不要输出英文标题或英文建议，除非设备 ID、用户名等原始标识本身就是英文。\n\n"
+                        "训练数据如下：\n"
+                        f"{json.dumps({'user': {'username': target_user.username, 'role': target_user.role, 'gym_ids': target_user.gym_ids, 'device_ids': target_user.device_ids}, 'report': {'report_id': report.report_id, 'start': report.start, 'end': report.end}, 'sessions': [item.model_dump(exclude_none=True) for item in sessions]}, ensure_ascii=False)}"
                     ),
                 },
             ],
         }
+        if not is_reasoner_model:
+            request_body["temperature"] = 0.2
         req = urllib_request.Request(
             request_url,
             method="POST",

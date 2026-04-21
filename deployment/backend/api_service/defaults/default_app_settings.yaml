@@ -48,6 +48,7 @@ ai:
   batch_size: 4
   provider: builtin
   base_url: https://api.deepseek.com/v1
-  model: deepseek-chat
+  model_variant: reasoner
+  model: null
   api_key: null
   request_timeout_s: 60

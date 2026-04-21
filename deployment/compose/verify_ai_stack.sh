@@ -78,6 +78,7 @@ WRISTBAND_ID = os.environ["WRISTBAND_ID"]
 EQUIPMENT_ONE_ID = os.environ["EQUIPMENT_ONE_ID"]
 EQUIPMENT_TWO_ID = os.environ["EQUIPMENT_TWO_ID"]
 GYM_ID = os.environ["GYM_ID"]
+AI_POLL_ATTEMPTS = int(os.environ.get("AI_VERIFY_POLL_ATTEMPTS", "120"))
 
 
 def request(
@@ -121,6 +122,10 @@ def request_json(
 
 def iso_from_ts(value: int) -> str:
     return datetime.fromtimestamp(value, tz=UTC).isoformat().replace("+00:00", "Z")
+
+
+def contains_cjk(value: str) -> bool:
+    return any("\u4e00" <= ch <= "\u9fff" for ch in value)
 
 
 settings = load_settings()
@@ -346,7 +351,7 @@ report_id = analyze_body["report_id"]
 print("create ai report: 201")
 
 detail_body = None
-for _ in range(45):
+for _ in range(AI_POLL_ATTEMPTS):
     time.sleep(2)
     detail_status, detail_body = request_json(
         f"/api/v1/ai/reports/{report_id}",
@@ -369,6 +374,10 @@ if not detail_body["summary_title"] or not detail_body["raw_markdown"]:
     raise AssertionError("report content missing title or markdown")
 if len(detail_body["insights"]) < 2 or len(detail_body["recommendations"]) < 2:
     raise AssertionError("report content too short")
+if not contains_cjk(str(detail_body["summary_title"])):
+    raise AssertionError("report title does not contain Chinese text")
+if not contains_cjk(str(detail_body["summary"])):
+    raise AssertionError("report summary does not contain Chinese text")
 print("ai report completion: ok")
 
 profile_status, profile_body = request_json(
