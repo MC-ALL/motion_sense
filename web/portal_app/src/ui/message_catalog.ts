@@ -17,6 +17,8 @@ export const page_notice_titles = {
   training_archive_aggregate_result: '训练会话已同步',
   training_archive_ai_reserved: 'AI 分析能力已预留',
   training_archive_ai_ready: 'AI 分析入口已接线',
+  ai_reports_error: 'AI 报告页异常',
+  ai_reports_reserved: 'AI 报告功能已预留',
   wristband_list_error: '手环列表加载失败',
   wristband_binding_error: '绑定维护失败'
 } as const;
@@ -42,6 +44,7 @@ export const page_error_fallbacks = {
   ops_alert_close_failed: '运维告警关闭失败',
   training_archive_aggregate_failed: '训练会话同步失败',
   training_archive_ai_failed: 'AI 分析请求失败',
+  ai_reports_load_failed: 'AI 报告加载失败',
   training_archive_load_failed: '训练档案加载失败',
   user_create_failed: '创建用户失败',
   user_delete_failed: '删除用户失败',

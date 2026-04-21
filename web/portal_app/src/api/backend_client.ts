@@ -3,6 +3,8 @@ import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import { get_runtime_config } from '../config/runtime_config';
 import type {
   AiAnalyzeRequest,
+  AiReportDetail,
+  AiReportSummary,
   AuthTokenPair,
   BatchAckResult,
   BindingEventRecord,
@@ -157,6 +159,23 @@ export async function aggregate_workout_sessions(
 
 export async function analyze_ai_report(payload: AiAnalyzeRequest): Promise<ReservedApiResponse> {
   const response = await backend_client.post<ReservedApiResponse>('/api/v1/ai/analyze', payload);
+  return response.data;
+}
+
+export async function fetch_ai_reports(params?: {
+  user_id?: string;
+  status?: string;
+  start?: string;
+  end?: string;
+}): Promise<AiReportSummary[]> {
+  const response = await backend_client.get<AiReportSummary[]>('/api/v1/ai/reports', {
+    params
+  });
+  return response.data;
+}
+
+export async function fetch_ai_report_detail(report_id: string): Promise<AiReportDetail> {
+  const response = await backend_client.get<AiReportDetail>(`/api/v1/ai/reports/${report_id}`);
   return response.data;
 }
 

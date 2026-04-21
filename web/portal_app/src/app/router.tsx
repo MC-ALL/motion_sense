@@ -73,6 +73,12 @@ const TrainingArchivePage = lazy(async () =>
   }))
 );
 
+const AiReportsPage = lazy(async () =>
+  import('../pages/ai_reports_page').then((module) => ({
+    default: module.AiReportsPage
+  }))
+);
+
 function RouteFallback() {
   return (
     <section className="panel_surface loading_surface">
@@ -125,6 +131,9 @@ function AppLayout() {
           </NavLink>
           <NavLink to="/training-archive" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
             训练档案
+          </NavLink>
+          <NavLink to="/ai-reports" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
+            AI 报告
           </NavLink>
           {can_view_business_alerts ? (
             <NavLink to="/alerts" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
@@ -179,6 +188,8 @@ export const router = createBrowserRouter([
       { path: 'alerts', element: render_lazy_page(AlertsPage) },
       { path: 'training-archive', element: render_lazy_page(TrainingArchivePage) },
       { path: 'training-archive/:username', element: render_lazy_page(TrainingArchivePage) },
+      { path: 'ai-reports', element: render_lazy_page(AiReportsPage) },
+      { path: 'ai-reports/:report_id', element: render_lazy_page(AiReportsPage) },
       { path: 'device-registry', element: render_lazy_page(DeviceRegistryPage) },
       { path: 'user-management', element: render_lazy_page(UserManagementPage) },
       { path: 'profile', element: render_lazy_page(ProfilePage) },

@@ -269,6 +269,25 @@ export interface ReservedApiResponse {
   docs_ref: string;
 }
 
+export interface AiReportSummary {
+  report_id: string;
+  user_id: string;
+  status: string;
+  start: string;
+  end: string;
+  created_at: string;
+  finished_at?: string | null;
+  summary_title?: string | null;
+}
+
+export interface AiReportDetail extends AiReportSummary {
+  summary?: string | null;
+  insights?: string[] | null;
+  recommendations?: string[] | null;
+  evidence_session_ids?: string[] | null;
+  raw_markdown?: string | null;
+}
+
 export interface UserTrainingProfileSummary {
   total_sessions: number;
   completed_sessions: number;

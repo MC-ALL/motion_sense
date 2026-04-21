@@ -556,6 +556,17 @@ export function TrainingArchivePage() {
                     <Button type="primary" loading={ai_launch_state === 'submitting'} disabled={!can_request_ai} onClick={() => void handle_ai_analyze()}>
                       生成 AI 报告
                     </Button>
+                    <Button
+                      onClick={() =>
+                        navigate(
+                          profile.user.username === session.user.username
+                            ? '/ai-reports'
+                            : `/ai-reports?username=${encodeURIComponent(profile.user.username)}`
+                        )
+                      }
+                    >
+                      查看历史报告
+                    </Button>
                   </div>
                   {!ai_supported_target ? (
                     <PageNotice
