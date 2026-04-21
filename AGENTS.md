@@ -40,12 +40,19 @@
 ## 当前工作记忆
 - 已完成：`04/05/06/09` 第 1 迭代核心链路、权限模型、健康观测、Apple `container` 整栈回归
 - 已完成：部署目录统一重构为 `deployment/<module>/` + 仓库级 `deployment/container/`、`deployment/compose/`、单一 `deployment/runtime/`
-- 已完成：文档已同步到当前结构，适合迁移到远端 Linux 主机继续开发
+- 已完成：Linux 正式 Compose 已跑通 `start_stack.sh`、`verify_ops_auth_stack.sh`、`verify_system_stack.sh`、`verify_training_archive_stack.sh`、`verify_workout_aggregation_stack.sh`，当前适合作为远端 Linux 主机的正式开发/验收入口
+- 已完成：网页端已切到 Nginx 单端口同源代理，适合 SSH 单端口转发访问；后台与 `ops_observer` 默认强制鉴权已开启
+- 已完成：训练档案聚合、设备管理中的手环绑定维护、训练会话自动汇聚 / 手动回填已落地，管理员/教师/学生的页面与接口权限边界已联通
+- 已完成：后台 AI 已从 `501 reserved` 预留接口推进到真实 `queued` 报告基线；`POST /api/v1/ai/analyze`、`GET /api/v1/ai/reports`、`GET /api/v1/ai/reports/{report_id}` 已落库并在 Linux Compose 运行栈复验通过
+- 已完成：文档已同步到当前结构与当前实现口径，重点包括 AI `queued` 基线、`ops_observer` 聚合健康、训练档案与 Linux Compose 正式部署流程
 
 ## 下一步
 - 迁移前在目标主机执行 `docker compose -f deployment/compose/docker-compose.yaml config`，确认 Compose `include` 可用
 - Linux 正式部署时补齐 Mosquitto `acl.conf`、`passwd`、证书文件的属主与权限初始化
 - 继续工作时优先做迁移验证、整栈起栈回归，再进入剩余生产化收尾
+- 后台 AI 的下一阶段工作聚焦：异步 worker / 任务队列、状态流转、模型推理接入、流式输出、失败重试与正式报告内容回填
+- 网页端 AI 的下一阶段工作聚焦：报告详情页异常态、生成中状态、人工验收清单，以及与后续流式输出链路对齐
+- 生产化剩余收尾聚焦：MQTT TLS 证书投放与权限检查、上线验收/回滚手册继续细化、必要时补充更多运维适配器或日志采集能力
 
 ## 提交规范
 - 使用带 scope 的 Conventional Commits，例如 `feat(gateway): add health reporter`
