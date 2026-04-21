@@ -22,7 +22,9 @@ import type {
   UserWristbandBindingUnbindRequest,
   UserTrainingProfileResponse,
   UserSummary,
-  UserUpdateRequest
+  UserUpdateRequest,
+  WorkoutSessionAggregateRequest,
+  WorkoutSessionAggregateResult
 } from '../types/backend';
 import { clear_auth_session, get_auth_session, save_auth_session } from '../utils/auth_session';
 
@@ -140,6 +142,13 @@ export async function fetch_user_training_profile(
   const response = await backend_client.get<UserTrainingProfileResponse>(`/api/v1/users/${username}/training-profile`, {
     params
   });
+  return response.data;
+}
+
+export async function aggregate_workout_sessions(
+  payload: WorkoutSessionAggregateRequest
+): Promise<WorkoutSessionAggregateResult> {
+  const response = await backend_client.post<WorkoutSessionAggregateResult>('/api/v1/workout-sessions/aggregate', payload);
   return response.data;
 }
 

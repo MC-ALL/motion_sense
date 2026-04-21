@@ -240,6 +240,22 @@ export interface WorkoutSessionSummary {
   updated_at?: string | null;
 }
 
+export interface WorkoutSessionAggregateRequest {
+  username?: string | null;
+  wristband_id?: string | null;
+  gym_id?: string | null;
+  start?: string | null;
+  end?: string | null;
+}
+
+export interface WorkoutSessionAggregateResult {
+  processed_bindings: number;
+  created_sessions: number;
+  updated_sessions: number;
+  skipped_segments: number;
+  sessions: WorkoutSessionSummary[];
+}
+
 export interface UserTrainingProfileSummary {
   total_sessions: number;
   completed_sessions: number;

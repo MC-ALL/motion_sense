@@ -3,12 +3,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Collapse, Descriptions, Input, List, Space, Spin, Statistic, Tag } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { fetch_user_training_profile } from '../api/backend_client';
+import { aggregate_workout_sessions, fetch_user_training_profile } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
-import { NoticeCard } from '../components/notice_card';
+import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
-import type { UserTrainingProfileResponse, WorkoutSessionSummary } from '../types/backend';
-import type { NoticeTone } from '../ui/ui_semantics';
+import type {
+  UserTrainingProfileResponse,
+  WorkoutSessionAggregateResult,
+  WorkoutSessionSegment,
+  WorkoutSessionSummary
+} from '../types/backend';
 import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { format_time } from '../utils/time';
 import { describe_user_scope } from '../utils/user_scope';
@@ -36,10 +40,14 @@ function format_duration(duration_s?: number | null): string {
   }
   const hours = Math.floor(duration_s / 3600);
   const minutes = Math.floor((duration_s % 3600) / 60);
+  const seconds = duration_s % 60;
   if (hours > 0) {
     return `${hours} 小时 ${minutes} 分`;
   }
-  return `${minutes} 分钟`;
+  if (minutes > 0) {
+    return `${minutes} 分 ${seconds} 秒`;
+  }
+  return `${seconds} 秒`;
 }
 
 function session_status_color(status: WorkoutSessionSummary['status']): string {
@@ -52,8 +60,67 @@ function session_status_color(status: WorkoutSessionSummary['status']): string {
   return 'default';
 }
 
-function render_notice(tone: NoticeTone, title: string, description?: string | null) {
-  return <NoticeCard tone={tone} title={title} description={description} />;
+function session_status_label(status: WorkoutSessionSummary['status']): string {
+  if (status === 'completed') {
+    return '已完成';
+  }
+  if (status === 'open') {
+    return '进行中';
+  }
+  return '已取消';
+}
+
+function session_source_label(source: WorkoutSessionSummary['source']): string {
+  if (source === 'aggregated') {
+    return '自动汇聚';
+  }
+  if (source === 'imported') {
+    return '导入';
+  }
+  return '手工';
+}
+
+function binding_state_label(is_active: boolean): string {
+  return is_active ? '生效中' : '已结束';
+}
+
+function render_session_metrics(session: WorkoutSessionSummary) {
+  return (
+    <div className="archive_session_metric_row">
+      <span>时长 {format_duration(session.duration_s)}</span>
+      <span>动作 {session.metrics.total_rep_count ?? 0}</span>
+      <span>步数 {session.metrics.total_steps ?? 0}</span>
+      <span>能耗 {session.metrics.total_energy_wh ?? 0} Wh</span>
+      <span>平均心率 {session.metrics.avg_heart_rate ?? '--'}</span>
+      <span>峰值心率 {session.metrics.max_heart_rate ?? '--'}</span>
+    </div>
+  );
+}
+
+function render_segment_summary(segment: WorkoutSessionSegment) {
+  return (
+    <div className="archive_segment_card">
+      <div className="archive_segment_header">
+        <strong>{segment.equipment_id}</strong>
+        <span>{format_duration(segment.duration_s)}</span>
+      </div>
+      <div className="archive_segment_meta">
+        <span>开始 {format_time(segment.started_at)}</span>
+        <span>结束 {segment.ended_at ? format_time(segment.ended_at) : '--'}</span>
+        <span>动作 {segment.rep_count ?? 0}</span>
+        <span>能耗 {segment.energy_wh ?? 0} Wh</span>
+      </div>
+    </div>
+  );
+}
+
+function build_aggregate_result_message(result: WorkoutSessionAggregateResult): string {
+  return [
+    `扫描绑定 ${result.processed_bindings} 条`,
+    `新建会话 ${result.created_sessions} 条`,
+    `更新会话 ${result.updated_sessions} 条`,
+    `返回结果 ${result.sessions.length} 条`
+  ].join('，');
 }
 
 export function TrainingArchivePage() {
@@ -61,7 +128,9 @@ export function TrainingArchivePage() {
   const { username: route_username } = useParams<{ username?: string }>();
   const session = use_auth_store((state) => state.session);
   const [loading, set_loading] = useState(true);
+  const [syncing_sessions, set_syncing_sessions] = useState(false);
   const [error, set_error] = useState<string | null>(null);
+  const [aggregate_summary, set_aggregate_summary] = useState<string | null>(null);
   const [profile, set_profile] = useState<UserTrainingProfileResponse | null>(null);
   const [window_key, set_window_key] = useState<WindowKey>('30d');
   const [search_username, set_search_username] = useState(route_username ?? '');
@@ -69,6 +138,7 @@ export function TrainingArchivePage() {
   const target_username = route_username ?? session?.user.username ?? null;
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
   const can_manage_binding = session?.user.role === 'admin' && profile?.user.role === 'student';
+  const can_aggregate_sessions = session?.user.role === 'admin' && profile?.user.role === 'student';
 
   async function request_profile(username: string): Promise<UserTrainingProfileResponse> {
     return fetch_user_training_profile(username, {
@@ -87,6 +157,7 @@ export function TrainingArchivePage() {
       set_loading(false);
       set_profile(null);
       set_error(null);
+      set_aggregate_summary(null);
       return;
     }
 
@@ -117,6 +188,34 @@ export function TrainingArchivePage() {
       mounted = false;
     };
   }, [session, target_username, window_key]);
+
+  async function reload_profile(username: string) {
+    const response = await request_profile(username);
+    set_profile(response);
+  }
+
+  async function handle_aggregate_sessions() {
+    if (!profile) {
+      return;
+    }
+    set_syncing_sessions(true);
+    set_error(null);
+    try {
+      const result = await aggregate_workout_sessions({
+        username: profile.user.username,
+        start: build_start_time(window_key),
+        end: new Date().toISOString()
+      });
+      set_aggregate_summary(build_aggregate_result_message(result));
+      await reload_profile(profile.user.username);
+    } catch (aggregate_error) {
+      set_error(
+        aggregate_error instanceof Error ? aggregate_error.message : page_error_fallbacks.training_archive_aggregate_failed
+      );
+    } finally {
+      set_syncing_sessions(false);
+    }
+  }
 
   const summary_cards = useMemo(() => {
     if (!profile) {
@@ -198,7 +297,14 @@ export function TrainingArchivePage() {
         </Space>
       </div>
 
-      {error ? render_notice('error', page_notice_titles.training_archive_error, error) : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.training_archive_error} description={error} /> : null}
+      {aggregate_summary ? (
+        <PageNotice
+          tone="success"
+          title={page_notice_titles.training_archive_aggregate_result}
+          description={aggregate_summary}
+        />
+      ) : null}
       {loading ? <div className="panel_surface loading_surface"><Spin size="large" /></div> : null}
 
       {!loading && profile ? (
@@ -246,7 +352,7 @@ export function TrainingArchivePage() {
                     <Descriptions.Item label="来源">{profile.active_binding.source}</Descriptions.Item>
                     <Descriptions.Item label="备注">{profile.active_binding.note || '--'}</Descriptions.Item>
                   </Descriptions>
-                ) : render_notice('info', '当前没有激活中的手环绑定')}
+                ) : <PageNotice tone="info" title="当前没有激活中的手环绑定" />}
               </div>
 
               {can_manage_binding ? (
@@ -254,20 +360,20 @@ export function TrainingArchivePage() {
                   <div className="panel_header compact_panel_header">
                     <div>
                       <div className="eyebrow">管理员入口</div>
-                      <h3>前往设备管理维护绑定</h3>
+                      <h3>绑定维护与训练会话同步</h3>
                     </div>
                   </div>
                   <div className="archive_notice_stack">
-                    {render_notice(
-                      'info',
-                      '绑定维护已迁移',
-                      '学生与手环的绑定/解绑操作已统一迁移到“设备管理 -> 手环绑定”。训练档案页现在只展示当前绑定结果与绑定历史，不再直接写入绑定关系。'
-                    )}
-                    {render_notice(
-                      'warning',
-                      '操作规则',
-                      '一个学生和一个手环在同一时刻都只能存在一条激活绑定。需要更换对象时，请先在设备管理页解绑当前记录，再建立新绑定。'
-                    )}
+                    <PageNotice
+                      tone="info"
+                      title="绑定维护已迁移"
+                      description="学生与手环的绑定/解绑操作已统一迁移到“设备管理 -> 手环绑定”。训练档案页现在只展示当前绑定结果与绑定历史，不再直接写入绑定关系。"
+                    />
+                    <PageNotice
+                      tone="warning"
+                      title="训练会话同步说明"
+                      description="后台会在器材解绑事件到达时自动汇聚训练会话；如果你导入了历史数据或怀疑会话未回填，可以在这里手动重新同步当前查询窗口。"
+                    />
                   </div>
                   <div className="archive_admin_actions">
                     <Button
@@ -280,6 +386,11 @@ export function TrainingArchivePage() {
                     >
                       打开设备管理
                     </Button>
+                    {can_aggregate_sessions ? (
+                      <Button loading={syncing_sessions} onClick={() => void handle_aggregate_sessions()}>
+                        同步训练会话
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -294,7 +405,7 @@ export function TrainingArchivePage() {
                   </div>
                 </div>
                 {profile.recent_sessions.length === 0 ? (
-                  render_notice('info', '当前查询窗口内还没有训练会话')
+                  <PageNotice tone="info" title="当前查询窗口内还没有训练会话" />
                 ) : (
                   <List
                     itemLayout="vertical"
@@ -305,18 +416,12 @@ export function TrainingArchivePage() {
                           title={
                             <Space wrap>
                               <strong>{format_time(item.started_at)}</strong>
-                              <Tag color={session_status_color(item.status)}>{item.status}</Tag>
+                              <Tag color={session_status_color(item.status)}>{session_status_label(item.status)}</Tag>
+                              <Tag color={item.source === 'aggregated' ? 'cyan' : 'default'}>{session_source_label(item.source)}</Tag>
                               <Tag>{item.wristband_id}</Tag>
                             </Space>
                           }
-                          description={
-                            <Space size={[6, 6]} wrap>
-                              <span>时长 {format_duration(item.duration_s)}</span>
-                              <span>动作 {item.metrics.total_rep_count ?? 0}</span>
-                              <span>能耗 {item.metrics.total_energy_wh ?? 0} Wh</span>
-                              <span>平均心率 {item.metrics.avg_heart_rate ?? '--'}</span>
-                            </Space>
-                          }
+                          description={render_session_metrics(item)}
                         />
                         <div className="archive_session_tags">
                           {item.equipment_ids.map((equipment_id) => (
@@ -327,20 +432,22 @@ export function TrainingArchivePage() {
                           size="small"
                           items={[
                             {
-                              key: `${item.session_id}-segments`,
-                              label: '查看器材分段',
+                              key: `${item.session_id}-summary`,
+                              label: '查看会话详情',
                               children: (
-                                <List
-                                  dataSource={item.segments}
-                                  renderItem={(segment) => (
-                                    <List.Item>
-                                      <List.Item.Meta
-                                        title={`${segment.equipment_id} · ${format_duration(segment.duration_s)}`}
-                                        description={`开始 ${format_time(segment.started_at)} / 动作 ${segment.rep_count ?? 0} / 能耗 ${segment.energy_wh ?? 0} Wh`}
-                                      />
-                                    </List.Item>
-                                  )}
-                                />
+                                <div className="archive_session_detail_stack">
+                                  <Descriptions column={1} bordered size="small" labelStyle={{ width: 160 }}>
+                                    <Descriptions.Item label="开始时间">{format_time(item.started_at)}</Descriptions.Item>
+                                    <Descriptions.Item label="结束时间">{item.ended_at ? format_time(item.ended_at) : '--'}</Descriptions.Item>
+                                    <Descriptions.Item label="总时长">{format_duration(item.duration_s)}</Descriptions.Item>
+                                    <Descriptions.Item label="手环">{item.wristband_id}</Descriptions.Item>
+                                    <Descriptions.Item label="器材数">{item.equipment_ids.length}</Descriptions.Item>
+                                    <Descriptions.Item label="备注">{item.notes || '--'}</Descriptions.Item>
+                                  </Descriptions>
+                                  <div className="archive_session_segment_stack">
+                                    {item.segments.length > 0 ? item.segments.map((segment) => <div key={`${item.session_id}-${segment.equipment_id}-${segment.started_at}`}>{render_segment_summary(segment)}</div>) : <PageNotice tone="info" title="当前会话还没有器材分段" />}
+                                  </div>
+                                </div>
                               )
                             }
                           ]}
@@ -360,7 +467,7 @@ export function TrainingArchivePage() {
                   </div>
                 </div>
                 {profile.recent_bindings.length === 0 ? (
-                  render_notice('info', '当前没有学生-手环绑定历史')
+                  <PageNotice tone="info" title="当前没有学生-手环绑定历史" />
                 ) : (
                   <List
                     dataSource={profile.recent_bindings}
@@ -370,7 +477,7 @@ export function TrainingArchivePage() {
                           title={
                             <Space wrap>
                               <strong>{item.wristband_id}</strong>
-                              <Tag color={item.is_active ? 'green' : 'default'}>{item.is_active ? 'active' : 'inactive'}</Tag>
+                              <Tag color={item.is_active ? 'green' : 'default'}>{binding_state_label(item.is_active)}</Tag>
                               <Tag>{item.gym_id}</Tag>
                             </Space>
                           }

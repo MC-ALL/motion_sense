@@ -14,6 +14,7 @@ export const page_notice_titles = {
   user_management_error: '用户管理异常',
   alerts_error: '告警管理异常',
   training_archive_error: '训练档案加载失败',
+  training_archive_aggregate_result: '训练会话已同步',
   wristband_list_error: '手环列表加载失败',
   wristband_binding_error: '绑定维护失败'
 } as const;
@@ -37,6 +38,7 @@ export const page_error_fallbacks = {
   equipment_telemetry_load_failed: '器材数据加载失败',
   ops_alert_batch_close_failed: '批量关闭运维告警失败',
   ops_alert_close_failed: '运维告警关闭失败',
+  training_archive_aggregate_failed: '训练会话同步失败',
   training_archive_load_failed: '训练档案加载失败',
   user_create_failed: '创建用户失败',
   user_delete_failed: '删除用户失败',
