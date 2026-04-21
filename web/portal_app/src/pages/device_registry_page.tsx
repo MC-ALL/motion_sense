@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
-  Alert,
   Button,
   Collapse,
   Form,
@@ -26,6 +25,9 @@ import {
   update_device_registration
 } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { DeviceConnectivityTag, DeviceRuntimeStatusStack } from '../components/device_ui';
+import { PageNotice } from '../components/notice_card';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { use_auth_store } from '../store/auth_store';
 import type {
   DeviceRegistrationRequest,
@@ -113,7 +115,7 @@ export function DeviceRegistryPage() {
       const response = await fetch_devices();
       set_devices(response);
     } catch (load_error) {
-      set_error(describe_error(load_error, '设备注册列表加载失败'));
+      set_error(describe_error(load_error, page_error_fallbacks.device_registry_list_load_failed));
     } finally {
       set_loading(false);
     }
@@ -172,14 +174,14 @@ export function DeviceRegistryPage() {
         render: (value?: string | null) => value ?? '--'
       },
       {
-        title: '状态',
-        key: 'status',
-        render: (_, record) => (
-          <Space wrap>
-            <Tag color={record.online ? 'green' : 'default'}>{record.online ? 'online' : 'offline'}</Tag>
-            <Tag>{record.status}</Tag>
-          </Space>
-        )
+        title: '连通性',
+        key: 'connectivity',
+        render: (_, record) => <DeviceConnectivityTag online={record.online} />
+      },
+      {
+        title: '设备状态',
+        key: 'device_status',
+        render: (_, record) => <DeviceRuntimeStatusStack status={record.status} />
       },
       {
         title: '最近更新',
@@ -250,7 +252,7 @@ export function DeviceRegistryPage() {
       create_form.setFieldsValue(build_device_form_values(null));
       await load_devices();
     } catch (submit_error) {
-      set_error(describe_error(submit_error, '创建设备失败'));
+      set_error(describe_error(submit_error, page_error_fallbacks.device_registry_create_failed));
     } finally {
       set_submitting(false);
     }
@@ -277,7 +279,7 @@ export function DeviceRegistryPage() {
       edit_form.resetFields();
       await load_devices();
     } catch (submit_error) {
-      set_error(describe_error(submit_error, '更新设备失败'));
+      set_error(describe_error(submit_error, page_error_fallbacks.device_registry_update_failed));
     } finally {
       set_submitting(false);
     }
@@ -290,7 +292,7 @@ export function DeviceRegistryPage() {
       await delete_device_registration(device_id);
       await load_devices();
     } catch (submit_error) {
-      set_error(describe_error(submit_error, '删除设备失败'));
+      set_error(describe_error(submit_error, page_error_fallbacks.device_registry_delete_failed));
     } finally {
       set_submitting(false);
     }
@@ -316,7 +318,7 @@ export function DeviceRegistryPage() {
             <p>当前仅 <code>admin</code> 角色允许写入 <code>/api/v1/devices</code>。</p>
           </div>
         </section>
-        <Alert type="error" message="需要管理员权限" description={`当前角色：${session.user.role}`} showIcon />
+        <PageNotice tone="warning" title={page_notice_titles.admin_required} description={`当前角色：${session.user.role}`} />
       </section>
     );
   }
@@ -331,7 +333,7 @@ export function DeviceRegistryPage() {
         </div>
       </section>
 
-      {error ? <Alert type="error" message="设备注册异常" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.device_registry_error} description={error} /> : null}
 
       <div className="panel_surface full_width_panel">
         <div className="panel_header compact_panel_header">
@@ -369,7 +371,7 @@ export function DeviceRegistryPage() {
                     <code>metadata</code> 采用 JSON 对象编辑，提交前会做语法校验。
                   </span>
                   <span>
-                    列表同时展示注册元数据和最新在线状态；未上报过的设备会显示为 <code>registered / offline</code>。
+                    “连通性”表示当前网络连通快照；“设备状态”表示注册后最近一次业务状态。新注册但尚未上报的设备会显示为 <code>未连通</code> + <code>待上报</code>。
                   </span>
                 </Space>
               }

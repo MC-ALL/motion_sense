@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Alert, Button, Collapse, Form, InputNumber, List, Select, Space, Spin, Statistic, Tag } from 'antd';
+import { Button, Collapse, Form, InputNumber, List, Select, Space, Spin, Statistic, Tag } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { fetch_devices, fetch_env_aggregate, fetch_env_telemetry, publish_device_config } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { DeviceCommandResultNotice, DeviceRuntimeStatusTag, ReadonlyTag } from '../components/device_ui';
+import { PageNotice } from '../components/notice_card';
 import { TimeSeriesChart } from '../components/time_series_chart';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, EnvTelemetryAggregateRecord, TelemetryRecord } from '../types/backend';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 
 const range_options = [
   { label: '1 分钟', value: '1m', interval: '5s' },
@@ -118,7 +121,7 @@ export function EnvQualityPage() {
         set_devices(env_devices);
       } catch (load_error) {
         if (mounted) {
-          set_error(load_error instanceof Error ? load_error.message : '环境节点加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.env_device_list_load_failed);
         }
       } finally {
         if (mounted) {
@@ -160,7 +163,7 @@ export function EnvQualityPage() {
         set_aggregate(aggregate_items.reverse());
       } catch (load_error) {
         if (mounted) {
-          set_error(load_error instanceof Error ? load_error.message : '环境数据加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.env_data_load_failed);
         }
       }
     }
@@ -270,7 +273,7 @@ export function EnvQualityPage() {
       });
       set_command_result(result);
     } catch (submit_error) {
-      set_error(submit_error instanceof Error ? submit_error.message : '环境配置下发失败');
+      set_error(submit_error instanceof Error ? submit_error.message : page_error_fallbacks.env_config_publish_failed);
     } finally {
       set_command_loading(false);
     }
@@ -291,7 +294,7 @@ export function EnvQualityPage() {
         ) : null}
       </section>
 
-      {error ? <Alert type="error" message="环境页面异常" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.env_quality_error} description={error} /> : null}
 
       {loading ? (
         <div className="panel_surface loading_surface"><Spin size="large" /></div>
@@ -327,7 +330,7 @@ export function EnvQualityPage() {
                         <strong>{device.device_id}</strong>
                         <div className="device_overview_subtitle">{device.gym_id}</div>
                       </div>
-                      <Tag color={device.online ? 'green' : 'red'}>{device.status}</Tag>
+                      <DeviceRuntimeStatusTag status={device.status} />
                     </div>
                     <div className="device_overview_metrics">
                       <span>温度 {to_number(payload.temperature_c) ?? to_number(payload.temperature) ?? 0} °C</span>
@@ -433,15 +436,7 @@ export function EnvQualityPage() {
                                 下发到网关
                               </Button>
                             </Form>
-                            {command_result ? (
-                              <Alert
-                                className="inline_alert"
-                                type={command_result.status === 'pending' ? 'info' : 'success'}
-                                message={`命令状态：${command_result.status}`}
-                                description={`command_id=${command_result.command_id}`}
-                                showIcon
-                              />
-                            ) : null}
+                            {command_result ? <DeviceCommandResultNotice result={command_result} include_topic={false} /> : null}
                           </>
                         )
                       }
@@ -457,8 +452,8 @@ export function EnvQualityPage() {
                     <h3>最新上报字段</h3>
                   </div>
                   <Space wrap>
-                    {is_read_only ? <Tag color="default">只读</Tag> : null}
-                    <Tag color={selected_device.online ? 'green' : 'red'}>{selected_device.status}</Tag>
+                    {is_read_only ? <ReadonlyTag /> : null}
+                    <DeviceRuntimeStatusTag status={selected_device?.status} />
                   </Space>
                 </div>
                 <Collapse

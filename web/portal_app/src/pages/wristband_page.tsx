@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { Alert, Button, Collapse, Form, InputNumber, List, Select, Space, Spin, Statistic, Switch, Tag } from 'antd';
+import { Button, Collapse, Form, InputNumber, List, Select, Space, Spin, Statistic, Switch, Tag } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import {
@@ -10,10 +10,13 @@ import {
   publish_device_config
 } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { DeviceCommandResultNotice, DeviceRuntimeStatusTag, ReadonlyTag } from '../components/device_ui';
+import { PageNotice } from '../components/notice_card';
 import { TimeSeriesChart } from '../components/time_series_chart';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { BindingEventRecord, DeviceConfigPublishResult, DeviceSummary, TelemetryRecord } from '../types/backend';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { format_time } from '../utils/time';
 
 const empty_realtime_points: Array<Record<string, unknown>> = [];
@@ -157,7 +160,7 @@ export function WristbandPage() {
         set_devices(wristband_devices);
       } catch (load_error) {
         if (mounted) {
-          set_error(load_error instanceof Error ? load_error.message : '手环列表加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.wristband_list_load_failed);
         }
       } finally {
         if (mounted) {
@@ -196,7 +199,7 @@ export function WristbandPage() {
         }
       } catch (load_error) {
         if (mounted) {
-          set_error(load_error instanceof Error ? load_error.message : '手环数据加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.wristband_data_load_failed);
         }
       }
     }
@@ -320,7 +323,7 @@ export function WristbandPage() {
       });
       set_command_result(result);
     } catch (submit_error) {
-      set_error(submit_error instanceof Error ? submit_error.message : '手环配置下发失败');
+      set_error(submit_error instanceof Error ? submit_error.message : page_error_fallbacks.wristband_config_publish_failed);
     } finally {
       set_command_loading(false);
     }
@@ -341,7 +344,7 @@ export function WristbandPage() {
         ) : null}
       </section>
 
-      {error ? <Alert type="error" message="手环管理异常" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.wristband_error} description={error} /> : null}
 
       {loading ? (
         <div className="panel_surface loading_surface"><Spin size="large" /></div>
@@ -377,7 +380,7 @@ export function WristbandPage() {
                         <strong>{device.device_id}</strong>
                         <div className="device_overview_subtitle">{device.gym_id}</div>
                       </div>
-                      <Tag color={device.online ? 'green' : 'red'}>{device.status}</Tag>
+                      <DeviceRuntimeStatusTag status={device.status} />
                     </div>
                     <div className="device_overview_metrics">
                       <span>心率 {to_number(payload.heart_rate) ?? '--'}</span>
@@ -543,15 +546,7 @@ export function WristbandPage() {
                                 下发到网关
                               </Button>
                             </Form>
-                            {command_result ? (
-                              <Alert
-                                className="inline_alert"
-                                type={command_result.status === 'pending' ? 'info' : 'success'}
-                                message={`命令状态：${command_result.status}`}
-                                description={`command_id=${command_result.command_id}，topic=${command_result.topic}`}
-                                showIcon
-                              />
-                            ) : null}
+                            {command_result ? <DeviceCommandResultNotice result={command_result} /> : null}
                           </>
                         )
                       }
@@ -567,8 +562,8 @@ export function WristbandPage() {
                     <h3>最新上报字段</h3>
                   </div>
                   <Space wrap>
-                    {is_read_only ? <Tag color="default">只读</Tag> : null}
-                    <Tag color={selected_device.online ? 'green' : 'red'}>{selected_device.status}</Tag>
+                    {is_read_only ? <ReadonlyTag /> : null}
+                    <DeviceRuntimeStatusTag status={selected_device?.status} />
                   </Space>
                 </div>
                 <Collapse

@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 
-import { Alert, Button, Collapse, Form, InputNumber, List, Select, Space, Spin, Statistic, Tag } from 'antd';
+import { Button, Collapse, Form, InputNumber, List, Select, Space, Spin, Statistic, Tag } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetch_devices, fetch_equipment_telemetry, publish_device_config } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { DeviceCommandResultNotice, DeviceRuntimeStatusTag, ReadonlyTag } from '../components/device_ui';
+import { PageNotice } from '../components/notice_card';
 import { TimeSeriesChart } from '../components/time_series_chart';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, TelemetryRecord } from '../types/backend';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
+import { describe_device_runtime_status, is_device_runtime_active } from '../utils/device_status';
 
 const empty_realtime_points: Array<Record<string, unknown>> = [];
 const chart_window_options = [
@@ -132,7 +136,7 @@ export function EquipmentPage() {
         set_wristbands(wristband_devices);
       } catch (load_error) {
         if (mounted) {
-          set_error(load_error instanceof Error ? load_error.message : '器材列表加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.equipment_list_load_failed);
         }
       } finally {
         if (mounted) {
@@ -168,7 +172,7 @@ export function EquipmentPage() {
         }
       } catch (load_error) {
         if (mounted) {
-          set_error(load_error instanceof Error ? load_error.message : '器材遥测加载失败');
+          set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.equipment_telemetry_load_failed);
         }
       }
     }
@@ -243,7 +247,7 @@ export function EquipmentPage() {
   const overview_summary = {
     total: devices.length,
     online: devices.filter((item) => item.online).length,
-    active: devices.filter((item) => item.status === 'active' || item.last_payload.status === 'active').length,
+    active: devices.filter((item) => is_device_runtime_active(item.status, String(item.last_payload.status ?? ''))).length,
     bound: wristbands.filter((item) => typeof item.last_payload.current_equipment_id === 'string' && item.last_payload.current_equipment_id !== '').length
   };
 
@@ -265,7 +269,7 @@ export function EquipmentPage() {
       });
       set_command_result(result);
     } catch (submit_error) {
-      set_error(submit_error instanceof Error ? submit_error.message : '器材配置下发失败');
+      set_error(submit_error instanceof Error ? submit_error.message : page_error_fallbacks.equipment_config_publish_failed);
     } finally {
       set_command_loading(false);
     }
@@ -286,7 +290,7 @@ export function EquipmentPage() {
         ) : null}
       </section>
 
-      {error ? <Alert type="error" message="器材管理异常" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.equipment_error} description={error} /> : null}
 
       {loading ? (
         <div className="panel_surface loading_surface"><Spin size="large" /></div>
@@ -323,7 +327,7 @@ export function EquipmentPage() {
                         <strong>{device.device_id}</strong>
                         <div className="device_overview_subtitle">{device.gym_id}</div>
                       </div>
-                      <Tag color={device.online ? 'green' : 'red'}>{device.status}</Tag>
+                      <DeviceRuntimeStatusTag status={device.status} />
                     </div>
                     <div className="device_overview_metrics">
                       <span>功率 {to_number(payload.power_w) ?? 0} W</span>
@@ -390,7 +394,7 @@ export function EquipmentPage() {
                     <List.Item>
                       <List.Item.Meta
                         title={item.device_id}
-                        description={`状态：${item.status} · 最后时间：${format_last_seen(item.last_seen_ts)}`}
+                        description={`状态：${describe_device_runtime_status(item.status).label} · 最后时间：${format_last_seen(item.last_seen_ts)}`}
                       />
                     </List.Item>
                   )}
@@ -432,15 +436,7 @@ export function EquipmentPage() {
                                 下发到网关
                               </Button>
                             </Form>
-                            {command_result ? (
-                              <Alert
-                                className="inline_alert"
-                                type={command_result.status === 'pending' ? 'info' : 'success'}
-                                message={`命令状态：${command_result.status}`}
-                                description={`command_id=${command_result.command_id}，topic=${command_result.topic}`}
-                                showIcon
-                              />
-                            ) : null}
+                            {command_result ? <DeviceCommandResultNotice result={command_result} /> : null}
                           </>
                         )
                       }
@@ -456,8 +452,8 @@ export function EquipmentPage() {
                     <h3>最新上报字段</h3>
                   </div>
                   <Space wrap>
-                    {is_read_only ? <Tag color="default">只读</Tag> : null}
-                    <Tag color={selected_device.online ? 'green' : 'red'}>{selected_device.status}</Tag>
+                    {is_read_only ? <ReadonlyTag /> : null}
+                    <DeviceRuntimeStatusTag status={selected_device?.status} />
                   </Space>
                 </div>
                 <Collapse

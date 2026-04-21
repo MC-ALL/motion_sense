@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Alert, Drawer, List, Space, Statistic, Table, Tag } from 'antd';
+import { Drawer, List, Space, Statistic, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 
 import { fetch_business_alerts, fetch_devices } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
+import { DeviceRuntimeStatusTag } from '../components/device_ui';
+import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { BusinessAlertRecord, DeviceSummary } from '../types/backend';
+import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
+import { is_device_runtime_active } from '../utils/device_status';
 import { format_time } from '../utils/time';
 
 const dashboard_refresh_interval_ms = 15000;
@@ -198,7 +202,7 @@ export function RealtimeDashboardPage() {
         if (!mounted) {
           return;
         }
-        set_error(load_error instanceof Error ? load_error.message : '仪表盘加载失败');
+        set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.dashboard_load_failed);
       } finally {
         if (mounted && first_load) {
           set_loading(false);
@@ -281,7 +285,7 @@ export function RealtimeDashboardPage() {
     .map((item) => to_number(item.last_payload.energy_wh) ?? to_number(item.last_payload.energy_wh_x100))
     .filter((value): value is number => value !== null);
   const active_equipment_count = online_equipment_devices.filter(
-    (item) => item.status === 'active' || item.last_payload.status === 'active'
+    (item) => is_device_runtime_active(item.status, String(item.last_payload.status ?? ''))
   ).length;
 
   const totals = {
@@ -398,7 +402,7 @@ export function RealtimeDashboardPage() {
         </div>
       </section>
 
-      {error ? <Alert type="error" message="仪表盘异常" description={error} showIcon /> : null}
+      {error ? <PageNotice tone="error" title={page_notice_titles.dashboard_error} description={error} /> : null}
 
       <section className="metric_grid">
         <button type="button" className="panel_surface metric_card interactive_metric_card dashboard_summary_card" onClick={() => set_drawer_mode('all_devices')}>
@@ -561,7 +565,7 @@ export function RealtimeDashboardPage() {
                     <span>{item.equipment_id}</span>
                   </div>
                   <div className="binding_pair_meta">
-                    <Tag color={item.status === 'online' ? 'green' : 'blue'}>{item.status}</Tag>
+                    <DeviceRuntimeStatusTag status={item.status} />
                     <span>转发：{item.relayed_by ?? '--'}</span>
                     <span>最后上报：{format_binding_time(item.last_seen_ts)}</span>
                   </div>
