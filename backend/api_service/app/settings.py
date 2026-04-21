@@ -69,6 +69,17 @@ class AuthSettings(BaseModel):
     jwt: AuthJwtSettings = Field(default_factory=AuthJwtSettings)
 
 
+class AiSettings(BaseModel):
+    auto_process: bool = True
+    poll_interval_s: int = 5
+    batch_size: int = 4
+    provider: str = "builtin"
+    base_url: str | None = None
+    model: str = "deepseek-chat"
+    api_key: str | None = None
+    request_timeout_s: int = 60
+
+
 class RuntimeSettings(BaseModel):
     app_name: str = "motion-sense-backend-api-service"
     host: str = "0.0.0.0"
@@ -83,6 +94,7 @@ class RuntimeSettings(BaseModel):
     redis: RedisSettings = Field(default_factory=RedisSettings)
     device_command: DeviceCommandSettings = Field(default_factory=DeviceCommandSettings)
     auth: AuthSettings = Field(default_factory=AuthSettings)
+    ai: AiSettings = Field(default_factory=AiSettings)
 
 
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSettings:
@@ -106,6 +118,7 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
     auth = raw.setdefault("auth", {})
     auth_admin = auth.setdefault("admin", {})
     auth_jwt = auth.setdefault("jwt", {})
+    ai = raw.setdefault("ai", {})
 
     if value := os.environ.get("BACKEND_API_HOST"):
         raw["host"] = value
@@ -177,3 +190,19 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         auth_jwt["access_secret"] = value
     if value := os.environ.get("BACKEND_AUTH_REFRESH_SECRET"):
         auth_jwt["refresh_secret"] = value
+    if value := os.environ.get("BACKEND_AI_AUTO_PROCESS"):
+        ai["auto_process"] = value.lower() in {"1", "true", "yes", "on"}
+    if value := os.environ.get("BACKEND_AI_POLL_INTERVAL_S"):
+        ai["poll_interval_s"] = int(value)
+    if value := os.environ.get("BACKEND_AI_BATCH_SIZE"):
+        ai["batch_size"] = int(value)
+    if value := os.environ.get("BACKEND_AI_PROVIDER"):
+        ai["provider"] = value
+    if value := os.environ.get("BACKEND_AI_BASE_URL"):
+        ai["base_url"] = value
+    if value := os.environ.get("BACKEND_AI_MODEL"):
+        ai["model"] = value
+    if value := os.environ.get("BACKEND_AI_API_KEY"):
+        ai["api_key"] = value
+    if value := os.environ.get("BACKEND_AI_REQUEST_TIMEOUT_S"):
+        ai["request_timeout_s"] = int(value)

@@ -285,9 +285,9 @@ export interface AiReportSummary {
 
 export interface AiReportDetail extends AiReportSummary {
   summary?: string | null;
-  insights?: string[] | null;
-  recommendations?: string[] | null;
-  evidence_session_ids?: string[] | null;
+  insights: string[];
+  recommendations: string[];
+  evidence_session_ids: string[];
   raw_markdown?: string | null;
   error_message?: string | null;
 }

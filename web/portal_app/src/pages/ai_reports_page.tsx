@@ -34,6 +34,8 @@ const status_options = [
   { label: '失败', value: 'failed' }
 ];
 
+const active_report_statuses = new Set(['queued', 'generating']);
+
 function build_start_time(window_key: WindowKey): string | undefined {
   if (window_key === 'all') {
     return undefined;
@@ -97,6 +99,29 @@ function status_label(status: string): string {
   return status;
 }
 
+function status_notice_tone(status: string): 'info' | 'success' | 'error' {
+  if (status === 'completed') {
+    return 'success';
+  }
+  if (status === 'failed') {
+    return 'error';
+  }
+  return 'info';
+}
+
+function status_notice_description(report: AiReportDetail): string {
+  if (report.status === 'queued') {
+    return '报告已入队，后台会自动开始生成内容。';
+  }
+  if (report.status === 'generating') {
+    return '报告正在生成，页面会自动刷新当前状态。';
+  }
+  if (report.status === 'failed') {
+    return report.error_message || '报告生成失败，请检查配置或稍后重试。';
+  }
+  return '报告已生成完成，可继续查看摘要、观察结论和训练建议。';
+}
+
 export function AiReportsPage() {
   const navigate = useNavigate();
   const { report_id } = useParams<{ report_id?: string }>();
@@ -108,6 +133,7 @@ export function AiReportsPage() {
   const [reports, set_reports] = useState<AiReportSummary[]>([]);
   const [report_detail, set_report_detail] = useState<AiReportDetail | null>(null);
   const [candidate_usernames, set_candidate_usernames] = useState<string[]>([]);
+  const [refresh_tick, set_refresh_tick] = useState(0);
 
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
   const selected_window = (search_params.get('window') as WindowKey | null) ?? '30d';
@@ -224,7 +250,24 @@ export function AiReportsPage() {
     return () => {
       mounted = false;
     };
-  }, [report_id, search_params, selected_status, selected_username, selected_window, session]);
+  }, [refresh_tick, report_id, search_params, selected_status, selected_username, selected_window, session]);
+
+  useEffect(() => {
+    if (!session || reserved_response) {
+      return;
+    }
+
+    const should_poll_detail = Boolean(report_detail && active_report_statuses.has(report_detail.status));
+    const should_poll_list = !report_id && reports.some((item) => active_report_statuses.has(item.status));
+    if (!should_poll_detail && !should_poll_list) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      set_refresh_tick((value) => value + 1);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [report_detail, report_id, reports, reserved_response, session]);
 
   function setErrorState() {
     set_error(null);
@@ -461,15 +504,51 @@ export function AiReportsPage() {
                 </div>
               </div>
               <div className="archive_notice_stack">
+                <PageNotice
+                  tone={status_notice_tone(report_detail.status)}
+                  title={`当前状态：${status_label(report_detail.status)}`}
+                  description={status_notice_description(report_detail)}
+                />
                 <div className="archive_ai_summary">
                   <strong>摘要</strong>
-                  <span>{report_detail.summary || '后端返回结构化摘要后，这里会展示本周期训练结论。'}</span>
+                  <span>{report_detail.summary || '当前报告还没有可展示的摘要内容。'}</span>
                 </div>
-                <PageNotice
-                  tone="info"
-                  title="后续详情页会继续拆块"
-                  description="包括训练时间线、风险提示、建议动作和会话证据区块，避免直接堆叠整段模型原文。"
-                />
+                <Descriptions column={1} bordered size="small" labelStyle={{ width: 160 }}>
+                  <Descriptions.Item label="证据会话">
+                    {report_detail.evidence_session_ids.length > 0 ? report_detail.evidence_session_ids.join('，') : '--'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="错误原因">{report_detail.error_message || '--'}</Descriptions.Item>
+                </Descriptions>
+                <div className="archive_ai_summary">
+                  <strong>观察结论</strong>
+                  {report_detail.insights.length > 0 ? (
+                    <List
+                      size="small"
+                      dataSource={report_detail.insights}
+                      renderItem={(item) => <List.Item>{item}</List.Item>}
+                    />
+                  ) : (
+                    <span>当前还没有结构化观察结论。</span>
+                  )}
+                </div>
+                <div className="archive_ai_summary">
+                  <strong>后续建议</strong>
+                  {report_detail.recommendations.length > 0 ? (
+                    <List
+                      size="small"
+                      dataSource={report_detail.recommendations}
+                      renderItem={(item) => <List.Item>{item}</List.Item>}
+                    />
+                  ) : (
+                    <span>当前还没有结构化建议。</span>
+                  )}
+                </div>
+                {report_detail.raw_markdown ? (
+                  <div className="archive_ai_summary">
+                    <strong>原始报告</strong>
+                    <pre className="archive_ai_raw_markdown">{report_detail.raw_markdown}</pre>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>

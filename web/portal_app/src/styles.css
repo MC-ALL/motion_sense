@@ -1015,6 +1015,18 @@ button.interactive_metric_card {
   color: #47615c;
 }
 
+.archive_ai_raw_markdown {
+  margin: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 14px;
+  background: rgba(32, 53, 49, 0.92);
+  color: #f5f0e6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
 .notice_card {
   display: flex;
   flex-direction: column;

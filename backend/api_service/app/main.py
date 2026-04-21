@@ -24,6 +24,7 @@ from app.api import (
     workout_sessions,
 )
 from app.services.auth_service import AuthService
+from app.services.ai_report_service import AiReportService
 from app.services.device_config_service import DeviceConfigService
 from app.services.ingest_service import IngestService
 from app.services.ops_service import BackendOpsService
@@ -45,6 +46,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         ops_websocket_manager = OpsWebSocketManager()
         realtime_service = RealtimeService(runtime_settings, websocket_manager)
         auth_service = AuthService(runtime_settings.auth, event_store)
+        ai_report_service = AiReportService(runtime_settings, event_store)
         workout_aggregation_service = WorkoutAggregationService(event_store)
         ops_service = BackendOpsService(
             runtime_settings,
@@ -69,6 +71,7 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         app.state.ops_websocket_manager = ops_websocket_manager
         app.state.realtime_service = realtime_service
         app.state.auth_service = auth_service
+        app.state.ai_report_service = ai_report_service
         app.state.workout_aggregation_service = workout_aggregation_service
         app.state.ops_service = ops_service
         app.state.ingest_service = IngestService(
@@ -82,7 +85,9 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
         await auth_service.initialize()
         await realtime_service.start()
         await ops_service.start()
+        await ai_report_service.start()
         yield
+        await ai_report_service.stop()
         await ops_service.stop()
         await realtime_service.stop()
         await event_store.close()
