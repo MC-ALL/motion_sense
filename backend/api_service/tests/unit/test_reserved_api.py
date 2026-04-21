@@ -231,6 +231,33 @@ def test_ai_reserved_routes_return_501() -> None:
         detail = response.json()["detail"]
         assert detail["status"] == "reserved"
         assert detail["reserved_for"] == "phase_2_ai_integration"
+        assert detail["payload"]["page"] == "training_archive_ai_launcher"
+        assert detail["payload"]["accepted_request"]["user_id"] == "user-001"
+
+        list_response = client.get("/api/v1/ai/reports")
+        assert list_response.status_code == 501
+        list_detail = list_response.json()["detail"]
+        assert list_detail["payload"]["page"] == "ai_reports_list"
+        assert list_detail["payload"]["filters"]["status_options"] == [
+            "queued",
+            "generating",
+            "completed",
+            "failed",
+        ]
+        assert list_detail["payload"]["items"] == []
+
+        detail_response = client.get("/api/v1/ai/reports/airpt-001")
+        assert detail_response.status_code == 501
+        report_detail = detail_response.json()["detail"]
+        assert report_detail["payload"]["page"] == "ai_report_detail"
+        assert report_detail["payload"]["report_id"] == "airpt-001"
+        assert report_detail["payload"]["sections"] == [
+            "overview",
+            "summary",
+            "insights",
+            "recommendations",
+            "evidence",
+        ]
 
 
 def test_ota_reserved_routes_return_501() -> None:
