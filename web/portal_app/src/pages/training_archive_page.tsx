@@ -1,19 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Button, Collapse, Descriptions, Input, List, Select, Space, Spin, Statistic, Tag } from 'antd';
-import type { AxiosError } from 'axios';
+import { Button, Collapse, Descriptions, Input, List, Space, Spin, Statistic, Tag } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import {
-  create_user_wristband_binding,
-  end_user_wristband_binding,
-  fetch_devices,
-  fetch_user_training_profile
-} from '../api/backend_client';
+import { fetch_user_training_profile } from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
 import { NoticeCard } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
-import type { DeviceSummary, UserTrainingProfileResponse, WorkoutSessionSummary } from '../types/backend';
+import type { UserTrainingProfileResponse, WorkoutSessionSummary } from '../types/backend';
 import type { NoticeTone } from '../ui/ui_semantics';
 import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { format_time } from '../utils/time';
@@ -58,16 +52,6 @@ function session_status_color(status: WorkoutSessionSummary['status']): string {
   return 'default';
 }
 
-function describe_error(error: unknown, fallback: string): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const detail = (error as AxiosError<{ detail?: string }>).response?.data?.detail;
-    if (typeof detail === 'string' && detail) {
-      return detail;
-    }
-  }
-  return error instanceof Error ? error.message : fallback;
-}
-
 function render_notice(tone: NoticeTone, title: string, description?: string | null) {
   return <NoticeCard tone={tone} title={title} description={description} />;
 }
@@ -81,23 +65,10 @@ export function TrainingArchivePage() {
   const [profile, set_profile] = useState<UserTrainingProfileResponse | null>(null);
   const [window_key, set_window_key] = useState<WindowKey>('30d');
   const [search_username, set_search_username] = useState(route_username ?? '');
-  const [wristband_loading, set_wristband_loading] = useState(false);
-  const [wristband_error, set_wristband_error] = useState<string | null>(null);
-  const [wristband_devices, set_wristband_devices] = useState<DeviceSummary[]>([]);
-  const [selected_wristband_id, set_selected_wristband_id] = useState('');
-  const [bind_note, set_bind_note] = useState('');
-  const [unbind_note, set_unbind_note] = useState('');
-  const [binding_submitting, set_binding_submitting] = useState(false);
-  const [binding_error, set_binding_error] = useState<string | null>(null);
-  const [binding_feedback, set_binding_feedback] = useState<string | null>(null);
 
   const target_username = route_username ?? session?.user.username ?? null;
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
   const can_manage_binding = session?.user.role === 'admin' && profile?.user.role === 'student';
-  const selected_wristband = useMemo(
-    () => wristband_devices.find((item) => item.device_id === selected_wristband_id) ?? null,
-    [selected_wristband_id, wristband_devices]
-  );
 
   async function request_profile(username: string): Promise<UserTrainingProfileResponse> {
     return fetch_user_training_profile(username, {
@@ -107,24 +78,9 @@ export function TrainingArchivePage() {
     });
   }
 
-  async function reload_profile() {
-    if (!target_username) {
-      return;
-    }
-    const response = await request_profile(target_username);
-    set_profile(response);
-  }
-
   useEffect(() => {
     set_search_username(route_username ?? '');
   }, [route_username]);
-
-  useEffect(() => {
-    set_binding_error(null);
-    set_binding_feedback(null);
-    set_bind_note('');
-    set_unbind_note('');
-  }, [target_username]);
 
   useEffect(() => {
     if (!session || !target_username) {
@@ -162,59 +118,6 @@ export function TrainingArchivePage() {
     };
   }, [session, target_username, window_key]);
 
-  useEffect(() => {
-    if (session?.user.role !== 'admin') {
-      set_wristband_loading(false);
-      set_wristband_error(null);
-      set_wristband_devices([]);
-      return;
-    }
-
-    let mounted = true;
-    async function load_wristbands() {
-      set_wristband_loading(true);
-      set_wristband_error(null);
-      try {
-        const devices = await fetch_devices({ type: 'wristband' });
-        if (!mounted) {
-          return;
-        }
-        set_wristband_devices(devices);
-      } catch (load_error) {
-        if (mounted) {
-          set_wristband_devices([]);
-          set_wristband_error(describe_error(load_error, page_error_fallbacks.wristband_device_list_load_failed));
-        }
-      } finally {
-        if (mounted) {
-          set_wristband_loading(false);
-        }
-      }
-    }
-    void load_wristbands();
-    return () => {
-      mounted = false;
-    };
-  }, [session?.user.role]);
-
-  useEffect(() => {
-    if (wristband_devices.length === 0) {
-      if (selected_wristband_id) {
-        set_selected_wristband_id('');
-      }
-      return;
-    }
-    if (wristband_devices.some((item) => item.device_id === selected_wristband_id)) {
-      return;
-    }
-    const active_wristband_id = profile?.active_binding?.wristband_id;
-    if (active_wristband_id && wristband_devices.some((item) => item.device_id === active_wristband_id)) {
-      set_selected_wristband_id(active_wristband_id);
-      return;
-    }
-    set_selected_wristband_id(wristband_devices[0].device_id);
-  }, [profile?.active_binding?.wristband_id, selected_wristband_id, wristband_devices]);
-
   const summary_cards = useMemo(() => {
     if (!profile) {
       return null;
@@ -229,52 +132,6 @@ export function TrainingArchivePage() {
       </div>
     );
   }, [profile]);
-
-  async function handle_bind() {
-    if (!profile || !selected_wristband) {
-      return;
-    }
-    set_binding_submitting(true);
-    set_binding_error(null);
-    set_binding_feedback(null);
-    try {
-      await create_user_wristband_binding({
-        username: profile.user.username,
-        wristband_id: selected_wristband.device_id,
-        gym_id: selected_wristband.gym_id,
-        source: 'manual',
-        note: bind_note.trim() || null
-      });
-      set_bind_note('');
-      set_binding_feedback(`已将 ${selected_wristband.device_id} 绑定到 ${profile.user.username}`);
-      await reload_profile();
-    } catch (submit_error) {
-      set_binding_error(describe_error(submit_error, page_error_fallbacks.wristband_bind_failed));
-    } finally {
-      set_binding_submitting(false);
-    }
-  }
-
-  async function handle_unbind() {
-    if (!profile?.active_binding) {
-      return;
-    }
-    set_binding_submitting(true);
-    set_binding_error(null);
-    set_binding_feedback(null);
-    try {
-      const result = await end_user_wristband_binding(profile.active_binding.id, {
-        note: unbind_note.trim() || null
-      });
-      set_unbind_note('');
-      set_binding_feedback(`已解绑 ${result.wristband_id}`);
-      await reload_profile();
-    } catch (submit_error) {
-      set_binding_error(describe_error(submit_error, page_error_fallbacks.wristband_unbind_failed));
-    } finally {
-      set_binding_submitting(false);
-    }
-  }
 
   if (!session) {
     return (
@@ -396,95 +253,34 @@ export function TrainingArchivePage() {
                 <div className="panel_surface">
                   <div className="panel_header compact_panel_header">
                     <div>
-                      <div className="eyebrow">管理员维护</div>
-                      <h3>学生手环绑定维护</h3>
+                      <div className="eyebrow">管理员入口</div>
+                      <h3>前往设备管理维护绑定</h3>
                     </div>
                   </div>
                   <div className="archive_notice_stack">
                     {render_notice(
                       'info',
-                      '绑定操作说明',
-                      '管理员在这里直接调用后台学生-手环绑定接口。绑定成功后会立即刷新训练档案聚合结果；如果学生当前已有激活绑定，需要先解绑再绑定新手环。'
+                      '绑定维护已迁移',
+                      '学生与手环的绑定/解绑操作已统一迁移到“设备管理 -> 手环绑定”。训练档案页现在只展示当前绑定结果与绑定历史，不再直接写入绑定关系。'
                     )}
-                    <div className="archive_binding_steps">
-                      <span>1. 选择手环</span>
-                      <span>2. 填写备注</span>
-                      <span>3. 提交绑定</span>
-                      <span>4. 档案自动刷新</span>
-                    </div>
-                    {wristband_error ? render_notice('error', page_notice_titles.wristband_list_error, wristband_error) : null}
-                    {binding_error ? render_notice('error', page_notice_titles.wristband_binding_error, binding_error) : null}
-                    {binding_feedback ? render_notice('success', binding_feedback) : null}
+                    {render_notice(
+                      'warning',
+                      '操作规则',
+                      '一个学生和一个手环在同一时刻都只能存在一条激活绑定。需要更换对象时，请先在设备管理页解绑当前记录，再建立新绑定。'
+                    )}
                   </div>
-                  {wristband_devices.length === 0 ? (
-                    render_notice('warning', '当前没有可选手环设备', '请先在设备注册页补齐 wristband 设备。')
-                  ) : (
-                    <>
-                      <div className="archive_admin_grid">
-                        <div>
-                          <div className="panel_meta_text">待绑定手环</div>
-                          <Select
-                            className="archive_admin_select"
-                            showSearch
-                            value={selected_wristband_id || undefined}
-                            placeholder="选择手环设备"
-                            loading={wristband_loading}
-                            optionFilterProp="label"
-                            onChange={(value) => set_selected_wristband_id(value)}
-                            options={wristband_devices.map((item) => ({
-                              value: item.device_id,
-                              label: `${item.device_id} · ${item.gym_id}${item.display_name ? ` · ${item.display_name}` : ''}`
-                            }))}
-                          />
-                          {selected_wristband ? (
-                            <div className="panel_meta_text archive_hint_text">
-                              所属场馆：{selected_wristband.gym_id}
-                              {selected_wristband.location ? ` · 位置：${selected_wristband.location}` : ''}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div>
-                          <div className="panel_meta_text">绑定备注</div>
-                          <Input
-                            value={bind_note}
-                            maxLength={500}
-                            placeholder="例如：新学员入场手动绑定"
-                            onChange={(event) => set_bind_note(event.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="archive_admin_actions">
-                        <Button
-                          type="primary"
-                          loading={binding_submitting}
-                          disabled={!selected_wristband || Boolean(profile.active_binding)}
-                          onClick={() => void handle_bind()}
-                        >
-                          {profile.active_binding ? '请先解绑当前手环' : '绑定选中手环'}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                  {profile.active_binding ? (
-                    <>
-                      <div className="archive_admin_grid">
-                        <div>
-                          <div className="panel_meta_text">解绑备注</div>
-                          <Input
-                            value={unbind_note}
-                            maxLength={500}
-                            placeholder="例如：课程结束、设备回收"
-                            onChange={(event) => set_unbind_note(event.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="archive_admin_actions">
-                        <Button danger loading={binding_submitting} onClick={() => void handle_unbind()}>
-                          解绑当前手环
-                        </Button>
-                      </div>
-                    </>
-                  ) : null}
+                  <div className="archive_admin_actions">
+                    <Button
+                      type="primary"
+                      onClick={() =>
+                        navigate(
+                          `/device-registry?tab=wristband-bindings&username=${encodeURIComponent(profile.user.username)}`
+                        )
+                      }
+                    >
+                      打开设备管理
+                    </Button>
+                  </div>
                 </div>
               ) : null}
             </div>

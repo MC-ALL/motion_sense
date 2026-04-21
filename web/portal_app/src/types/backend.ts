@@ -185,6 +185,11 @@ export interface UserWristbandBindingSummary {
   updated_at?: string | null;
 }
 
+export interface UserWristbandBindingOverviewResponse {
+  active_bindings: UserWristbandBindingSummary[];
+  binding_history: UserWristbandBindingSummary[];
+}
+
 export interface UserWristbandBindingCreateRequest {
   username: string;
   wristband_id: string;

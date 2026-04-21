@@ -134,7 +134,7 @@ function AppLayout() {
           {is_admin ? (
             <>
               <NavLink to="/device-registry" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
-                设备注册
+                设备管理
               </NavLink>
               <NavLink to="/user-management" className={({ isActive }) => `nav_link${isActive ? ' active' : ''}`}>
                 用户管理

@@ -16,6 +16,7 @@ import type {
   LoginRequest,
   TelemetryRecord,
   UserCreateRequest,
+  UserWristbandBindingOverviewResponse,
   UserWristbandBindingCreateRequest,
   UserWristbandBindingSummary,
   UserWristbandBindingUnbindRequest,
@@ -146,6 +147,33 @@ export async function create_user_wristband_binding(
   payload: UserWristbandBindingCreateRequest
 ): Promise<UserWristbandBindingSummary> {
   const response = await backend_client.post<UserWristbandBindingSummary>('/api/v1/user-wristband-bindings', payload);
+  return response.data;
+}
+
+export async function fetch_user_wristband_bindings(params?: {
+  username?: string;
+  wristband_id?: string;
+  gym_id?: string;
+  active_only?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<UserWristbandBindingSummary[]> {
+  const response = await backend_client.get<UserWristbandBindingSummary[]>('/api/v1/user-wristband-bindings', {
+    params
+  });
+  return response.data;
+}
+
+export async function fetch_user_wristband_binding_overview(params?: {
+  username?: string;
+  wristband_id?: string;
+  gym_id?: string;
+  active_limit?: number;
+  history_limit?: number;
+}): Promise<UserWristbandBindingOverviewResponse> {
+  const response = await backend_client.get<UserWristbandBindingOverviewResponse>('/api/v1/user-wristband-bindings/overview', {
+    params
+  });
   return response.data;
 }
 
