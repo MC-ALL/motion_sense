@@ -220,6 +220,21 @@ if not any(item["id"] == binding_json["id"] for item in profile_json["recent_bin
     raise AssertionError("created binding missing from recent_bindings")
 print("fetch training profile: ok")
 
+binding_overview_status, binding_overview_body = request(
+    f"{BACKEND_BASE_URL}/api/v1/user-wristband-bindings/overview?username={STUDENT_USERNAME}",
+    headers=auth_headers,
+)
+if binding_overview_status != 200:
+    raise AssertionError(f"fetch binding overview failed: {binding_overview_status} {binding_overview_body}")
+binding_overview_json = json.loads(binding_overview_body)
+if len(binding_overview_json["active_bindings"]) != 1:
+    raise AssertionError("unexpected active binding count in overview")
+if binding_overview_json["active_bindings"][0]["id"] != binding_json["id"]:
+    raise AssertionError("overview active binding mismatch")
+if not any(item["id"] == binding_json["id"] for item in binding_overview_json["binding_history"]):
+    raise AssertionError("overview binding history missing created binding")
+print("binding overview: ok")
+
 student_login_status, student_login_body = request(
     f"{BACKEND_BASE_URL}/api/v1/auth/login",
     method="POST",
@@ -241,6 +256,13 @@ web_status, web_body = request(f"{WEB_BASE_URL}/training-archive/{STUDENT_USERNA
 if web_status != 200 or '<div id="root"></div>' not in web_body:
     raise AssertionError(f"training archive route failed: {web_status}")
 print("web training archive route: ok")
+
+device_management_status, device_management_body = request(
+    f"{WEB_BASE_URL}/device-registry?tab=wristband-bindings&username={STUDENT_USERNAME}"
+)
+if device_management_status != 200 or '<div id="root"></div>' not in device_management_body:
+    raise AssertionError(f"device management route failed: {device_management_status}")
+print("web device management route: ok")
 
 unbind_status, unbind_body = request(
     f"{BACKEND_BASE_URL}/api/v1/user-wristband-bindings/{binding_json['id']}/unbind",
@@ -270,6 +292,23 @@ if latest_binding["id"] != binding_json["id"] or latest_binding["is_active"] is 
     raise AssertionError("latest binding history did not update after unbind")
 print("profile after unbind: ok")
 
+after_unbind_overview_status, after_unbind_overview_body = request(
+    f"{BACKEND_BASE_URL}/api/v1/user-wristband-bindings/overview?username={STUDENT_USERNAME}",
+    headers=auth_headers,
+)
+if after_unbind_overview_status != 200:
+    raise AssertionError(
+        f"fetch binding overview after unbind failed: {after_unbind_overview_status} {after_unbind_overview_body}"
+    )
+after_unbind_overview_json = json.loads(after_unbind_overview_body)
+if after_unbind_overview_json["active_bindings"]:
+    raise AssertionError("active_bindings should be empty after unbind")
+if after_unbind_overview_json["binding_history"][0]["id"] != binding_json["id"]:
+    raise AssertionError("binding history ordering mismatch after unbind")
+if after_unbind_overview_json["binding_history"][0]["is_active"] is not False:
+    raise AssertionError("binding history did not reflect unbind state")
+print("binding overview after unbind: ok")
+
 print(
     json.dumps(
         {
@@ -278,6 +317,7 @@ print(
             "workout_session": session_json,
             "profile_summary": profile_json["summary"],
             "latest_binding_after_unbind": latest_binding,
+            "binding_overview_after_unbind": after_unbind_overview_json,
         },
         ensure_ascii=False,
         indent=2,

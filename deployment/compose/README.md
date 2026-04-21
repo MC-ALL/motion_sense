@@ -48,7 +48,7 @@ sh deployment/compose/verify_ops_auth_stack.sh
 sh deployment/compose/verify_system_stack.sh
 ```
 
-如需验证学生训练档案聚合、管理员页内绑定维护与学生自助查看链路，可执行：
+如需验证学生训练档案聚合、管理员在设备管理页维护手环绑定，以及学生自助查看链路，可执行：
 
 ```bash
 sh deployment/compose/verify_training_archive_stack.sh
@@ -94,7 +94,7 @@ PURGE_RUNTIME=true sh deployment/compose/stop_stack.sh
 2. 执行 `sh deployment/compose/print_bootstrap_credentials.sh`，记录后台 bootstrap admin 和网关 ops token。
 3. 执行 `sh deployment/compose/verify_ops_auth_stack.sh`，确认后台登录、gateway ops token、`ops_observer` 管理员 JWT，以及 gateway / `ops_observer` 的运维 WebSocket 鉴权均通过。
 4. 执行 `sh deployment/compose/verify_system_stack.sh`，确认设备入库、健康汇聚、配置命令闭环、`ops_observer` 聚合视图与网页运行时配置均通过。
-5. 执行 `sh deployment/compose/verify_training_archive_stack.sh`，确认学生训练档案聚合、管理员绑定/解绑与学生自助查看链路均通过。
+5. 执行 `sh deployment/compose/verify_training_archive_stack.sh`，确认学生训练档案聚合、设备管理页中的手环绑定/解绑，以及学生自助查看链路均通过。
 6. 执行 `sh deployment/compose/verify_database_stack.sh`，确认 refresh session、TimescaleDB、Redis、Influx 缓冲与补发链路均通过。
 7. 打开 `http://127.0.0.1:8080/`，使用 bootstrap admin 登录网页端。
 8. 检查网页“健康中心”和“训练档案”，确认 backend 与 gateway 显示 `healthy`，且训练档案页可正常展示绑定与训练摘要。
@@ -107,7 +107,7 @@ PURGE_RUNTIME=true sh deployment/compose/stop_stack.sh
 3. 执行 `sh deployment/compose/print_bootstrap_credentials.sh`，记录后台 bootstrap admin、网关 ops token，并确认 `deployment/runtime/` 中已生成首启文件。
 4. 执行 `sh deployment/compose/verify_ops_auth_stack.sh`，优先验证后台登录、网关 ops token、`ops_observer` 管理员 JWT 与两侧运维 WebSocket 鉴权。
 5. 执行 `sh deployment/compose/verify_system_stack.sh`，验证设备入库、健康聚合、配置命令闭环、网页入口与运维聚合视图。
-6. 执行 `sh deployment/compose/verify_training_archive_stack.sh`，验证学生训练档案聚合、页内绑定维护与学生自助查看链路。
+6. 执行 `sh deployment/compose/verify_training_archive_stack.sh`，验证学生训练档案聚合、设备管理页绑定维护与学生自助查看链路。
 7. 执行 `sh deployment/compose/verify_database_stack.sh`，验证 refresh session、TimescaleDB、Redis、Influx 的关键落盘与补发链路。
 8. 浏览器打开 `http://127.0.0.1:8080/`，使用 bootstrap admin 登录网页端，手工确认“健康中心”“训练档案”等关键页面展示正常。
 9. 若启用 MQTT TLS，再补充检查 `deployment/runtime/certs/` 证书投放、属主、权限与 broker 握手结果。
@@ -118,7 +118,7 @@ PURGE_RUNTIME=true sh deployment/compose/stop_stack.sh
 3. 若 `backend_api_service`、`gateway_edge_processor`、`ops_observer_api_service`、`web_portal_app` 未进入 `healthy`，分别执行 `docker compose -f deployment/compose/docker-compose.yaml logs --tail=120 <service>`，按依赖顺序从数据库 / 中间件到上层应用排查。
 4. 若表现为账号、token 或运维接口访问异常，先执行 `sh deployment/compose/print_bootstrap_credentials.sh` 与 `sh deployment/compose/verify_ops_auth_stack.sh`，确认 bootstrap admin、JWT secrets、网关 ops token 与 `ops_observer` 上游登录链路。
 5. 若表现为网页空白、设备链路不通或运维聚合不完整，再执行 `sh deployment/compose/verify_system_stack.sh`，优先定位是后端业务链路、网关上报链路还是网页运行时配置问题。
-6. 若表现为训练档案、学生绑定或训练会话摘要异常，再执行 `sh deployment/compose/verify_training_archive_stack.sh`，优先定位是后台聚合、绑定维护还是网页路由链路问题。
+6. 若表现为训练档案、学生绑定或训练会话摘要异常，再执行 `sh deployment/compose/verify_training_archive_stack.sh`，优先定位是后台聚合、设备管理页绑定维护还是网页路由链路问题。
 7. 若表现为历史数据、刷新会话或边缘缓冲异常，再执行 `sh deployment/compose/verify_database_stack.sh`，确认 TimescaleDB、Redis、Influx 与补发路径是否正常。
 8. 若问题已无法通过增量排障恢复，可执行 `sh deployment/compose/stop_stack.sh` 后重新运行 `sh deployment/compose/start_stack.sh`；仅在明确需要重置首启产物时，才额外使用 `PURGE_VOLUMES=true` 或 `PURGE_RUNTIME=true`。
 9. 若启用 MQTT TLS，最后单独检查 `deployment/runtime/certs/` 文件、Mosquitto 日志与客户端握手结果；TLS 问题通常不应与业务 API 问题混排。
