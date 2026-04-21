@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  AutoComplete,
   Button,
   Collapse,
   Form,
@@ -119,6 +120,33 @@ function build_binding_status_tag(binding: UserWristbandBindingSummary) {
   return <Tag color={binding.is_active ? 'green' : 'default'}>{binding.is_active ? '已绑定' : '已解绑'}</Tag>;
 }
 
+function build_device_id_suggestions(
+  device_type: DeviceRegistryType | undefined,
+  devices: DeviceSummary[],
+) {
+  const prefix_map: Record<DeviceRegistryType, string> = {
+    wristband: 'wb',
+    equipment: 'eq',
+    env: 'env',
+    gateway: 'gw'
+  };
+  const prefix = device_type ? prefix_map[device_type] : 'dev';
+  const same_type_ids = devices
+    .filter((item) => item.device_type === device_type)
+    .map((item) => item.device_id)
+    .sort((left, right) => left.localeCompare(right));
+  const suggestions = new Set<string>();
+  for (const item of same_type_ids.slice(-5)) {
+    suggestions.add(item);
+  }
+  let next_numeric_suffix = same_type_ids.length + 1;
+  while (suggestions.size < 8) {
+    suggestions.add(`${prefix}-${String(next_numeric_suffix).padStart(3, '0')}`);
+    next_numeric_suffix += 1;
+  }
+  return Array.from(suggestions).map((value) => ({ value }));
+}
+
 function initial_tab(search_params: URLSearchParams): DeviceManagementTabKey {
   const query_tab = search_params.get('tab');
   if (query_tab === 'wristband-bindings' || query_tab === 'binding-history') {
@@ -174,6 +202,36 @@ export function DeviceRegistryPage() {
   const available_wristbands = useMemo(
     () => wristband_devices.filter((item) => !active_binding_wristbands.has(item.device_id)),
     [active_binding_wristbands, wristband_devices]
+  );
+  const known_gym_ids = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...devices.map((item) => item.gym_id),
+          ...users.flatMap((item) => item.gym_ids),
+          ...active_bindings.map((item) => item.gym_id),
+          ...binding_history.map((item) => item.gym_id)
+        ].filter((item) => item && item.trim()))
+      )
+        .sort((left, right) => left.localeCompare(right))
+        .map((value) => ({ value })),
+    [active_bindings, binding_history, devices, users]
+  );
+  const known_gateway_ids = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...devices.filter((item) => item.device_type === 'gateway').map((item) => item.device_id),
+          ...devices.map((item) => item.gateway_id).filter((item): item is string => Boolean(item && item.trim()))
+        ])
+      )
+        .sort((left, right) => left.localeCompare(right))
+        .map((value) => ({ value })),
+    [devices]
+  );
+  const create_device_id_options = useMemo(
+    () => build_device_id_suggestions(create_device_type, devices),
+    [create_device_type, devices]
   );
 
   async function load_devices() {
@@ -866,13 +924,13 @@ export function DeviceRegistryPage() {
       >
         <Form form={create_form} layout="vertical" onFinish={(values) => void handle_create(values)} initialValues={build_device_form_values(null)}>
           <Form.Item name="gym_id" label="场馆 ID" rules={[{ required: true, message: '请输入场馆 ID' }]}> 
-            <Input autoComplete="off" />
+            <AutoComplete options={known_gym_ids} placeholder="选择已有场馆，或直接输入新场馆 ID" filterOption />
           </Form.Item>
           <Form.Item name="device_type" label="设备类型" rules={[{ required: true, message: '请选择设备类型' }]}> 
             <Select options={device_type_options} />
           </Form.Item>
           <Form.Item name="device_id" label="设备 ID" rules={[{ required: true, message: '请输入设备 ID' }]}> 
-            <Input autoComplete="off" />
+            <AutoComplete options={create_device_id_options} placeholder="选择建议 ID，或直接输入新的设备 ID" filterOption />
           </Form.Item>
           <Form.Item
             name="gateway_id"
@@ -880,7 +938,12 @@ export function DeviceRegistryPage() {
             rules={create_device_type === 'gateway' ? [] : [{ required: true, message: '非网关设备必须填写所属网关 ID' }]}
             extra={create_device_type === 'gateway' ? '网关设备会自动回填为自己的 device_id' : '例如 gw-001'}
           >
-            <Input autoComplete="off" disabled={create_device_type === 'gateway'} />
+            <AutoComplete
+              options={known_gateway_ids}
+              placeholder="选择已有网关，或直接输入网关 ID"
+              filterOption
+              disabled={create_device_type === 'gateway'}
+            />
           </Form.Item>
           <Form.Item name="display_name" label="显示名称">
             <Input autoComplete="off" />
@@ -934,7 +997,12 @@ export function DeviceRegistryPage() {
             rules={edit_device_type === 'gateway' ? [] : [{ required: true, message: '非网关设备必须填写所属网关 ID' }]}
             extra={edit_device_type === 'gateway' ? '网关设备固定映射到自身 device_id' : '例如 gw-001'}
           >
-            <Input autoComplete="off" disabled={edit_device_type === 'gateway'} />
+            <AutoComplete
+              options={known_gateway_ids}
+              placeholder="选择已有网关，或直接输入网关 ID"
+              filterOption
+              disabled={edit_device_type === 'gateway'}
+            />
           </Form.Item>
           <Form.Item name="display_name" label="显示名称">
             <Input autoComplete="off" />

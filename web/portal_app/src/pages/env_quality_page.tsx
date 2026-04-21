@@ -78,7 +78,15 @@ export function EnvQualityPage() {
   const [aggregate, set_aggregate] = useState<EnvTelemetryAggregateRecord[]>([]);
   const [command_result, set_command_result] = useState<DeviceConfigPublishResult | null>(null);
   const [command_loading, set_command_loading] = useState(false);
-  const [form] = Form.useForm<{ telemetry_interval_s: number }>();
+  const [applied_thresholds, set_applied_thresholds] = useState({
+    co2_threshold_ppm: 1000,
+    pm25_threshold_ugm3: 35
+  });
+  const [form] = Form.useForm<{
+    telemetry_interval_s: number;
+    co2_threshold_ppm: number;
+    pm25_threshold_ugm3: number;
+  }>();
 
   const selected_device_id = route_device_id ?? null;
   const is_overview = route_device_id === undefined;
@@ -218,12 +226,12 @@ export function EnvQualityPage() {
 
   const threshold_flags = useMemo(() => {
     const entries = [
-      { label: 'CO₂', value: to_number(latest_payload.co2_ppm), limit: 1000 },
-      { label: 'PM2.5', value: to_number(latest_payload.pm2_5), limit: 35 },
+      { label: 'CO₂', value: to_number(latest_payload.co2_ppm), limit: applied_thresholds.co2_threshold_ppm },
+      { label: 'PM2.5', value: to_number(latest_payload.pm2_5), limit: applied_thresholds.pm25_threshold_ugm3 },
       { label: '温度', value: to_number(latest_payload.temperature_c) ?? to_number(latest_payload.temperature), limit: 30 }
     ];
     return entries.filter((item) => item.value !== null && item.value >= item.limit);
-  }, [latest_payload]);
+  }, [applied_thresholds.co2_threshold_ppm, applied_thresholds.pm25_threshold_ugm3, latest_payload]);
 
   const overview_summary = {
     total: devices.length,
@@ -255,7 +263,23 @@ export function EnvQualityPage() {
     );
   }
 
-  async function submit_command(values: { telemetry_interval_s: number }) {
+  useEffect(() => {
+    set_applied_thresholds({
+      co2_threshold_ppm: 1000,
+      pm25_threshold_ugm3: 35
+    });
+    form.setFieldsValue({
+      telemetry_interval_s: 30,
+      co2_threshold_ppm: 1000,
+      pm25_threshold_ugm3: 35
+    });
+  }, [form, selected_device_id]);
+
+  async function submit_command(values: {
+    telemetry_interval_s: number;
+    co2_threshold_ppm: number;
+    pm25_threshold_ugm3: number;
+  }) {
     if (!selected_device) {
       return;
     }
@@ -268,10 +292,16 @@ export function EnvQualityPage() {
         device_type: 'env',
         config: {
           ts: Math.floor(Date.now() / 1000),
-          telemetry_interval_s: values.telemetry_interval_s
+          telemetry_interval_s: values.telemetry_interval_s,
+          co2_threshold_ppm: values.co2_threshold_ppm,
+          pm25_threshold_ugm3: values.pm25_threshold_ugm3
         }
       });
       set_command_result(result);
+      set_applied_thresholds({
+        co2_threshold_ppm: values.co2_threshold_ppm,
+        pm25_threshold_ugm3: values.pm25_threshold_ugm3
+      });
     } catch (submit_error) {
       set_error(submit_error instanceof Error ? submit_error.message : page_error_fallbacks.env_config_publish_failed);
     } finally {
@@ -418,10 +448,10 @@ export function EnvQualityPage() {
                         children: (
                           <>
                             <div className="explanation_note">
-                              <strong className="explanation_title"><code>telemetry_interval_s</code> 的含义</strong>
+                              <strong className="explanation_title">当前支持的环境动态配置</strong>
                               <div>
-                                这里下发的是环境节点的上报周期字段 <code>telemetry_interval_s</code>。设备侧采样策略不在前端修改范围内，
-                                当前仅调整遥测发送频率。
+                                当前前端会统一下发环境节点的 <code>telemetry_interval_s</code>、<code>co2_threshold_ppm</code> 与
+                                <code> pm25_threshold_ugm3</code>。设备侧采样策略不在前端修改范围内，这里只负责上报周期和告警阈值。
                               </div>
                             </div>
                             <Form form={form} layout="vertical" onFinish={(values) => void submit_command(values)}>
@@ -431,6 +461,20 @@ export function EnvQualityPage() {
                                 rules={[{ required: true, message: '请输入上报周期' }]}
                               >
                                 <InputNumber min={1} max={3600} style={{ width: '100%' }} />
+                              </Form.Item>
+                              <Form.Item
+                                name="co2_threshold_ppm"
+                                label="CO₂ 告警阈值（ppm）"
+                                rules={[{ required: true, message: '请输入 CO₂ 告警阈值' }]}
+                              >
+                                <InputNumber min={400} max={10000} style={{ width: '100%' }} />
+                              </Form.Item>
+                              <Form.Item
+                                name="pm25_threshold_ugm3"
+                                label="PM2.5 告警阈值（μg/m³）"
+                                rules={[{ required: true, message: '请输入 PM2.5 告警阈值' }]}
+                              >
+                                <InputNumber min={1} max={1000} style={{ width: '100%' }} />
                               </Form.Item>
                               <Button htmlType="submit" type="primary" loading={command_loading} block>
                                 下发到网关

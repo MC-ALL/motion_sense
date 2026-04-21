@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Button, Collapse, Descriptions, Input, List, Space, Spin, Statistic, Tag } from 'antd';
+import { Button, Collapse, Descriptions, List, Select, Space, Spin, Statistic, Tag } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { aggregate_workout_sessions, fetch_user_training_profile } from '../api/backend_client';
+import {
+  aggregate_workout_sessions,
+  fetch_user_training_profile,
+  fetch_user_wristband_bindings,
+  fetch_users,
+  fetch_workout_sessions
+} from '../api/backend_client';
 import { AuthRequiredState } from '../components/auth_required_state';
 import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
@@ -133,7 +139,7 @@ export function TrainingArchivePage() {
   const [aggregate_summary, set_aggregate_summary] = useState<string | null>(null);
   const [profile, set_profile] = useState<UserTrainingProfileResponse | null>(null);
   const [window_key, set_window_key] = useState<WindowKey>('30d');
-  const [search_username, set_search_username] = useState(route_username ?? '');
+  const [candidate_usernames, set_candidate_usernames] = useState<string[]>([]);
 
   const target_username = route_username ?? session?.user.username ?? null;
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
@@ -149,8 +155,55 @@ export function TrainingArchivePage() {
   }
 
   useEffect(() => {
-    set_search_username(route_username ?? '');
-  }, [route_username]);
+    if (!session || !can_switch_user) {
+      set_candidate_usernames([]);
+      return;
+    }
+
+    const current_session = session;
+    let mounted = true;
+    async function load_candidates() {
+      try {
+        const usernames = new Set<string>();
+        if (current_session.user.role === 'admin') {
+          const users = await fetch_users();
+          for (const item of users) {
+            if (item.role === 'student') {
+              usernames.add(item.username);
+            }
+          }
+        } else {
+          const [bindings, sessions] = await Promise.all([
+            fetch_user_wristband_bindings({ limit: 1000 }),
+            fetch_workout_sessions({ limit: 1000 })
+          ]);
+          for (const item of bindings) {
+            usernames.add(item.username);
+          }
+          for (const item of sessions) {
+            usernames.add(item.username);
+          }
+        }
+        if (route_username) {
+          usernames.add(route_username);
+        }
+        if (current_session.user.username) {
+          usernames.add(current_session.user.username);
+        }
+        if (mounted) {
+          set_candidate_usernames(Array.from(usernames).sort((left, right) => left.localeCompare(right)));
+        }
+      } catch {
+        if (mounted) {
+          set_candidate_usernames(route_username ? [route_username] : []);
+        }
+      }
+    }
+    void load_candidates();
+    return () => {
+      mounted = false;
+    };
+  }, [can_switch_user, route_username, session]);
 
   useEffect(() => {
     if (!session || !target_username) {
@@ -262,25 +315,21 @@ export function TrainingArchivePage() {
         <Space wrap align="end">
           {can_switch_user ? (
             <>
-              <Input
-                value={search_username}
-                onChange={(event) => set_search_username(event.target.value)}
-                placeholder="输入学生用户名"
-                style={{ width: 220 }}
-                onPressEnter={() => {
-                  const next_username = search_username.trim();
-                  navigate(next_username ? `/training-archive/${next_username}` : '/training-archive');
+              <Select
+                showSearch
+                allowClear
+                optionFilterProp="label"
+                placeholder="选择学生账号"
+                value={route_username ?? undefined}
+                style={{ minWidth: 260 }}
+                options={candidate_usernames.map((username) => ({
+                  value: username,
+                  label: username === session.user.username ? `${username} · 我的账号` : username
+                }))}
+                onChange={(value) => {
+                  navigate(value ? `/training-archive/${value}` : '/training-archive');
                 }}
               />
-              <Button
-                type="primary"
-                onClick={() => {
-                  const next_username = search_username.trim();
-                  navigate(next_username ? `/training-archive/${next_username}` : '/training-archive');
-                }}
-              >
-                加载档案
-              </Button>
             </>
           ) : null}
           <Space.Compact>
