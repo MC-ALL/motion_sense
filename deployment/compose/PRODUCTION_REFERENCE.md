@@ -91,6 +91,7 @@ sh deployment/compose/start_stack.sh
 | `deployment/runtime/config/web/portal_app/runtime_config.js` | `web_portal_app` entrypoint | 网页运行时配置 | 默认随容器启动按环境变量重渲染；`WEB_PORTAL_RUNTIME_CONFIG_MODE=preserve` 时保留现有文件 |
 | `deployment/runtime/secrets/mosquitto.passwd` | `gateway_mosquitto` entrypoint | MQTT 口令文件 | 首次生成 |
 | `deployment/runtime/secrets/edge_processor_ops_token.txt` | `gateway_edge_processor` entrypoint | 网关 ops token | 首次生成，权限 `600` |
+| `deployment/runtime/secrets/backend_ai_api_key.txt` | 宿主机人工投放 | 外部 AI 提供方 token | 可选；建议权限 `600`；可通过 `sh deployment/compose/write_backend_ai_api_key.sh` 写入 |
 
 ## 5. 宿主机需重点保管的敏感文件
 
@@ -101,6 +102,7 @@ sh deployment/compose/start_stack.sh
 | `deployment/runtime/config/influxdb/admin_token.txt` | 高 | 包含 Influx admin token |
 | `deployment/runtime/secrets/mosquitto.passwd` | 高 | MQTT 账号密码文件 |
 | `deployment/runtime/secrets/edge_processor_ops_token.txt` | 高 | 网关运维 token |
+| `deployment/runtime/secrets/backend_ai_api_key.txt` | 高 | 外部 AI 提供方 token |
 | `deployment/runtime/data/ops_observer/ops_observer.sqlite3` | 中 | 运维观测历史数据 |
 
 要求：

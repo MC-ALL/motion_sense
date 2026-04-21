@@ -60,6 +60,12 @@ sh deployment/compose/verify_training_archive_stack.sh
 sh deployment/compose/verify_workout_aggregation_stack.sh
 ```
 
+如需验证外部或内置 AI provider 下的训练会话汇聚、AI 报告状态推进与网页 AI 报告详情路由，可执行：
+
+```bash
+sh deployment/compose/verify_ai_stack.sh
+```
+
 如需验证 TimescaleDB、Redis、Influx 的落盘与补发链路，可执行：
 
 ```bash
@@ -102,11 +108,13 @@ PURGE_RUNTIME=true sh deployment/compose/stop_stack.sh
 4. 执行 `sh deployment/compose/verify_system_stack.sh`，确认设备入库、健康汇聚、配置命令闭环、`ops_observer` 聚合视图与网页运行时配置均通过。
 5. 执行 `sh deployment/compose/verify_training_archive_stack.sh`，确认学生训练档案聚合、设备管理页中的手环绑定/解绑，以及学生自助查看链路均通过。
 6. 执行 `sh deployment/compose/verify_workout_aggregation_stack.sh`，确认解绑事件自动汇聚、训练档案汇总，以及管理员手动回填链路均通过。
-7. 执行 `sh deployment/compose/verify_database_stack.sh`，确认 refresh session、TimescaleDB、Redis、Influx 缓冲与补发链路均通过。
-8. 打开 `http://127.0.0.1:8080/`，使用 bootstrap admin 登录网页端。
-9. 检查网页“健康中心”和“训练档案”，确认 backend 与 gateway 显示 `healthy`，且训练档案页可正常展示绑定与训练摘要。
-10. 检查 `deployment/runtime/`，确认运行时文件仅落在该目录，包括 `config/backend/api_service/bootstrap_admin.txt`、`config/influxdb/admin_token.txt`、`config/web/portal_app/runtime_config.js`、`secrets/edge_processor_ops_token.txt`、`secrets/mosquitto.passwd`。
-11. 若启用 MQTT TLS，再补充检查 `deployment/runtime/certs/` 中的 `server.crt`、`server.key`、`ca.crt` 已正确投放且权限符合预期。
+7. 如需启用外部 AI 模型，先执行 `sh deployment/compose/write_backend_ai_api_key.sh` 投放 `secrets/backend_ai_api_key.txt`，并确认 `deployment/runtime/config/backend/api_service/app_settings.yaml` 中 `ai.provider` 为 `openai_compatible`。
+8. 执行 `sh deployment/compose/verify_ai_stack.sh`，确认训练会话自动汇聚、AI 报告状态推进，以及网页 AI 报告详情路由均通过。
+9. 执行 `sh deployment/compose/verify_database_stack.sh`，确认 refresh session、TimescaleDB、Redis、Influx 缓冲与补发链路均通过。
+10. 打开 `http://127.0.0.1:8080/`，使用 bootstrap admin 登录网页端。
+11. 检查网页“健康中心”“训练档案”和 “AI 报告”，确认 backend 与 gateway 显示 `healthy`，训练档案页可正常展示绑定与训练摘要，AI 报告详情可加载真实完成报告。
+12. 检查 `deployment/runtime/`，确认运行时文件仅落在该目录，包括 `config/backend/api_service/bootstrap_admin.txt`、`config/influxdb/admin_token.txt`、`config/web/portal_app/runtime_config.js`、`secrets/edge_processor_ops_token.txt`、`secrets/mosquitto.passwd`；如需外部 AI 模型，再额外检查 `secrets/backend_ai_api_key.txt`。
+13. 若启用 MQTT TLS，再补充检查 `deployment/runtime/certs/` 中的 `server.crt`、`server.key`、`ca.crt` 已正确投放且权限符合预期。
 
 推荐上线前验收顺序：
 1. 执行 `docker compose -f deployment/compose/docker-compose.yaml config`，先确认 Compose `include`、相对路径与变量解析正常。
@@ -116,9 +124,11 @@ PURGE_RUNTIME=true sh deployment/compose/stop_stack.sh
 5. 执行 `sh deployment/compose/verify_system_stack.sh`，验证设备入库、健康聚合、配置命令闭环、网页入口与运维聚合视图。
 6. 执行 `sh deployment/compose/verify_training_archive_stack.sh`，验证学生训练档案聚合、设备管理页绑定维护与学生自助查看链路。
 7. 执行 `sh deployment/compose/verify_workout_aggregation_stack.sh`，验证训练会话自动汇聚、手动回填与训练档案汇总链路。
-8. 执行 `sh deployment/compose/verify_database_stack.sh`，验证 refresh session、TimescaleDB、Redis、Influx 的关键落盘与补发链路。
-9. 浏览器打开 `http://127.0.0.1:8080/`，使用 bootstrap admin 登录网页端，手工确认“健康中心”“训练档案”等关键页面展示正常。
-10. 若启用 MQTT TLS，再补充检查 `deployment/runtime/certs/` 证书投放、属主、权限与 broker 握手结果。
+8. 如需启用外部 AI 模型，先执行 `sh deployment/compose/write_backend_ai_api_key.sh`，必要时再重启 `backend_api_service` 使运行时配置生效。
+9. 执行 `sh deployment/compose/verify_ai_stack.sh`，验证训练会话汇聚、AI 报告状态推进与网页 AI 报告详情路由。
+10. 执行 `sh deployment/compose/verify_database_stack.sh`，验证 refresh session、TimescaleDB、Redis、Influx 的关键落盘与补发链路。
+11. 浏览器打开 `http://127.0.0.1:8080/`，使用 bootstrap admin 登录网页端，手工确认“健康中心”“训练档案”“AI 报告”等关键页面展示正常。
+12. 若启用 MQTT TLS，再补充检查 `deployment/runtime/certs/` 证书投放、属主、权限与 broker 握手结果。
 
 推荐异常排障顺序：
 1. 先执行 `docker compose -f deployment/compose/docker-compose.yaml ps`，确认是否为单点服务未就绪，避免直接重跑整栈。
@@ -128,6 +138,7 @@ PURGE_RUNTIME=true sh deployment/compose/stop_stack.sh
 5. 若表现为网页空白、设备链路不通或运维聚合不完整，再执行 `sh deployment/compose/verify_system_stack.sh`，优先定位是后端业务链路、网关上报链路还是网页运行时配置问题。
 6. 若表现为训练档案、学生绑定或训练会话摘要异常，再执行 `sh deployment/compose/verify_training_archive_stack.sh`，优先定位是后台聚合、设备管理页绑定维护还是网页路由链路问题。
 7. 若表现为训练会话自动汇聚、手动回填或训练档案摘要异常，再执行 `sh deployment/compose/verify_workout_aggregation_stack.sh`，优先定位是解绑事件、聚合逻辑还是训练档案读取链路问题。
-8. 若表现为历史数据、刷新会话或边缘缓冲异常，再执行 `sh deployment/compose/verify_database_stack.sh`，确认 TimescaleDB、Redis、Influx 与补发路径是否正常。
-9. 若问题已无法通过增量排障恢复，可执行 `sh deployment/compose/stop_stack.sh` 后重新运行 `sh deployment/compose/start_stack.sh`；仅在明确需要重置首启产物时，才额外使用 `PURGE_VOLUMES=true` 或 `PURGE_RUNTIME=true`。
-10. 若启用 MQTT TLS，最后单独检查 `deployment/runtime/certs/` 文件、Mosquitto 日志与客户端握手结果；TLS 问题通常不应与业务 API 问题混排。
+8. 若表现为 AI 报告长期停留在 `queued/generating`、报告内容异常或网页 AI 报告页打不开，再执行 `sh deployment/compose/verify_ai_stack.sh`，优先定位是训练会话样本、AI provider 配置还是网页 AI 路由问题。
+9. 若表现为历史数据、刷新会话或边缘缓冲异常，再执行 `sh deployment/compose/verify_database_stack.sh`，确认 TimescaleDB、Redis、Influx 与补发路径是否正常。
+10. 若问题已无法通过增量排障恢复，可执行 `sh deployment/compose/stop_stack.sh` 后重新运行 `sh deployment/compose/start_stack.sh`；仅在明确需要重置首启产物时，才额外使用 `PURGE_VOLUMES=true` 或 `PURGE_RUNTIME=true`。
+11. 若启用 MQTT TLS，最后单独检查 `deployment/runtime/certs/` 文件、Mosquitto 日志与客户端握手结果；TLS 问题通常不应与业务 API 问题混排。

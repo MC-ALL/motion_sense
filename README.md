@@ -51,7 +51,8 @@
 - Linux 正式部署仍需补齐 Mosquitto `acl.conf`、`passwd`、证书文件的属主与权限初始化
 - 设备侧当前未预留 ACK 机制，配置下发成功仅表示网关已本地执行或已转发 MQTT
 - OTA 当前仅保留接口预留，不纳入后续开发计划
-- AI 当前已完成 `queued` 报告创建、列表查询、详情查询与自动报告生成；流式输出与外部大模型接入仍未完成
+- AI 当前已完成 `queued` 报告创建、列表查询、详情查询与自动报告生成；`openai_compatible` 外部模型接入已完成基线与 Linux Compose 实测，流式输出仍未完成
+- 外部模型 token 当前推荐存放在 `deployment/runtime/secrets/backend_ai_api_key.txt`，不要写入 Git、默认 YAML 或 Compose 文件
 - Apple `container build` 直接打包仓库根上下文仍可能出现归档兼容性问题；当前已由 `build_local_images.sh` 通过最小临时上下文规避
 
 ## 最近工作记录（2026-04-21）
@@ -59,8 +60,9 @@
 - 后台 AI 从纯占位接口推进到最小可用闭环：`POST /api/v1/ai/analyze` 会创建真实 `queued` 报告，并按训练时间窗口回填 `evidence_session_ids`
 - 后台已补齐 `GET /api/v1/ai/reports`、`GET /api/v1/ai/reports/{report_id}`，内存存储与 PostgreSQL 持久化实现保持一致，并按管理员 / 教师 / 学生权限收口可见范围
 - 后台已新增自动 AI 处理服务，默认使用内置规则化生成器将报告从 `queued` 推进到 `completed`，并预留 OpenAI 兼容配置位给后续 DeepSeek / OpenAI 接入
+- Linux Compose 已完成外部 AI provider 实测：后台可从 `deployment/runtime/secrets/backend_ai_api_key.txt` 读取 token，并通过 `sh deployment/compose/verify_ai_stack.sh` 验证真实训练会话汇聚、AI 报告生成与网页 AI 路由
 - 网页端训练档案页已改为真实排队成功流；AI 报告列表页、详情页已接入真实记录展示、自动刷新与摘要/建议/失败原因展示
-- 文档口径已统一到当前实现：AI 为“自动生成闭环已落地、流式输出与外部模型接入待补”，基础设施健康统一由 `ops_observer` 汇聚
+- 文档口径已统一到当前实现：AI 为“自动生成闭环与外部模型接入基线已落地、流式输出待补”，基础设施健康统一由 `ops_observer` 汇聚
 
 ## 目录结构
 

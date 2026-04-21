@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 
 DEFAULT_CONFIG_PATH = Path("/runtime/config/backend/api_service/app_settings.yaml")
+DEFAULT_AI_API_KEY_PATH = Path("/runtime/secrets/backend_ai_api_key.txt")
 
 
 class DatabaseSettings(BaseModel):
@@ -77,6 +78,7 @@ class AiSettings(BaseModel):
     base_url: str | None = None
     model: str = "deepseek-chat"
     api_key: str | None = None
+    api_key_file: str | None = None
     request_timeout_s: int = 60
 
 
@@ -204,5 +206,22 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         ai["model"] = value
     if value := os.environ.get("BACKEND_AI_API_KEY"):
         ai["api_key"] = value
+    if value := os.environ.get("BACKEND_AI_API_KEY_FILE"):
+        ai["api_key_file"] = value
     if value := os.environ.get("BACKEND_AI_REQUEST_TIMEOUT_S"):
         ai["request_timeout_s"] = int(value)
+
+    _apply_ai_secret_file(ai)
+
+
+def _apply_ai_secret_file(ai: dict[str, Any]) -> None:
+    configured_path = ai.get("api_key_file")
+    candidate_path = Path(configured_path) if isinstance(configured_path, str) and configured_path else DEFAULT_AI_API_KEY_PATH
+    ai["api_key_file"] = str(candidate_path)
+    if ai.get("api_key"):
+        return
+    if not candidate_path.exists():
+        return
+    secret_value = candidate_path.read_text(encoding="utf-8").strip()
+    if secret_value:
+        ai["api_key"] = secret_value

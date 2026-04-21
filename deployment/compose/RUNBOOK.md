@@ -27,6 +27,34 @@ docker compose -f deployment/compose/docker-compose.yaml config >/tmp/motion_sen
 - 命令退出码为 `0`
 - 没有 `include`、路径、变量解析错误
 
+如需启用外部 AI 提供方，再额外准备 token 文件：
+
+```bash
+sh deployment/compose/write_backend_ai_api_key.sh
+```
+
+若 `deployment/runtime/` 由 root 初始化过，改用：
+
+```bash
+sudo sh deployment/compose/write_backend_ai_api_key.sh
+```
+
+推荐同时在 `deployment/runtime/config/backend/api_service/app_settings.yaml` 中保持：
+
+```yaml
+ai:
+  provider: openai_compatible
+  base_url: https://api.deepseek.com/v1
+  model: deepseek-chat
+  api_key: null
+```
+
+说明：
+- token 文件由后台容器在启动时自动读取，不需要把明文写入仓库内 YAML
+- 如需改路径，可额外设置 `BACKEND_AI_API_KEY_FILE`
+- 如未投放 token 文件，后台会继续使用内置规则化生成器离线生成报告
+- 如已启动栈并修改了 `deployment/runtime/config/backend/api_service/app_settings.yaml`，需执行 `docker compose -f deployment/compose/docker-compose.yaml up -d --build backend_api_service` 使配置生效
+
 ## 2. 正式起栈
 
 ```bash
@@ -108,6 +136,20 @@ sh deployment/compose/verify_workout_aggregation_stack.sh
 - 管理员手动回填训练会话通过
 - 训练档案汇总可见自动汇聚结果
 
+## 6.3 AI 报告验收
+
+如需验证 AI 自动报告闭环：
+
+```bash
+sh deployment/compose/verify_ai_stack.sh
+```
+
+预期结果：
+- 训练会话自动汇聚通过
+- AI 报告从 `queued` 推进到 `completed`
+- 报告包含摘要、观察结论、建议与证据训练会话
+- 网页 AI 报告详情路由可正常加载
+
 ## 7. 浏览器人工验收
 
 打开：
@@ -120,6 +162,7 @@ http://127.0.0.1:8080/
 - 使用 bootstrap admin 登录网页端
 - “健康中心”显示 backend / gateway 为 `healthy`
 - “训练档案”可以正常展示绑定与训练摘要
+- “AI 报告”可以打开已完成报告详情
 - 关键业务页面可以正常加载
 
 ## 8. TLS 补充验收
@@ -170,6 +213,12 @@ sh deployment/compose/verify_system_stack.sh
 ```bash
 sh deployment/compose/verify_training_archive_stack.sh
 sh deployment/compose/verify_workout_aggregation_stack.sh
+```
+
+若表现为 AI 报告状态异常、内容异常或网页 AI 报告详情异常，再执行：
+
+```bash
+sh deployment/compose/verify_ai_stack.sh
 ```
 
 若表现为数据库或补发异常，再执行：

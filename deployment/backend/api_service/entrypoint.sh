@@ -5,7 +5,7 @@ runtime_dir="/runtime/config/backend/api_service"
 defaults_dir="/opt/motion_sense/deployment/backend/api_service/defaults"
 bootstrap_admin_path="$runtime_dir/bootstrap_admin.txt"
 
-mkdir -p "$runtime_dir"
+mkdir -p "$runtime_dir" /runtime/secrets
 
 if [ ! -f "$runtime_dir/app_settings.yaml" ]; then
   cp "$defaults_dir/default_app_settings.yaml" "$runtime_dir/app_settings.yaml"
