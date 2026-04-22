@@ -23,7 +23,7 @@
 - 管理用户、设备、告警、训练档案、训练会话与 AI 报告。
 - 通过 `local` 或 `redis` 实时广播业务事件到 `/api/ws`。
 - 提供后台自观测 `/ops/v1/health`、`/ops/v1/health/components`、`/ops/v1/stats` 与 `WS /ops/ws`。
-- 在 `ai.auto_process=true` 时自动消费 `queued` 报告，推进到 `completed/failed`。
+- 在 `ai.auto_process=true` 时自动消费 `queued` 报告，推进到 `queued -> generating -> completed/failed`。
 - 在 `ai.wakeup_backend=redis` 时支持多实例 AI 唤醒；正式生成前会原子抢占 `queued -> generating`。
 
 ## 接口约束

@@ -3,7 +3,6 @@
 ## 关键路径
 - 总览与仓库入口：`README.md`
 - 设计资料总览：`design/README.md`
-- 系统总览：`design/00-系统总览.md`
 - 网关设计：`design/04-网关端.md`
 - 后台设计：`design/05-后台端.md`
 - 网页端设计：`design/06-网页端.md`
@@ -23,7 +22,7 @@
 - `deployment/container/`：Apple `container` 本地整栈联调入口
 - `deployment/compose/docker-compose.yaml`：Linux + Docker 正式部署入口
 - `deployment/runtime/`：唯一运行时目录
-- `design/`：系统设计、接口契约、排期与接入草案
+- `design/`：系统设计、接口契约、进展记录与 AI 接入草案
 
 ## 开发与验证
 - `python3 -m compileall backend/api_service/app gateway/edge_processor/app ops_observer/api_service/app`
@@ -49,9 +48,10 @@
 - 已完成单端口同源网页入口、后台与 `ops_observer` 强制鉴权、训练档案聚合、设备管理中的手环绑定维护
 - 已完成后台 AI `queued -> generating -> completed/failed` 基线、重新生成接口、多实例唤醒与网页 AI 报告详情页联通
 - 已完成网关批量上报的最小聚合窗口与阈值触发优化，以及网页端“WebSocket 重连后单次 REST 补同步”策略
+- 已完成 `design/04-10` 的文档职责整理：`07` 作为唯一契约源，`08` 作为进展与计划入口，`04/05/06/09/10` 聚焦模块边界与交互策略
 
 ## 下一步
-- 以 `design/08-开发排期.md` 的“2026-04-22 后续工作计划”作为统一后续计划入口；完成一轮工作后先同步回查文档口径
+- 以 `design/08-开发排期.md` 的“后续工作计划”作为统一 TODO 入口；完成一轮工作后先同步回查文档口径
 - 在目标主机执行 `docker compose -f deployment/compose/docker-compose.yaml config`，先确认 Compose `include` 可用
 - Linux 正式部署时补齐 Mosquitto `acl.conf`、`passwd`、证书文件的属主与权限初始化
 - 继续优先做迁移验证、整栈起栈回归，再进入生产化收尾
