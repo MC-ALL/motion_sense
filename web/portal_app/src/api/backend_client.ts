@@ -178,6 +178,11 @@ export async function fetch_ai_report_detail(report_id: string): Promise<AiRepor
   return response.data;
 }
 
+export async function retry_ai_report(report_id: string): Promise<AiReportDetail> {
+  const response = await backend_client.post<AiReportDetail>(`/api/v1/ai/reports/${report_id}/retry`);
+  return response.data;
+}
+
 export async function fetch_workout_sessions(params?: {
   username?: string;
   wristband_id?: string;

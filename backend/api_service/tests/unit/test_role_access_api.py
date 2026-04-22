@@ -254,3 +254,10 @@ def test_ai_report_scope_respects_teacher_and_student_boundaries() -> None:
         )
         assert student_forbidden.status_code == 403
         assert student_forbidden.json()["detail"] == "ai report access forbidden"
+
+        second_report_retry = client.post(
+            f"/api/v1/ai/reports/{second_report.json()['report_id']}/retry",
+            headers=_headers(teacher_token),
+        )
+        assert second_report_retry.status_code == 403
+        assert second_report_retry.json()["detail"] == "ai report access forbidden"

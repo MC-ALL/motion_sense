@@ -260,6 +260,57 @@ def test_ai_report_routes_create_and_read_queued_records() -> None:
         assert report_detail["evidence_session_ids"] == []
 
 
+def test_ai_report_retry_creates_new_queued_record() -> None:
+    with TestClient(create_app()) as client:
+        create_user_response = client.post(
+            "/api/v1/users",
+            json={
+                "username": "student_ai_retry",
+                "password": "student123",
+                "role": "student",
+                "gym_ids": ["gym-gz-01"],
+                "device_ids": ["wb-001"],
+            },
+        )
+        assert create_user_response.status_code == 201
+
+        response = client.post(
+            "/api/v1/ai/analyze",
+            json={
+                "user_id": "student_ai_retry",
+                "start": "2026-04-01T00:00:00Z",
+                "end": "2026-04-07T23:59:59Z",
+            },
+        )
+        assert response.status_code == 201
+        created = response.json()
+
+        event_store = client.app.state.event_store  # type: ignore[attr-defined]
+        existing = event_store._ai_reports[created["report_id"]]  # type: ignore[attr-defined]
+        event_store._ai_reports[created["report_id"]] = existing.model_copy(  # type: ignore[attr-defined]
+            update={
+                "status": "failed",
+                "error_message": "provider timeout",
+                "finished_at": "2026-04-08T00:00:00Z",
+            }
+        )
+
+        retry_response = client.post(f"/api/v1/ai/reports/{created['report_id']}/retry")
+        assert retry_response.status_code == 201
+        retried = retry_response.json()
+        assert retried["report_id"] != created["report_id"]
+        assert retried["user_id"] == "student_ai_retry"
+        assert retried["status"] == "queued"
+        assert retried["summary_title"] == "student_ai_retry 训练分析待生成"
+        assert retried["summary"] == "报告已入队，等待后续 AI 生成流程写入正式内容。"
+
+        list_response = client.get("/api/v1/ai/reports")
+        assert list_response.status_code == 200
+        report_ids = [item["report_id"] for item in list_response.json()]
+        assert retried["report_id"] in report_ids
+        assert created["report_id"] in report_ids
+
+
 def test_ota_reserved_routes_return_501() -> None:
     with TestClient(create_app()) as client:
         response = client.post(

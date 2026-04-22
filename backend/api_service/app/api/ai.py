@@ -34,25 +34,11 @@ async def analyze_ai_report(
     if target_user.role != "student":
         raise HTTPException(status_code=409, detail="ai reports currently support student users only")
 
-    evidence_sessions = await store.list_workout_sessions(
-        username=target_user.username,
+    return await _create_queued_ai_report(
+        store=store,
+        target_user=target_user,
         start=payload.start,
         end=payload.end,
-        limit=5000,
-        offset=0,
-    )
-    return await store.create_ai_report(
-        user_id=target_user.username,
-        status="queued",
-        start=payload.start,
-        end=payload.end,
-        summary_title=f"{target_user.username} 训练分析待生成",
-        summary="报告已入队，等待后续 AI 生成流程写入正式内容。",
-        insights=[],
-        recommendations=[],
-        evidence_session_ids=[item.session_id for item in evidence_sessions],
-        raw_markdown=None,
-        error_message=None,
     )
 
 
@@ -133,6 +119,68 @@ async def get_ai_report(
         raise HTTPException(status_code=404, detail="user not found")
     _ensure_ai_report_scope(current_user=user, target_user=target_user)
     return report
+
+
+@router.post(
+    "/reports/{report_id}/retry",
+    response_model=AiReportDetail,
+    response_model_exclude_none=True,
+    status_code=status.HTTP_201_CREATED,
+)
+async def retry_ai_report(
+    report_id: str,
+    user: AuthUser = Depends(require_rest_user),
+    store: Store = Depends(get_event_store),
+) -> AiReportDetail:
+    report = await store.get_ai_report(report_id=report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="ai report not found")
+
+    target_user = await store.get_user(username=report.user_id)
+    if target_user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    _ensure_ai_report_scope(current_user=user, target_user=target_user)
+    if report.status in {"queued", "generating"}:
+        raise HTTPException(status_code=409, detail="ai report is already pending generation")
+    if target_user.role != "student":
+        raise HTTPException(status_code=409, detail="ai reports currently support student users only")
+
+    return await _create_queued_ai_report(
+        store=store,
+        target_user=target_user,
+        start=report.start,
+        end=report.end,
+    )
+
+
+async def _create_queued_ai_report(
+    *,
+    store: Store,
+    target_user: StoredUser,
+    start: str,
+    end: str,
+) -> AiReportDetail:
+    evidence_sessions = await store.list_workout_sessions(
+        username=target_user.username,
+        start=start,
+        end=end,
+        limit=5000,
+        offset=0,
+    )
+    return await store.create_ai_report(
+        user_id=target_user.username,
+        status="queued",
+        start=start,
+        end=end,
+        summary_title=f"{target_user.username} 训练分析待生成",
+        summary="报告已入队，等待后续 AI 生成流程写入正式内容。",
+        insights=[],
+        recommendations=[],
+        evidence_session_ids=[item.session_id for item in evidence_sessions],
+        raw_markdown=None,
+        error_message=None,
+    )
 
 
 def _ensure_ai_report_scope(*, current_user: AuthUser, target_user: StoredUser) -> None:

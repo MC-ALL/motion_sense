@@ -46,6 +46,7 @@ export const page_error_fallbacks = {
   training_archive_aggregate_failed: '训练会话同步失败',
   training_archive_ai_failed: 'AI 分析请求失败',
   ai_reports_load_failed: 'AI 报告加载失败',
+  ai_reports_retry_failed: 'AI 报告重新生成失败',
   training_archive_load_failed: '训练档案加载失败',
   user_create_failed: '创建用户失败',
   user_delete_failed: '删除用户失败',

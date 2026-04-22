@@ -59,6 +59,7 @@
 
 - 后台 AI 从纯占位接口推进到最小可用闭环：`POST /api/v1/ai/analyze` 会创建真实 `queued` 报告，并按训练时间窗口回填 `evidence_session_ids`
 - 后台已补齐 `GET /api/v1/ai/reports`、`GET /api/v1/ai/reports/{report_id}`，内存存储与 PostgreSQL 持久化实现保持一致，并按管理员 / 教师 / 学生权限收口可见范围
+- 后台已新增 `POST /api/v1/ai/reports/{report_id}/retry`，支持已完成/失败报告按原分析窗口重新创建新任务；网页端详情页已接入“重新生成 / 再次生成”
 - 后台已新增自动 AI 处理服务，默认使用内置规则化生成器将报告从 `queued` 推进到 `completed`，并预留 OpenAI 兼容配置位给后续 DeepSeek / OpenAI 接入
 - Linux Compose 已完成外部 AI provider 实测：后台可从 `deployment/runtime/secrets/backend_ai_api_key.txt` 读取 token，并通过 `sh deployment/compose/verify_ai_stack.sh` 验证真实训练会话汇聚、AI 报告生成与网页 AI 路由
 - 外部 AI 当前默认通过运行时开关 `ai.model_variant` 选择 `reasoner/chat`；默认值为 `reasoner`，接口路径仍使用 OpenAI 兼容的 `chat/completions`

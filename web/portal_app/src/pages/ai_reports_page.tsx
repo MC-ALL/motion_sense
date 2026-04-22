@@ -7,6 +7,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   fetch_ai_report_detail,
   fetch_ai_reports,
+  retry_ai_report,
   fetch_user_wristband_bindings,
   fetch_users,
   fetch_workout_sessions
@@ -134,6 +135,7 @@ export function AiReportsPage() {
   const [report_detail, set_report_detail] = useState<AiReportDetail | null>(null);
   const [candidate_usernames, set_candidate_usernames] = useState<string[]>([]);
   const [refresh_tick, set_refresh_tick] = useState(0);
+  const [retrying, set_retrying] = useState(false);
 
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
   const selected_window = (search_params.get('window') as WindowKey | null) ?? '30d';
@@ -300,6 +302,23 @@ export function AiReportsPage() {
     set_search_params(params);
   }
 
+  async function handle_retry_report() {
+    if (!report_detail || retrying) {
+      return;
+    }
+    set_retrying(true);
+    setErrorState();
+    try {
+      const next_report = await retry_ai_report(report_detail.report_id);
+      navigate(`/ai-reports/${next_report.report_id}`);
+      set_refresh_tick((value) => value + 1);
+    } catch (retry_error) {
+      set_error(describe_error(retry_error, page_error_fallbacks.ai_reports_retry_failed));
+    } finally {
+      set_retrying(false);
+    }
+  }
+
   const list_scope_text = useMemo(() => {
     const current_window = window_options.find((item) => item.value === selected_window);
     return [
@@ -329,7 +348,18 @@ export function AiReportsPage() {
         </div>
         <Space wrap>
           <Button onClick={() => navigate('/training-archive')}>返回训练档案</Button>
-          {!report_id ? <Button onClick={() => update_filters({ username: session.user.username })}>查看我的报告</Button> : <Button onClick={() => navigate('/ai-reports')}>返回列表</Button>}
+          {!report_id ? (
+            <Button onClick={() => update_filters({ username: session.user.username })}>查看我的报告</Button>
+          ) : (
+            <>
+              {report_detail && (report_detail.status === 'failed' || report_detail.status === 'completed') ? (
+                <Button type="primary" loading={retrying} onClick={() => void handle_retry_report()}>
+                  {report_detail.status === 'failed' ? '重新生成' : '再次生成'}
+                </Button>
+              ) : null}
+              <Button onClick={() => navigate('/ai-reports')}>返回列表</Button>
+            </>
+          )}
         </Space>
       </section>
 
