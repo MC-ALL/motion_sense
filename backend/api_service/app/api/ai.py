@@ -189,7 +189,7 @@ async def _create_queued_ai_report(
     )
     if ai_report_service is not None:
         await ai_report_service.publish_report_update(report, target_user=target_user)
-        ai_report_service.enqueue_report(report.report_id)
+        await ai_report_service.wakeup_report(report.report_id)
     return report
 
 

@@ -408,6 +408,26 @@ class EventStore:
             self._ai_reports[report_id] = updated
             return updated
 
+    async def claim_ai_report(
+        self,
+        *,
+        report_id: str,
+        from_status: AiReportStatus,
+        to_status: AiReportStatus,
+    ) -> AiReportDetail | None:
+        async with self._lock:
+            existing = self._ai_reports.get(report_id)
+            if existing is None or existing.status != from_status:
+                return None
+            updated = existing.model_copy(
+                update={
+                    "status": to_status,
+                    "updated_at": _now_iso(),
+                }
+            )
+            self._ai_reports[report_id] = updated
+            return updated
+
     async def get_ai_report(self, *, report_id: str) -> AiReportDetail | None:
         async with self._lock:
             return self._ai_reports.get(report_id)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 from unittest.mock import patch
 
 from app.models.ai import AiReportDetail
@@ -33,6 +34,74 @@ async def _wait_for_report_status(
 
 def _create_service(settings: RuntimeSettings, store: EventStore) -> AiReportService:
     return AiReportService(settings, store, RealtimeService(settings, WebSocketManager()))
+
+
+class _FakeRedisBroker:
+    def __init__(self) -> None:
+        self._pubsubs: list[_FakePubSub] = []
+
+    def register(self, pubsub: "_FakePubSub") -> None:
+        self._pubsubs.append(pubsub)
+
+    def unregister(self, pubsub: "_FakePubSub") -> None:
+        if pubsub in self._pubsubs:
+            self._pubsubs.remove(pubsub)
+
+    async def publish(self, channel: str, message: str) -> None:
+        for pubsub in list(self._pubsubs):
+            await pubsub.push(channel=channel, message=message)
+
+
+class _FakePubSub:
+    def __init__(self, broker: _FakeRedisBroker) -> None:
+        self._broker = broker
+        self._queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+        self._channels: set[str] = set()
+        self._closed = False
+        self._broker.register(self)
+
+    async def subscribe(self, channel: str) -> None:
+        self._channels.add(channel)
+
+    async def listen(self):  # type: ignore[no-untyped-def]
+        while not self._closed:
+            item = await self._queue.get()
+            if item.get("type") == "__close__":
+                break
+            yield item
+
+    async def push(self, *, channel: str, message: str) -> None:
+        if self._closed or channel not in self._channels:
+            return
+        await self._queue.put({"type": "message", "channel": channel, "data": message})
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._broker.unregister(self)
+        await self._queue.put({"type": "__close__", "data": ""})
+
+
+class _FakeRedis:
+    def __init__(self, broker: _FakeRedisBroker) -> None:
+        self._broker = broker
+        self.published_messages: list[tuple[str, str]] = []
+        self.closed = False
+
+    async def ping(self) -> bool:
+        return True
+
+    async def publish(self, channel: str, message: str) -> int:
+        self.published_messages.append((channel, message))
+        await self._broker.publish(channel, message)
+        return 1
+
+    def pubsub(self) -> _FakePubSub:
+        return _FakePubSub(self._broker)
+
+    async def aclose(self) -> None:
+        self.closed = True
 
 
 def test_ai_report_service_completes_queued_report_with_builtin_generator() -> None:
@@ -180,6 +249,134 @@ def test_ai_report_service_recovers_generating_report_on_start() -> None:
         finally:
             await service.stop()
             await store.close()
+
+    asyncio.run(scenario())
+
+
+def test_ai_report_service_claims_queued_report_once_under_race() -> None:
+    async def scenario() -> None:
+        store = EventStore()
+        await store.initialize()
+        await store.create_user(
+            username="student_ai_claim",
+            password_hash=generate_password_hash("student123"),
+            role="student",
+            gym_ids=["gym-gz-01"],
+            device_ids=["wb-claim-001"],
+        )
+        report = await store.create_ai_report(
+            user_id="student_ai_claim",
+            status="queued",
+            start="2026-04-20T00:00:00Z",
+            end="2026-04-20T23:59:59Z",
+            summary_title="student_ai_claim 训练分析待生成",
+            summary="报告已入队，等待后续 AI 生成流程写入正式内容。",
+            insights=[],
+            recommendations=[],
+            evidence_session_ids=[],
+            raw_markdown=None,
+            error_message=None,
+        )
+
+        service = _create_service(RuntimeSettings(), store)
+        call_count = 0
+
+        async def fake_build_completed_payload(report_detail: AiReportDetail) -> dict[str, Any]:
+            nonlocal call_count
+            call_count += 1
+            await asyncio.sleep(0.05)
+            return {
+                "summary_title": f"{report_detail.user_id} 训练分析报告",
+                "summary": "测试摘要",
+                "insights": ["测试观察"],
+                "recommendations": ["测试建议"],
+                "evidence_session_ids": [],
+                "raw_markdown": "# 测试报告",
+            }
+
+        with patch.object(service, "_build_completed_payload", side_effect=fake_build_completed_payload):
+            result_a, result_b = await asyncio.gather(
+                service.process_report(report.report_id),
+                service.process_report(report.report_id),
+            )
+
+        completed = await store.get_ai_report(report_id=report.report_id)
+        assert call_count == 1
+        assert completed is not None and completed.status == "completed"
+        assert {result_a.status if result_a is not None else None, result_b.status if result_b is not None else None} <= {
+            "generating",
+            "completed",
+        }
+
+        await store.close()
+
+    asyncio.run(scenario())
+
+
+def test_ai_report_service_redis_wakeup_can_notify_another_instance() -> None:
+    async def scenario() -> None:
+        store = EventStore()
+        await store.initialize()
+        await store.create_user(
+            username="student_ai_redis",
+            password_hash=generate_password_hash("student123"),
+            role="student",
+            gym_ids=["gym-gz-01"],
+            device_ids=["wb-redis-001"],
+        )
+
+        broker = _FakeRedisBroker()
+        redis_clients: list[_FakeRedis] = []
+
+        def fake_from_url(*args, **kwargs):  # type: ignore[no-untyped-def]
+            client = _FakeRedis(broker)
+            redis_clients.append(client)
+            return client
+
+        settings = RuntimeSettings(
+            ai={
+                "auto_process": True,
+                "wakeup_backend": "redis",
+                "wakeup_channel": "motion_sense:test_ai_report_wakeup",
+            }
+        )
+        service_a = _create_service(settings, store)
+        service_b = _create_service(settings, store)
+
+        with patch("app.services.ai_report_service.Redis.from_url", side_effect=fake_from_url):
+            await service_a.start()
+            await service_b.start()
+            await asyncio.sleep(0.05)
+            report = await store.create_ai_report(
+                user_id="student_ai_redis",
+                status="queued",
+                start="2026-04-20T00:00:00Z",
+                end="2026-04-20T23:59:59Z",
+                summary_title="student_ai_redis 训练分析待生成",
+                summary="报告已入队，等待后续 AI 生成流程写入正式内容。",
+                insights=[],
+                recommendations=[],
+                evidence_session_ids=[],
+                raw_markdown=None,
+                error_message=None,
+            )
+
+            service_a.enqueue_report = lambda report_id: None  # type: ignore[method-assign]
+            try:
+                await service_a.wakeup_report(report.report_id)
+                completed = await _wait_for_report_status(store, report.report_id, "completed")
+                assert completed.finished_at is not None
+                assert len(redis_clients) == 2
+                assert redis_clients[0].published_messages == [
+                    (
+                        "motion_sense:test_ai_report_wakeup",
+                        json.dumps({"report_id": report.report_id}, separators=(",", ":"), ensure_ascii=True),
+                    )
+                ]
+            finally:
+                await service_b.stop()
+                await service_a.stop()
+                await store.close()
 
     asyncio.run(scenario())
 

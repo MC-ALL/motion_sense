@@ -28,6 +28,7 @@
 - `BACKEND_DATABASE_PASSWORD` 可在正式环境显式覆盖，默认占位值仅用于开发联调。
 - 如启用 OpenAI 兼容 AI provider，需要在 `deployment/runtime/secrets/backend_ai_api_key.txt` 投放 token。
 - gateway 命令通道默认使用 `deployment/runtime/secrets/backend_gateway_command_token.txt` 共享 token；未预置时由 backend entrypoint 首启自动生成。
+- 如使用多实例 backend，建议保持 `BACKEND_AI_WAKEUP_BACKEND=redis`；仓库内 Linux Compose 默认已开启该项。
 
 ## 基础设施要求
 

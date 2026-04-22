@@ -71,3 +71,23 @@ def test_load_settings_reads_gateway_command_token_from_secret_file(tmp_path: Pa
 
     assert settings.device_command.gateway_channel_token_file == str(secret_path)
     assert settings.device_command.gateway_channel_token == "gateway-command-token"
+
+
+def test_load_settings_reads_ai_wakeup_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "app_settings.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "app_name: motion-sense-backend-api-service",
+                "ai:",
+                "  wakeup_backend: redis",
+                "  wakeup_channel: motion_sense:test_ai_report_wakeup",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.ai.wakeup_backend == "redis"
+    assert settings.ai.wakeup_channel == "motion_sense:test_ai_report_wakeup"

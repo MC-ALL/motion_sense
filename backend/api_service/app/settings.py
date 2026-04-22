@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
@@ -81,6 +81,8 @@ class AiSettings(BaseModel):
     auto_process: bool = True
     poll_interval_s: int = 5
     batch_size: int = 4
+    wakeup_backend: Literal["local", "redis"] = "local"
+    wakeup_channel: str = "motion_sense:ai_report_wakeup"
     provider: str = "builtin"
     base_url: str | None = None
     model_variant: str = "reasoner"
@@ -210,6 +212,10 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         ai["poll_interval_s"] = int(value)
     if value := os.environ.get("BACKEND_AI_BATCH_SIZE"):
         ai["batch_size"] = int(value)
+    if value := os.environ.get("BACKEND_AI_WAKEUP_BACKEND"):
+        ai["wakeup_backend"] = value
+    if value := os.environ.get("BACKEND_AI_WAKEUP_CHANNEL"):
+        ai["wakeup_channel"] = value
     if value := os.environ.get("BACKEND_AI_PROVIDER"):
         ai["provider"] = value
     if value := os.environ.get("BACKEND_AI_BASE_URL"):

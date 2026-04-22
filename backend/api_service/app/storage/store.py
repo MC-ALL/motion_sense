@@ -171,6 +171,14 @@ class Store(Protocol):
         finished_at: str | None = None,
     ) -> AiReportDetail | None: ...
 
+    async def claim_ai_report(
+        self,
+        *,
+        report_id: str,
+        from_status: AiReportStatus,
+        to_status: AiReportStatus,
+    ) -> AiReportDetail | None: ...
+
     async def get_ai_report(
         self,
         *,

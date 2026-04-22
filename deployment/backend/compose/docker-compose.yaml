@@ -44,6 +44,7 @@ services:
     environment:
       BACKEND_STORAGE_BACKEND: postgres
       BACKEND_REALTIME_BACKEND: redis
+      BACKEND_AI_WAKEUP_BACKEND: redis
       BACKEND_DATABASE_HOST: backend_timescaledb
       BACKEND_DATABASE_PORT: 5432
       BACKEND_DATABASE_NAME: motion_sense

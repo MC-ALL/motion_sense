@@ -7,6 +7,8 @@ from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from redis.asyncio import Redis
+
 from app.models.ai import AiReportDetail
 from app.models.user import StoredUser
 from app.models.workout import WorkoutSessionSummary
@@ -27,27 +29,47 @@ class AiReportService:
         self._realtime_service = realtime_service
         self._worker_task: asyncio.Task[None] | None = None
         self._report_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._wakeup_redis: Redis | None = None
+        self._wakeup_listener_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         if not self._settings.ai.auto_process or self._worker_task is not None:
             return
-        await self.recover_pending_reports()
-        self._worker_task = asyncio.create_task(self._run_loop(), name="backend-ai-report-worker")
+        await self._start_wakeup_listener()
+        try:
+            await self.recover_pending_reports()
+            self._worker_task = asyncio.create_task(self._run_loop(), name="backend-ai-report-worker")
+        except Exception:
+            await self._stop_wakeup_listener()
+            raise
 
     async def stop(self) -> None:
-        if self._worker_task is None:
-            return
-        self._worker_task.cancel()
-        try:
-            await self._worker_task
-        except asyncio.CancelledError:
-            pass
-        self._worker_task = None
+        if self._worker_task is not None:
+            self._worker_task.cancel()
+            try:
+                await self._worker_task
+            except asyncio.CancelledError:
+                pass
+            self._worker_task = None
+        await self._stop_wakeup_listener()
 
     def enqueue_report(self, report_id: str) -> None:
         if not self._settings.ai.auto_process:
             return
         self._report_queue.put_nowait(report_id)
+
+    async def wakeup_report(self, report_id: str) -> None:
+        if not self._settings.ai.auto_process:
+            return
+        self.enqueue_report(report_id)
+        if self._settings.ai.wakeup_backend != "redis":
+            return
+        if self._wakeup_redis is None:
+            raise RuntimeError("redis ai wakeup service is not started")
+        await self._wakeup_redis.publish(
+            self._settings.ai.wakeup_channel,
+            json.dumps({"report_id": report_id}, separators=(",", ":"), ensure_ascii=True),
+        )
 
     async def recover_pending_reports(self) -> int:
         queued_report_ids = await self._list_report_ids(status="queued")
@@ -67,15 +89,20 @@ class AiReportService:
         report = await self._store.get_ai_report(report_id=report_id)
         if report is None or report.status != "queued":
             return report
-        target_user = await self._store.get_user(username=report.user_id)
+        generating_report = await self._store.claim_ai_report(
+            report_id=report_id,
+            from_status="queued",
+            to_status="generating",
+        )
+        if generating_report is None:
+            return await self._store.get_ai_report(report_id=report_id)
+        target_user = await self._store.get_user(username=generating_report.user_id)
         if target_user is None:
             raise RuntimeError("user not found for ai report generation")
-
-        generating_report = await self._store.update_ai_report(report_id=report_id, status="generating")
         if generating_report is not None:
             await self.publish_report_update(generating_report, target_user=target_user)
         try:
-            completed_payload = await self._build_completed_payload(report)
+            completed_payload = await self._build_completed_payload(generating_report)
         except Exception as exc:
             failed_report = await self._store.update_ai_report(
                 report_id=report_id,
@@ -114,6 +141,49 @@ class AiReportService:
             finally:
                 if report_id is not None:
                     self._report_queue.task_done()
+
+    async def _start_wakeup_listener(self) -> None:
+        if self._settings.ai.wakeup_backend != "redis":
+            return
+        self._wakeup_redis = Redis.from_url(self._settings.redis.url(), decode_responses=True)
+        await self._wakeup_redis.ping()
+        self._wakeup_listener_task = asyncio.create_task(
+            self._listen_for_wakeup(),
+            name="backend-ai-report-wakeup-listener",
+        )
+
+    async def _stop_wakeup_listener(self) -> None:
+        if self._wakeup_listener_task is not None:
+            self._wakeup_listener_task.cancel()
+            try:
+                await self._wakeup_listener_task
+            except asyncio.CancelledError:
+                pass
+            self._wakeup_listener_task = None
+        if self._wakeup_redis is not None:
+            await self._wakeup_redis.aclose()
+            self._wakeup_redis = None
+
+    async def _listen_for_wakeup(self) -> None:
+        assert self._wakeup_redis is not None
+        pubsub = self._wakeup_redis.pubsub()
+        await pubsub.subscribe(self._settings.ai.wakeup_channel)
+        try:
+            async for item in pubsub.listen():
+                if item is None or item.get("type") != "message":
+                    continue
+                data = item.get("data")
+                if not isinstance(data, str):
+                    continue
+                try:
+                    payload = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+                report_id = payload.get("report_id") if isinstance(payload, dict) else None
+                if isinstance(report_id, str) and report_id:
+                    self.enqueue_report(report_id)
+        finally:
+            await pubsub.aclose()
 
     async def _list_report_ids(self, *, status: str) -> list[str]:
         report_ids: list[str] = []

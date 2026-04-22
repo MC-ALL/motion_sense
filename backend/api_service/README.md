@@ -24,6 +24,7 @@
 - 通过 `local` 或 `redis` 实时广播业务事件到 `/api/ws`。
 - 提供后台自观测 `/ops/v1/health`、`/ops/v1/health/components`、`/ops/v1/stats` 与 `WS /ops/ws`。
 - 在 `ai.auto_process=true` 时自动消费 `queued` 报告，推进到 `completed/failed`。
+- 在 `ai.wakeup_backend=redis` 时支持多实例 AI 唤醒；正式生成前会原子抢占 `queued -> generating`。
 
 ## 接口约束
 
@@ -47,6 +48,7 @@
 - 路径、字段与权限边界必须与 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 一致。
 - `storage_backend` 仅支持 `memory`、`postgres`；`realtime_backend` 仅支持 `local`、`redis`。
 - `ai.provider` 当前支持 `builtin` 与 OpenAI 兼容模式；模型变体通过 `model_variant=reasoner|chat` 切换。
+- `ai.wakeup_backend` 当前支持 `local`、`redis`；Linux Compose 默认使用 `redis` 以适配多实例唤醒。
 - OpenAI 兼容模式的 token 默认从 `/runtime/secrets/backend_ai_api_key.txt` 读取，不写入仓库。
 - 网关命令通道共享 token 默认从 `/runtime/secrets/backend_gateway_command_token.txt` 读取；在线网关通过 `command_ready` 事件被唤醒后再补拉 pending。
 
@@ -73,6 +75,6 @@ docker run --rm -v "$PWD:/workspace" -w /workspace/backend/api_service python:3.
 
 ## 后续改进
 
-- 将 AI 处理从进程内轮询推进到独立 worker / 任务队列。
+- 将 AI 处理从当前进程内 worker 继续演进到独立任务队列 / 独立进程。
 - 增补流式输出、报告编辑痕迹与更细粒度失败恢复。
-- 强化数据库迁移、会话黑名单与多实例广播测试。
+- 强化数据库迁移、会话黑名单与多实例集成测试。

@@ -616,6 +616,35 @@ class PostgresStore:
             return None
         return _ai_report_from_row(row)
 
+    async def claim_ai_report(
+        self,
+        *,
+        report_id: str,
+        from_status: AiReportStatus,
+        to_status: AiReportStatus,
+    ) -> AiReportDetail | None:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE ai_reports
+                    SET status = %s,
+                        updated_at = NOW()
+                    WHERE report_id = %s
+                      AND status = %s
+                    RETURNING report_id, user_id, status, start_at, end_at, summary_title, summary,
+                              insights, recommendations, evidence_session_ids, raw_markdown, error_message,
+                              created_at, updated_at, finished_at
+                    """,
+                    (to_status, report_id, from_status),
+                )
+                row = await cursor.fetchone()
+            await connection.commit()
+
+        if row is None:
+            return None
+        return _ai_report_from_row(row)
+
     async def get_ai_report(self, *, report_id: str) -> AiReportDetail | None:
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:

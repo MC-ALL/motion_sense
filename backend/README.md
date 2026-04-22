@@ -23,6 +23,7 @@
 - 手环绑定维护与绑定历史查询
 - 业务 WebSocket 推送
 - AI 报告创建、列表、详情与重新生成
+- AI 报告多实例唤醒与原子状态抢占
 - 后台自观测 `/ops/v1/*` 与 `/ops/ws`
 
 ## 接口约束
@@ -47,6 +48,6 @@ docker run --rm -v "$PWD:/workspace" -w /workspace/backend/api_service python:3.
 
 ## 后续改进
 
-- AI 从当前单进程自动消费推进到独立 worker / 队列化。
+- AI 从当前进程内自动消费继续推进到独立 worker / 队列化。
 - 强化 refresh session 与审计持久化能力。
 - 在不破坏接口契约的前提下补充更多后台集成测试。

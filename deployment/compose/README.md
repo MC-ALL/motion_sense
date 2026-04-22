@@ -16,7 +16,7 @@
 - `print_bootstrap_credentials.sh`：打印后台 bootstrap admin 与网关 ops token。
 - `write_backend_ai_api_key.sh`：安全写入 AI provider token。
 - `switch_backend_ai_model.sh`：切换 `reasoner|chat` 模型档位并重启后台。
-- `verify_ops_auth_stack.sh`、`verify_system_stack.sh`、`verify_training_archive_stack.sh`、`verify_workout_aggregation_stack.sh`、`verify_ai_stack.sh`、`verify_database_stack.sh`：正式验收脚本。
+- `verify_ops_auth_stack.sh`、`verify_system_stack.sh`、`verify_gateway_batch_stack.sh`、`verify_training_archive_stack.sh`、`verify_workout_aggregation_stack.sh`、`verify_ai_stack.sh`、`verify_database_stack.sh`：正式验收脚本。
 - `RUNBOOK.md`、`SERVER_INIT_CHECKLIST.md`、`PRODUCTION_REFERENCE.md`：现场操作与初始化说明。
 
 ## 脚本用法
@@ -28,6 +28,7 @@ docker compose -f deployment/compose/docker-compose.yaml config
 sh deployment/compose/start_stack.sh
 sh deployment/compose/verify_ops_auth_stack.sh
 sh deployment/compose/verify_system_stack.sh
+sh deployment/compose/verify_gateway_batch_stack.sh
 sh deployment/compose/verify_training_archive_stack.sh
 sh deployment/compose/verify_workout_aggregation_stack.sh
 sh deployment/compose/verify_ai_stack.sh
@@ -62,6 +63,7 @@ sh deployment/compose/switch_backend_ai_model.sh reasoner
 
 - `runtime_init` 会先创建共享目录并初始化基础权限。
 - 首次启动后，后台 bootstrap admin、网关 ops token、web 运行时配置等都落在 `deployment/runtime/`。
+- 当前 backend Compose 默认注入 `BACKEND_AI_WAKEUP_BACKEND=redis`，用于多实例 AI 任务唤醒。
 - 敏感信息不提交入库。
 - 启用 MQTT TLS 时，需要宿主机侧额外准备证书与权限。
 
