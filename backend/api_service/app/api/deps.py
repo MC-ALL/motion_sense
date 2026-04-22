@@ -8,6 +8,7 @@ from app.models.ingest import AlertRecord, DeviceSummary
 from app.services.auth_service import AuthError, AuthService
 from app.services.device_config_service import DeviceConfigService
 from app.services.ingest_service import IngestService
+from app.services.realtime_service import RealtimeService
 from app.services.workout_aggregation_service import WorkoutAggregationService
 from app.services.websocket_manager import WebSocketManager
 from app.storage.store import Store
@@ -27,13 +28,16 @@ def get_ingest_service(request: Request) -> IngestService:
 def get_device_config_service(request: Request) -> DeviceConfigService:
     return request.app.state.device_config_service
 
-
 def get_workout_aggregation_service(request: Request) -> WorkoutAggregationService:
     return request.app.state.workout_aggregation_service
 
 
 def get_websocket_manager(request: Request) -> WebSocketManager:
     return request.app.state.websocket_manager
+
+
+def get_realtime_service(request: Request) -> RealtimeService:
+    return request.app.state.realtime_service
 
 
 def get_auth_service(request: Request) -> AuthService:

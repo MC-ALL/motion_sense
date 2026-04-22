@@ -56,7 +56,6 @@ class OpsObserverService:
         self._http_client = http_client or httpx.AsyncClient()
         self._owns_http_client = http_client is None
         self._refresh_task: asyncio.Task[None] | None = None
-        self._snapshot_task: asyncio.Task[None] | None = None
         self._module_ws_tasks: dict[str, asyncio.Task[None]] = {}
         self._last_states: dict[str, _ModuleState] = {}
         self._module_auth_sessions: dict[str, _UpstreamAuthSession] = {}
@@ -67,10 +66,6 @@ class OpsObserverService:
             return
         await self.refresh_once()
         self._refresh_task = asyncio.create_task(self._refresh_loop(), name="ops-observer-refresh")
-        self._snapshot_task = asyncio.create_task(
-            self._snapshot_loop(),
-            name="ops-observer-ws-snapshot",
-        )
         for module in self._settings.upstream_modules:
             if not module.ws_enabled:
                 continue
@@ -80,14 +75,13 @@ class OpsObserverService:
             )
 
     async def stop(self) -> None:
-        for task in (*self._module_ws_tasks.values(), self._refresh_task, self._snapshot_task):
+        for task in (*self._module_ws_tasks.values(), self._refresh_task):
             if task is None:
                 continue
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
         self._refresh_task = None
-        self._snapshot_task = None
         self._module_ws_tasks = {}
         if self._owns_http_client:
             await self._http_client.aclose()
@@ -137,11 +131,6 @@ class OpsObserverService:
         while True:
             await asyncio.sleep(self._settings.poll_interval_s)
             await self.refresh_once()
-
-    async def _snapshot_loop(self) -> None:
-        while True:
-            await asyncio.sleep(self._settings.ws_snapshot_interval_s)
-            await self.broadcast_snapshot()
 
     async def _module_ops_ws_loop(self, module: UpstreamModuleSettings) -> None:
         while True:

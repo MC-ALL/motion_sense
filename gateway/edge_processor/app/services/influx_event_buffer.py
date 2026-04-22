@@ -37,6 +37,7 @@ class InfluxEventBuffer:
             maxsize=settings.influxdb.write_queue_size
         )
         self._flush_lock = asyncio.Lock()
+        self._pending_notifications: asyncio.Queue[None] = asyncio.Queue(maxsize=1)
 
     async def initialize(self) -> None:
         response = await self._client.post(
@@ -83,6 +84,10 @@ class InfluxEventBuffer:
             ]
         )
         await self._pending_writes.put(PendingInfluxWrite(event_id=event_id, body=body))
+        try:
+            self._pending_notifications.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
         return event_id
 
     async def list_pending(self, limit: int) -> list[BufferedEvent]:
@@ -155,6 +160,15 @@ class InfluxEventBuffer:
 
             if batch:
                 await self._write_lines("\n".join(item.body for item in batch))
+
+    async def wait_for_pending(self, timeout_s: float) -> bool:
+        if not self._pending_writes.empty():
+            return True
+        try:
+            await asyncio.wait_for(self._pending_notifications.get(), timeout=timeout_s)
+            return True
+        except TimeoutError:
+            return False
 
     async def _query_sql(self, query: str) -> httpx.Response:
         return await self._client.post(

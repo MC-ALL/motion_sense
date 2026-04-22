@@ -86,6 +86,7 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
                     "ts": 1712345680,
                     "wristband_id": "wb-001",
                     "equipment_id": "eq-001",
+                    "current_equipment_id": "eq-001",
                     "action": "bind",
                     "reason": "ble_connected",
                 },

@@ -12,6 +12,7 @@ from app.models.ops import GatewayOpsHealthSummary, GatewayOpsStats
 from app.services.backend_client import BackendClient
 from app.services.batch_uploader import batch_uploader_loop
 from app.services.device_presence import DeviceTransition, DevicePresenceTracker
+from app.services.gateway_command_channel import GatewayCommandChannel
 from app.services.health_reporter import GatewayHealthReporter
 from app.services.influx_event_buffer import InfluxEventBuffer
 from app.services.mqtt_ingest import mqtt_ingest_loop
@@ -32,6 +33,7 @@ class EdgeProcessorRunner:
         self._supervisor_task: asyncio.Task[None] | None = None
         self._runtime_config_manager = RuntimeConfigManager(settings)
         self._backend_client = BackendClient(settings)
+        self._gateway_command_channel = GatewayCommandChannel(settings)
         self._event_buffer = InfluxEventBuffer(settings)
         self._health_reporter = GatewayHealthReporter(settings)
         self._mqtt_publisher = MqttPublisher(settings)
@@ -60,6 +62,8 @@ class EdgeProcessorRunner:
         self._last_batch_error: str | None = None
         self._health_check_success_total = 0
         self._health_check_failure_total = 0
+        self._command_wakeup_event = asyncio.Event()
+        self._command_wakeup_event.set()
 
     def set_ops_websocket_manager(self, manager: OpsWebSocketManager) -> None:
         self._ops_websocket_manager = manager
@@ -70,6 +74,7 @@ class EdgeProcessorRunner:
 
         LOGGER.info("starting edge processor runner", extra={"gateway_id": self._settings.gateway_id})
         self._rule_engine.reload_rules()
+        self._runtime_config_manager.sync_rules_reload_state()
         await self._event_buffer.initialize()
         self._supervisor_task = asyncio.create_task(self._run(), name="edge-processor-runner")
 
@@ -110,6 +115,7 @@ class EdgeProcessorRunner:
             task_group.create_task(self._device_offline_monitor_loop(), name="device-offline-loop")
             task_group.create_task(self._rules_reload_loop(), name="rules-reload-loop")
             task_group.create_task(self._command_poll_loop(), name="command-poll-loop")
+            task_group.create_task(self._command_channel_loop(), name="command-channel-loop")
             task_group.create_task(self._health_check_loop(), name="health-check-loop")
 
     async def _device_offline_monitor_loop(self) -> None:
@@ -122,12 +128,22 @@ class EdgeProcessorRunner:
 
     async def _rules_reload_loop(self) -> None:
         while True:
-            if self._runtime_config_manager.poll_rules_reload():
+            if await self._runtime_config_manager.wait_for_rules_reload(self._settings.rules_reload_interval_s):
                 self._rule_engine.reload_rules()
-            await asyncio.sleep(self._settings.rules_reload_interval_s)
 
     async def _command_poll_loop(self) -> None:
         while True:
+            should_wait = not self._command_wakeup_event.is_set()
+            self._command_wakeup_event.clear()
+            if should_wait:
+                try:
+                    await asyncio.wait_for(
+                        self._command_wakeup_event.wait(),
+                        timeout=self._settings.command_poll_interval_s,
+                    )
+                except TimeoutError:
+                    pass
+                self._command_wakeup_event.clear()
             await self._flush_command_results()
             try:
                 self._command_polls_total += 1
@@ -148,7 +164,18 @@ class EdgeProcessorRunner:
                 self._command_result_cache[command.command_id] = result
                 await self._flush_command_result(command.command_id)
 
-            await asyncio.sleep(self._settings.command_poll_interval_s)
+    async def _command_channel_loop(self) -> None:
+        while True:
+            try:
+                await self._gateway_command_channel.listen(self._wake_command_fetch)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                LOGGER.exception(
+                    "gateway command channel disconnected",
+                    extra={"gateway_id": self._settings.gateway_id},
+                )
+            await asyncio.sleep(self._settings.backend.gateway_command_ws_reconnect_interval_s)
 
     async def _health_check_loop(self) -> None:
         while True:
@@ -436,3 +463,6 @@ class EdgeProcessorRunner:
             return
 
         self._command_result_cache.pop(command_id, None)
+
+    async def _wake_command_fetch(self) -> None:
+        self._command_wakeup_event.set()

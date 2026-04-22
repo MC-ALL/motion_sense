@@ -21,7 +21,7 @@ def _reserved_error(detail: str) -> HTTPException:
             status="reserved",
             detail=detail,
             reserved_for="phase_2_ota_integration",
-            docs_ref="docs/07-通讯接口定义.md#28-ota-触发ota",
+            docs_ref="design/07-通讯接口定义.md#28-ota-触发ota",
         ).model_dump(),
     )
 

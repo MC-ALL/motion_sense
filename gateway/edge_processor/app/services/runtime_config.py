@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ class RuntimeConfigManager:
         self._settings = settings
         self._rules_path = Path("/runtime/config/edge_processor/rules.yaml")
         self._last_rules_mtime_ns: int | None = None
+        self._rules_reload_event = asyncio.Event()
 
     @property
     def rules_path(self) -> Path:
@@ -40,6 +42,7 @@ class RuntimeConfigManager:
                 yaml.safe_dump(current, sort_keys=False, allow_unicode=False),
                 encoding="utf-8",
             )
+            self._mark_rules_changed()
             LOGGER.info("updated alert rules from gateway config")
 
         if "batch_interval_s" in payload or "backend_base_url" in payload:
@@ -58,6 +61,28 @@ class RuntimeConfigManager:
         self._last_rules_mtime_ns = stat.st_mtime_ns
         LOGGER.info("rules file change detected", extra={"path": str(self._rules_path)})
         return True
+
+    async def wait_for_rules_reload(self, timeout_s: float) -> bool:
+        try:
+            await asyncio.wait_for(self._rules_reload_event.wait(), timeout=timeout_s)
+        except TimeoutError:
+            return self.poll_rules_reload()
+
+        self._rules_reload_event.clear()
+        return True
+
+    def sync_rules_reload_state(self) -> None:
+        if not self._rules_path.exists():
+            self._last_rules_mtime_ns = None
+            return
+        self._last_rules_mtime_ns = self._rules_path.stat().st_mtime_ns
+
+    def _mark_rules_changed(self) -> None:
+        if self._rules_path.exists():
+            self._last_rules_mtime_ns = self._rules_path.stat().st_mtime_ns
+        else:
+            self._last_rules_mtime_ns = None
+        self._rules_reload_event.set()
 
     @staticmethod
     def _read_yaml(path: Path) -> dict[str, Any]:

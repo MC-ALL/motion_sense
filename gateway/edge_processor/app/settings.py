@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 DEFAULT_CONFIG_PATH = Path("/runtime/config/edge_processor/app_settings.yaml")
 DEFAULT_INFLUXDB_TOKEN_PATH = Path("/runtime/config/influxdb/admin_token.txt")
 DEFAULT_OPS_TOKEN_PATH = Path("/runtime/secrets/edge_processor_ops_token.txt")
+DEFAULT_GATEWAY_COMMAND_TOKEN_PATH = Path("/runtime/secrets/backend_gateway_command_token.txt")
 
 
 class HttpBackendSettings(BaseModel):
@@ -18,6 +19,10 @@ class HttpBackendSettings(BaseModel):
     ingest_path: str = "/ingest/batch"
     gateway_command_pending_path: str = "/gateway/{gateway_id}/commands/pending"
     gateway_command_result_path: str = "/gateway/{gateway_id}/commands/{command_id}/result"
+    gateway_command_ws_path: str = "/gateway/{gateway_id}/commands/ws"
+    gateway_command_channel_token: str | None = None
+    gateway_command_channel_token_file: str | None = None
+    gateway_command_ws_reconnect_interval_s: int = 3
     request_timeout_s: float = 5.0
     health_path: str = "/healthz"
 
@@ -123,6 +128,14 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         backend["gateway_command_pending_path"] = value
     if value := os.environ.get("EDGE_PROCESSOR_BACKEND_COMMAND_RESULT_PATH"):
         backend["gateway_command_result_path"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_BACKEND_COMMAND_WS_PATH"):
+        backend["gateway_command_ws_path"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_BACKEND_COMMAND_CHANNEL_TOKEN"):
+        backend["gateway_command_channel_token"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_BACKEND_COMMAND_CHANNEL_TOKEN_FILE"):
+        backend["gateway_command_channel_token_file"] = value
+    if value := os.environ.get("EDGE_PROCESSOR_BACKEND_COMMAND_WS_RECONNECT_INTERVAL_S"):
+        backend["gateway_command_ws_reconnect_interval_s"] = int(value)
     if value := os.environ.get("EDGE_PROCESSOR_BACKEND_REQUEST_TIMEOUT_S"):
         backend["request_timeout_s"] = float(value)
     if value := os.environ.get("EDGE_PROCESSOR_BACKEND_HEALTH_PATH"):
@@ -164,3 +177,19 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         influxdb["auth_token"] = DEFAULT_INFLUXDB_TOKEN_PATH.read_text(encoding="utf-8").strip()
     if not ops_auth.get("token") and DEFAULT_OPS_TOKEN_PATH.exists():
         ops_auth["token"] = DEFAULT_OPS_TOKEN_PATH.read_text(encoding="utf-8").strip()
+    _apply_gateway_command_secret_file(backend)
+
+
+def _apply_gateway_command_secret_file(backend: dict[str, Any]) -> None:
+    configured_path = backend.get("gateway_command_channel_token_file")
+    candidate_path = (
+        Path(configured_path)
+        if isinstance(configured_path, str) and configured_path
+        else DEFAULT_GATEWAY_COMMAND_TOKEN_PATH
+    )
+    backend["gateway_command_channel_token_file"] = str(candidate_path)
+    if backend.get("gateway_command_channel_token"):
+        return
+    if not candidate_path.exists():
+        return
+    backend["gateway_command_channel_token"] = candidate_path.read_text(encoding="utf-8").strip()

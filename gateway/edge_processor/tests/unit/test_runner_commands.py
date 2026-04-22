@@ -71,6 +71,16 @@ class FakeRuntimeConfigManager:
         self.payloads.append(payload)
 
 
+class FakeGatewayCommandChannel:
+    def __init__(self) -> None:
+        self.listen_calls = 0
+
+    async def listen(self, on_command_ready) -> None:
+        self.listen_calls += 1
+        await on_command_ready()
+        raise RuntimeError("channel closed")
+
+
 def test_runner_executes_gateway_and_device_commands() -> None:
     settings = RuntimeSettings(gateway_id="gw-test-001")
     runner = EdgeProcessorRunner(settings)
@@ -142,5 +152,27 @@ def test_runner_executes_gateway_and_device_commands() -> None:
 
         assert len(fake_backend.reported) == 2
         assert runner._command_result_cache == {}
+
+    asyncio.run(scenario())
+
+
+def test_runner_gateway_command_channel_wakes_poll_loop() -> None:
+    settings = RuntimeSettings(gateway_id="gw-test-001")
+    runner = EdgeProcessorRunner(settings)
+    asyncio.run(runner._backend_client.close())
+    asyncio.run(runner._health_reporter.close())
+
+    runner._gateway_command_channel = FakeGatewayCommandChannel()
+
+    async def scenario() -> None:
+        runner._command_wakeup_event.clear()
+        task = asyncio.create_task(runner._command_channel_loop())
+        await asyncio.sleep(0)
+        assert runner._command_wakeup_event.is_set() is True
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     asyncio.run(scenario())

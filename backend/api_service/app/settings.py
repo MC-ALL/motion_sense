@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 DEFAULT_CONFIG_PATH = Path("/runtime/config/backend/api_service/app_settings.yaml")
 DEFAULT_AI_API_KEY_PATH = Path("/runtime/secrets/backend_ai_api_key.txt")
+DEFAULT_GATEWAY_COMMAND_TOKEN_PATH = Path("/runtime/secrets/backend_gateway_command_token.txt")
 AI_MODEL_VARIANT_MAPPING = {
     "chat": "deepseek-chat",
     "reasoner": "deepseek-reasoner",
@@ -51,6 +52,8 @@ class DeviceCommandSettings(BaseModel):
     retry_backoff_s: int = 5
     delivery_lease_s: int = 15
     expire_after_s: int = 300
+    gateway_channel_token: str | None = None
+    gateway_channel_token_file: str | None = None
 
 
 class AuthAdminSettings(BaseModel):
@@ -177,6 +180,10 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         device_command["delivery_lease_s"] = int(value)
     if value := os.environ.get("BACKEND_COMMAND_EXPIRE_AFTER_S"):
         device_command["expire_after_s"] = int(value)
+    if value := os.environ.get("BACKEND_COMMAND_GATEWAY_CHANNEL_TOKEN"):
+        device_command["gateway_channel_token"] = value
+    if value := os.environ.get("BACKEND_COMMAND_GATEWAY_CHANNEL_TOKEN_FILE"):
+        device_command["gateway_channel_token_file"] = value
     if value := os.environ.get("BACKEND_AUTH_ENFORCE_REST"):
         auth["enforce_rest"] = value.lower() in {"1", "true", "yes", "on"}
     if value := os.environ.get("BACKEND_AUTH_ENFORCE_WS"):
@@ -220,6 +227,7 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
 
     _apply_ai_model_variant(ai)
     _apply_ai_secret_file(ai)
+    _apply_gateway_command_secret_file(device_command)
 
 
 def _apply_ai_model_variant(ai: dict[str, Any]) -> None:
@@ -255,3 +263,20 @@ def _apply_ai_secret_file(ai: dict[str, Any]) -> None:
     secret_value = candidate_path.read_text(encoding="utf-8").strip()
     if secret_value:
         ai["api_key"] = secret_value
+
+
+def _apply_gateway_command_secret_file(device_command: dict[str, Any]) -> None:
+    configured_path = device_command.get("gateway_channel_token_file")
+    candidate_path = (
+        Path(configured_path)
+        if isinstance(configured_path, str) and configured_path
+        else DEFAULT_GATEWAY_COMMAND_TOKEN_PATH
+    )
+    device_command["gateway_channel_token_file"] = str(candidate_path)
+    if device_command.get("gateway_channel_token"):
+        return
+    if not candidate_path.exists():
+        return
+    secret_value = candidate_path.read_text(encoding="utf-8").strip()
+    if secret_value:
+        device_command["gateway_channel_token"] = secret_value

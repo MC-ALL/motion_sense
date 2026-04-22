@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.main import create_app
 from app.settings import RuntimeSettings
@@ -170,6 +171,59 @@ def test_gateway_result_rejects_wrong_gateway() -> None:
 
         assert result_response.status_code == 409
         assert "does not belong to this gateway" in result_response.json()["detail"]
+
+
+def test_gateway_command_websocket_receives_ready_event_for_matching_gateway() -> None:
+    settings = RuntimeSettings(
+        device_command={
+            "gateway_channel_token": "gateway-command-token",
+        }
+    )
+
+    with TestClient(create_app(settings)) as client:
+        with client.websocket_connect(
+            "/api/v1/gateway/gw-002/commands/ws?token=gateway-command-token"
+        ) as websocket:
+            create_response = client.post(
+                "/api/v1/devices/env-a/config",
+                json={
+                    "gym_id": "gym-gz-01",
+                    "gateway_id": "gw-002",
+                    "device_type": "env",
+                    "config": {"telemetry_interval_s": 20},
+                },
+            )
+            assert create_response.status_code == 200
+            command_id = create_response.json()["command_id"]
+
+            ready_message = websocket.receive_json()
+            assert ready_message == {
+                "type": "command_ready",
+                "data": {
+                    "gateway_id": "gw-002",
+                    "command_id": command_id,
+                    "device_id": "env-a",
+                    "device_type": "env",
+                    "issued_at": create_response.json()["created_at"],
+                },
+            }
+
+
+def test_gateway_command_websocket_rejects_invalid_token() -> None:
+    settings = RuntimeSettings(
+        device_command={
+            "gateway_channel_token": "gateway-command-token",
+        }
+    )
+
+    with TestClient(create_app(settings)) as client:
+        try:
+            with client.websocket_connect("/api/v1/gateway/gw-002/commands/ws?token=invalid"):
+                pass
+        except WebSocketDisconnect as exc:
+            assert exc.code == 1008
+        else:
+            raise AssertionError("expected websocket connection to be rejected")
 
 
 def test_failed_command_requeues_before_reaching_max_attempts() -> None:

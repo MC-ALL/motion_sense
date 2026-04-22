@@ -11,6 +11,7 @@ from app.models.auth import AuthUser
 
 @dataclass(slots=True)
 class WebSocketAccessScope:
+    username: str
     role: str
     gym_ids: set[str]
     device_ids: set[str]
@@ -28,6 +29,7 @@ class WebSocketManager:
         async with self._lock:
             self._connections.add(websocket)
             self._access_scopes[websocket] = WebSocketAccessScope(
+                username=user.username,
                 role=user.role,
                 gym_ids=set(user.gym_ids),
                 device_ids=set(user.device_ids),
@@ -54,10 +56,22 @@ class WebSocketManager:
         message_type = message.get("type")
         device_id = None
         gym_id = None
+        target_username = None
+        target_gym_ids: set[str] = set()
+        target_device_ids: set[str] = set()
         data = message.get("data")
         if isinstance(data, dict):
             device_id = data.get("device_id")
             gym_id = data.get("gym_id")
+        scope = message.get("scope")
+        if isinstance(scope, dict):
+            raw_target_gym_ids = scope.get("gym_ids")
+            raw_target_device_ids = scope.get("device_ids")
+            target_username = scope.get("user_id")
+            if isinstance(raw_target_gym_ids, list):
+                target_gym_ids = {str(item) for item in raw_target_gym_ids}
+            if isinstance(raw_target_device_ids, list):
+                target_device_ids = {str(item) for item in raw_target_device_ids}
 
         async with self._lock:
             targets = list(self._connections)
@@ -70,6 +84,9 @@ class WebSocketManager:
                 message_type=message_type,
                 gym_id=gym_id,
                 device_id=device_id,
+                target_username=target_username if isinstance(target_username, str) else None,
+                target_gym_ids=target_gym_ids,
+                target_device_ids=target_device_ids,
                 subscribed_ids=subscriptions.get(websocket, set()),
                 access_scope=access_scopes.get(websocket),
             ):
@@ -92,10 +109,21 @@ def _should_deliver(
     message_type: str | None,
     gym_id: str | None,
     device_id: str | None,
+    target_username: str | None,
+    target_gym_ids: set[str],
+    target_device_ids: set[str],
     subscribed_ids: set[str],
     access_scope: WebSocketAccessScope | None,
 ) -> bool:
-    if access_scope is not None and not _has_access(access_scope, gym_id=gym_id, device_id=device_id):
+    if access_scope is not None and not _has_access(
+        access_scope,
+        message_type=message_type,
+        gym_id=gym_id,
+        device_id=device_id,
+        target_username=target_username,
+        target_gym_ids=target_gym_ids,
+        target_device_ids=target_device_ids,
+    ):
         return False
     if not subscribed_ids or message_type == "alert":
         return True
@@ -107,9 +135,20 @@ def _should_deliver(
 def _has_access(
     access_scope: WebSocketAccessScope,
     *,
+    message_type: str | None,
     gym_id: str | None,
     device_id: str | None,
+    target_username: str | None,
+    target_gym_ids: set[str],
+    target_device_ids: set[str],
 ) -> bool:
+    if message_type == "ai_report":
+        return _has_ai_report_access(
+            access_scope,
+            target_username=target_username,
+            target_gym_ids=target_gym_ids,
+            target_device_ids=target_device_ids,
+        )
     if access_scope.role in {"admin", "anonymous"}:
         return True
     if access_scope.role == "teacher":
@@ -118,4 +157,24 @@ def _has_access(
         )
     if access_scope.role == "student":
         return device_id is not None and device_id in access_scope.device_ids
+    return False
+
+
+def _has_ai_report_access(
+    access_scope: WebSocketAccessScope,
+    *,
+    target_username: str | None,
+    target_gym_ids: set[str],
+    target_device_ids: set[str],
+) -> bool:
+    if access_scope.role in {"admin", "anonymous"}:
+        return True
+    if target_username is not None and access_scope.username == target_username:
+        return True
+    if access_scope.role != "teacher":
+        return False
+    if access_scope.gym_ids.intersection(target_gym_ids):
+        return True
+    if access_scope.device_ids.intersection(target_device_ids):
+        return True
     return False

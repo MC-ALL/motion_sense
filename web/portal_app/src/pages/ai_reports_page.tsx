@@ -15,6 +15,7 @@ import {
 import { AuthRequiredState } from '../components/auth_required_state';
 import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
+import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { AiReportDetail, AiReportSummary, ReservedApiResponse } from '../types/backend';
 import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { format_time } from '../utils/time';
@@ -34,8 +35,6 @@ const status_options = [
   { label: '已完成', value: 'completed' },
   { label: '失败', value: 'failed' }
 ];
-
-const active_report_statuses = new Set(['queued', 'generating']);
 
 function build_start_time(window_key: WindowKey): string | undefined {
   if (window_key === 'all') {
@@ -123,6 +122,18 @@ function status_notice_description(report: AiReportDetail): string {
   return '报告已生成完成，可继续查看摘要、观察结论和训练建议。';
 }
 
+function normalize_ai_report_summary(report: AiReportSummary): AiReportDetail {
+  return {
+    ...report,
+    summary: null,
+    insights: [],
+    recommendations: [],
+    evidence_session_ids: [],
+    raw_markdown: null,
+    error_message: null
+  };
+}
+
 export function AiReportsPage() {
   const navigate = useNavigate();
   const { report_id } = useParams<{ report_id?: string }>();
@@ -131,11 +142,13 @@ export function AiReportsPage() {
   const [loading, set_loading] = useState(true);
   const [error, set_error] = useState<string | null>(null);
   const [reserved_response, set_reserved_response] = useState<ReservedApiResponse | null>(null);
-  const [reports, set_reports] = useState<AiReportSummary[]>([]);
-  const [report_detail, set_report_detail] = useState<AiReportDetail | null>(null);
   const [candidate_usernames, set_candidate_usernames] = useState<string[]>([]);
-  const [refresh_tick, set_refresh_tick] = useState(0);
   const [retrying, set_retrying] = useState(false);
+  const ai_reports_by_id = use_business_realtime_store((state) => state.ai_reports_by_id);
+  const connect = use_business_realtime_store((state) => state.connect);
+  const disconnect = use_business_realtime_store((state) => state.disconnect);
+  const replace_ai_reports = use_business_realtime_store((state) => state.replace_ai_reports);
+  const upsert_ai_report = use_business_realtime_store((state) => state.upsert_ai_report);
 
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
   const selected_window = (search_params.get('window') as WindowKey | null) ?? '30d';
@@ -143,6 +156,17 @@ export function AiReportsPage() {
   const selected_username = can_switch_user
     ? search_params.get('username') ?? ''
     : session?.user.username ?? '';
+
+  useEffect(() => {
+    if (!session) {
+      disconnect();
+      return;
+    }
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect, session]);
 
   useEffect(() => {
     if (!session || !can_switch_user) {
@@ -195,10 +219,9 @@ export function AiReportsPage() {
   useEffect(() => {
     if (!session) {
       set_loading(false);
-      set_reports([]);
-      set_report_detail(null);
       set_error(null);
       set_reserved_response(null);
+      replace_ai_reports([]);
       return;
     }
 
@@ -212,8 +235,7 @@ export function AiReportsPage() {
           if (!mounted) {
             return;
           }
-          set_report_detail(detail);
-          set_reports([]);
+          replace_ai_reports([detail]);
           return;
         }
 
@@ -226,8 +248,7 @@ export function AiReportsPage() {
         if (!mounted) {
           return;
         }
-        set_reports(list);
-        set_report_detail(null);
+        replace_ai_reports(list.map(normalize_ai_report_summary));
       } catch (load_error) {
         if (!mounted) {
           return;
@@ -236,8 +257,7 @@ export function AiReportsPage() {
         if (reserved) {
           set_reserved_response(reserved);
           set_error(null);
-          set_reports([]);
-          set_report_detail(null);
+          replace_ai_reports([]);
           return;
         }
         set_error(describe_error(load_error, page_error_fallbacks.ai_reports_load_failed));
@@ -252,24 +272,7 @@ export function AiReportsPage() {
     return () => {
       mounted = false;
     };
-  }, [refresh_tick, report_id, search_params, selected_status, selected_username, selected_window, session]);
-
-  useEffect(() => {
-    if (!session || reserved_response) {
-      return;
-    }
-
-    const should_poll_detail = Boolean(report_detail && active_report_statuses.has(report_detail.status));
-    const should_poll_list = !report_id && reports.some((item) => active_report_statuses.has(item.status));
-    if (!should_poll_detail && !should_poll_list) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      set_refresh_tick((value) => value + 1);
-    }, 3000);
-    return () => window.clearTimeout(timer);
-  }, [report_detail, report_id, reports, reserved_response, session]);
+  }, [report_id, replace_ai_reports, search_params, selected_status, selected_username, selected_window, session]);
 
   function setErrorState() {
     set_error(null);
@@ -310,14 +313,38 @@ export function AiReportsPage() {
     setErrorState();
     try {
       const next_report = await retry_ai_report(report_detail.report_id);
+      upsert_ai_report(next_report);
       navigate(`/ai-reports/${next_report.report_id}`);
-      set_refresh_tick((value) => value + 1);
     } catch (retry_error) {
       set_error(describe_error(retry_error, page_error_fallbacks.ai_reports_retry_failed));
     } finally {
       set_retrying(false);
     }
   }
+
+  const reports = useMemo(() => {
+    const start = build_start_time(selected_window);
+    const start_ms = start ? Date.parse(start) : null;
+    return Object.values(ai_reports_by_id)
+      .filter((item) => {
+        if (selected_username && item.user_id !== selected_username) {
+          return false;
+        }
+        if (selected_status !== 'all' && item.status !== selected_status) {
+          return false;
+        }
+        if (start_ms !== null) {
+          const created_ms = Date.parse(item.created_at);
+          if (!Number.isNaN(created_ms) && created_ms < start_ms) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at));
+  }, [ai_reports_by_id, selected_status, selected_username, selected_window]);
+
+  const report_detail = report_id ? ai_reports_by_id[report_id] ?? null : null;
 
   const list_scope_text = useMemo(() => {
     const current_window = window_options.find((item) => item.value === selected_window);

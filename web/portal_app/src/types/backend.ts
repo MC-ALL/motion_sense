@@ -350,9 +350,66 @@ export interface DeviceStatusWsMessage {
   data: DeviceStatusMessage;
 }
 
+export interface DeviceUpsertWsMessage {
+  type: 'device_upsert';
+  data: DeviceSummary;
+}
+
+export interface DeviceDeleteWsMessage {
+  type: 'device_delete';
+  data: {
+    device_id: string;
+    device_type?: DeviceType;
+    gym_id?: string;
+  };
+}
+
+export interface BindingUpsertWsMessage {
+  type: 'binding_upsert';
+  data: {
+    gym_id: string;
+    device_type: 'wristband';
+    device_id: string;
+    wristband_id: string;
+    equipment_id: string;
+    ts?: number | string | null;
+    status?: string;
+    reason?: string | null;
+  };
+}
+
+export interface BindingRemoveWsMessage {
+  type: 'binding_remove';
+  data: {
+    gym_id: string;
+    device_type: 'wristband';
+    device_id: string;
+    wristband_id: string;
+    equipment_id?: string | null;
+    ts?: number | string | null;
+    status?: string;
+    reason?: string | null;
+    duration_s?: number | null;
+  };
+}
+
+export interface AiReportWsMessage {
+  type: 'ai_report';
+  data: AiReportDetail;
+}
+
 export interface PongMessage {
   type: 'pong';
   data?: Record<string, unknown>;
 }
 
-export type BusinessWsMessage = TelemetryMessage | AlertMessage | DeviceStatusWsMessage | PongMessage;
+export type BusinessWsMessage =
+  | TelemetryMessage
+  | AlertMessage
+  | DeviceStatusWsMessage
+  | DeviceUpsertWsMessage
+  | DeviceDeleteWsMessage
+  | BindingUpsertWsMessage
+  | BindingRemoveWsMessage
+  | AiReportWsMessage
+  | PongMessage;

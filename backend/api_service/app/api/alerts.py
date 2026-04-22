@@ -6,11 +6,13 @@ from app.api.deps import (
     ensure_alert_scope,
     filter_alerts_for_user,
     get_event_store,
+    get_realtime_service,
     require_admin_or_teacher_user,
     require_rest_user,
 )
 from app.models.auth import AuthUser
 from app.models.ingest import AlertBatchAckRequest, AlertBatchAckResult, AlertRecord
+from app.services.realtime_service import RealtimeService
 from app.storage.store import Store
 
 
@@ -51,6 +53,7 @@ async def ack_alert(
     alert_id: int,
     user: AuthUser = Depends(require_admin_or_teacher_user),
     store: Store = Depends(get_event_store),
+    realtime_service: RealtimeService = Depends(get_realtime_service),
 ) -> AlertRecord:
     alert = await store.get_alert(alert_id=alert_id)
     if alert is None:
@@ -58,6 +61,7 @@ async def ack_alert(
     ensure_alert_scope(user, alert)
     updated = await store.ack_alert(alert_id=alert_id)
     assert updated is not None
+    await realtime_service.publish({"type": "alert", "data": updated.model_dump()})
     return updated
 
 
@@ -66,10 +70,13 @@ async def batch_ack_alerts(
     payload: AlertBatchAckRequest,
     user: AuthUser = Depends(require_admin_or_teacher_user),
     store: Store = Depends(get_event_store),
+    realtime_service: RealtimeService = Depends(get_realtime_service),
 ) -> AlertBatchAckResult:
     alerts = [alert for alert_id in payload.ids if (alert := await store.get_alert(alert_id=alert_id)) is not None]
     allowed_ids = [alert.id for alert in alerts if _can_ack_alert(user, alert)]
     items = await store.batch_ack_alerts(alert_ids=allowed_ids)
+    for item in items:
+        await realtime_service.publish({"type": "alert", "data": item.model_dump()})
     return AlertBatchAckResult(updated=len(items), items=items)
 
 

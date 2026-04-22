@@ -4,11 +4,35 @@ import asyncio
 import json
 from unittest.mock import patch
 
+from app.models.ai import AiReportDetail
 from app.services.ai_report_service import AiReportService
 from app.services.auth_service import generate_password_hash
+from app.services.realtime_service import RealtimeService
+from app.services.websocket_manager import WebSocketManager
 from app.models.workout import WorkoutSessionMetrics, WorkoutSessionSegment
 from app.settings import RuntimeSettings
 from app.storage.memory_store import EventStore
+
+
+async def _wait_for_report_status(
+    store: EventStore,
+    report_id: str,
+    expected_status: str,
+    *,
+    timeout_s: float = 1.0,
+) -> AiReportDetail:
+    async def poll() -> AiReportDetail:
+        while True:
+            report = await store.get_ai_report(report_id=report_id)
+            if report is not None and report.status == expected_status:
+                return report
+            await asyncio.sleep(0.01)
+
+    return await asyncio.wait_for(poll(), timeout=timeout_s)
+
+
+def _create_service(settings: RuntimeSettings, store: EventStore) -> AiReportService:
+    return AiReportService(settings, store, RealtimeService(settings, WebSocketManager()))
 
 
 def test_ai_report_service_completes_queued_report_with_builtin_generator() -> None:
@@ -65,7 +89,7 @@ def test_ai_report_service_completes_queued_report_with_builtin_generator() -> N
             error_message=None,
         )
 
-        service = AiReportService(RuntimeSettings(), store)
+        service = _create_service(RuntimeSettings(), store)
         completed = await service.process_report(report.report_id)
 
         assert completed is not None
@@ -80,6 +104,82 @@ def test_ai_report_service_completes_queued_report_with_builtin_generator() -> N
         assert completed.raw_markdown is not None and "# student_ai_service 训练分析报告" in completed.raw_markdown
 
         await store.close()
+
+    asyncio.run(scenario())
+
+
+def test_ai_report_service_processes_report_immediately_after_enqueue() -> None:
+    async def scenario() -> None:
+        store = EventStore()
+        await store.initialize()
+        await store.create_user(
+            username="student_ai_queue",
+            password_hash=generate_password_hash("student123"),
+            role="student",
+            gym_ids=["gym-gz-01"],
+            device_ids=["wb-queue-001"],
+        )
+        service = _create_service(RuntimeSettings(), store)
+        await service.start()
+
+        try:
+            report = await store.create_ai_report(
+                user_id="student_ai_queue",
+                status="queued",
+                start="2026-04-20T00:00:00Z",
+                end="2026-04-20T23:59:59Z",
+                summary_title="student_ai_queue 训练分析待生成",
+                summary="报告已入队，等待后续 AI 生成流程写入正式内容。",
+                insights=[],
+                recommendations=[],
+                evidence_session_ids=[],
+                raw_markdown=None,
+                error_message=None,
+            )
+            service.enqueue_report(report.report_id)
+
+            completed = await _wait_for_report_status(store, report.report_id, "completed")
+            assert completed.finished_at is not None
+        finally:
+            await service.stop()
+            await store.close()
+
+    asyncio.run(scenario())
+
+
+def test_ai_report_service_recovers_generating_report_on_start() -> None:
+    async def scenario() -> None:
+        store = EventStore()
+        await store.initialize()
+        await store.create_user(
+            username="student_ai_recover",
+            password_hash=generate_password_hash("student123"),
+            role="student",
+            gym_ids=["gym-gz-01"],
+            device_ids=["wb-recover-001"],
+        )
+        report = await store.create_ai_report(
+            user_id="student_ai_recover",
+            status="generating",
+            start="2026-04-20T00:00:00Z",
+            end="2026-04-20T23:59:59Z",
+            summary_title="student_ai_recover 训练分析待生成",
+            summary="报告在重启前停留在 generating。",
+            insights=[],
+            recommendations=[],
+            evidence_session_ids=[],
+            raw_markdown=None,
+            error_message=None,
+        )
+
+        service = _create_service(RuntimeSettings(), store)
+        await service.start()
+        try:
+            completed = await _wait_for_report_status(store, report.report_id, "completed")
+            assert completed.summary_title == "student_ai_recover 训练分析报告"
+        finally:
+            await service.stop()
+            await store.close()
 
     asyncio.run(scenario())
 
@@ -117,7 +217,7 @@ def test_ai_report_service_marks_report_failed_when_openai_provider_is_misconfig
                 "api_key": None,
             }
         )
-        service = AiReportService(settings, store)
+        service = _create_service(settings, store)
         failed = await service.process_report(report.report_id)
 
         assert failed is not None
@@ -192,7 +292,7 @@ def test_ai_report_service_uses_chat_completions_for_reasoner_without_temperatur
                 "api_key": "test-token",
             }
         )
-        service = AiReportService(settings, store)
+        service = _create_service(settings, store)
         captured_request: dict[str, object] = {}
 
         class FakeResponse:

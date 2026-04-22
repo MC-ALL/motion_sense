@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
 
-from app.api.deps import get_device_config_service, require_admin_user, require_rest_user
+from app.api.deps import (
+    get_device_config_service,
+    require_admin_user,
+)
 from app.models.device_config import (
     DeviceConfigCommandRecord,
     GatewayCommandResultRequest,
@@ -13,6 +16,7 @@ from app.services.device_config_service import (
     DeviceConfigCommandNotFoundError,
     DeviceConfigService,
 )
+from app.services.gateway_command_websocket_manager import GatewayCommandWebSocketManager
 
 
 router = APIRouter(prefix="/api/v1/gateway", tags=["gateway-commands"])
@@ -25,6 +29,36 @@ async def list_pending_gateway_commands(
 ) -> GatewayPendingCommandList:
     items = await service.list_pending_commands(gateway_id=gateway_id)
     return GatewayPendingCommandList(gateway_id=gateway_id, items=items)
+
+
+@router.websocket("/{gateway_id}/commands/ws")
+async def gateway_command_websocket_endpoint(
+    websocket: WebSocket,
+    gateway_id: str,
+) -> None:
+    gateway_channel_token = websocket.app.state.settings.device_command.gateway_channel_token
+    if not gateway_channel_token:
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="gateway command channel token not configured",
+        )
+        return
+
+    token = websocket.query_params.get("token")
+    if token != gateway_channel_token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="invalid token")
+        return
+
+    manager: GatewayCommandWebSocketManager = websocket.app.state.gateway_command_websocket_manager
+    await manager.connect(gateway_id, websocket)
+
+    try:
+        while True:
+            message = await websocket.receive_json()
+            if message.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        await manager.disconnect(gateway_id, websocket)
 
 
 @router.get("/commands/{command_id}", response_model=DeviceConfigCommandRecord)

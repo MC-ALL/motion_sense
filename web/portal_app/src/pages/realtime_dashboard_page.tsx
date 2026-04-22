@@ -10,12 +10,10 @@ import { DeviceRuntimeStatusTag } from '../components/device_ui';
 import { PageNotice } from '../components/notice_card';
 import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
-import type { BusinessAlertRecord, DeviceSummary } from '../types/backend';
+import type { DeviceSummary } from '../types/backend';
 import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { is_device_runtime_active } from '../utils/device_status';
 import { format_time } from '../utils/time';
-
-const dashboard_refresh_interval_ms = 15000;
 
 type DrawerMode = 'all_devices' | 'offline_devices' | 'business_alerts' | null;
 type TrendDirection = 'up' | 'down' | 'flat';
@@ -135,8 +133,6 @@ function format_binding_time(last_seen_ts: number | null): string {
 export function RealtimeDashboardPage() {
   const [loading, set_loading] = useState(true);
   const [error, set_error] = useState<string | null>(null);
-  const [devices, set_devices] = useState<DeviceSummary[]>([]);
-  const [alerts, set_alerts] = useState<BusinessAlertRecord[]>([]);
   const [drawer_mode, set_drawer_mode] = useState<DrawerMode>(null);
   const binding_section_ref = useRef<HTMLDivElement | null>(null);
   const previous_energy_summary_ref = useRef<{
@@ -154,9 +150,12 @@ export function RealtimeDashboardPage() {
 
   const ws_state = use_business_realtime_store((state) => state.ws_state);
   const device_status = use_business_realtime_store((state) => state.device_status);
-  const recent_alerts = use_business_realtime_store((state) => state.recent_alerts);
+  const devices_by_id = use_business_realtime_store((state) => state.devices_by_id);
+  const alerts_by_id = use_business_realtime_store((state) => state.alerts_by_id);
   const connect = use_business_realtime_store((state) => state.connect);
   const disconnect = use_business_realtime_store((state) => state.disconnect);
+  const hydrate_snapshot = use_business_realtime_store((state) => state.hydrate_snapshot);
+  const clear_snapshot = use_business_realtime_store((state) => state.clear_snapshot);
   const session = use_auth_store((state) => state.session);
 
   useEffect(() => {
@@ -174,54 +173,53 @@ export function RealtimeDashboardPage() {
     if (!session) {
       set_loading(false);
       set_error(null);
-      set_devices([]);
-      set_alerts([]);
+      clear_snapshot();
       return;
     }
 
     let mounted = true;
-    let interval_id: number | null = null;
 
-    function setDevicesAndAlerts(device_items: DeviceSummary[], alert_items: BusinessAlertRecord[]) {
-      if (!mounted) {
-        return;
-      }
-      set_devices(device_items);
-      set_alerts(alert_items);
-    }
-
-    async function load(first_load: boolean) {
-      if (first_load) {
-        set_loading(true);
-      }
+    async function load() {
+      set_loading(true);
       set_error(null);
       try {
         const [device_items, alert_items] = await Promise.all([fetch_devices(), fetch_business_alerts({ is_ack: false })]);
-        setDevicesAndAlerts(device_items, alert_items);
+        if (!mounted) {
+          return;
+        }
+        hydrate_snapshot({ devices: device_items, alerts: alert_items });
       } catch (load_error) {
         if (!mounted) {
           return;
         }
         set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.dashboard_load_failed);
       } finally {
-        if (mounted && first_load) {
+        if (mounted) {
           set_loading(false);
         }
       }
     }
 
-    void load(true);
-    interval_id = window.setInterval(() => {
-      void load(false);
-    }, dashboard_refresh_interval_ms);
+    void load();
 
     return () => {
       mounted = false;
-      if (interval_id !== null) {
-        window.clearInterval(interval_id);
-      }
     };
-  }, [session]);
+  }, [clear_snapshot, hydrate_snapshot, session]);
+
+  const devices = useMemo(() => Object.values(devices_by_id), [devices_by_id]);
+  const alerts = useMemo(
+    () =>
+      Object.values(alerts_by_id).sort((left, right) => {
+        const left_ts = Date.parse(left.triggered_at);
+        const right_ts = Date.parse(right.triggered_at);
+        if (!Number.isNaN(left_ts) && !Number.isNaN(right_ts) && left_ts !== right_ts) {
+          return right_ts - left_ts;
+        }
+        return right.id - left.id;
+      }),
+    [alerts_by_id]
+  );
 
   const merged_devices = useMemo(
     () =>
@@ -232,18 +230,6 @@ export function RealtimeDashboardPage() {
       })),
     [device_status, devices]
   );
-
-  const displayed_alerts = useMemo(() => {
-    const merged = [...recent_alerts, ...alerts];
-    const seen = new Set<number>();
-    return merged.filter((item) => {
-      if (seen.has(item.id)) {
-        return false;
-      }
-      seen.add(item.id);
-      return true;
-    });
-  }, [alerts, recent_alerts]);
 
   const offline_devices = useMemo(() => merged_devices.filter((item) => !item.online), [merged_devices]);
 
@@ -291,7 +277,7 @@ export function RealtimeDashboardPage() {
   const totals = {
     all: merged_devices.length,
     offline: offline_devices.length,
-    alerts: displayed_alerts.filter((item) => !item.is_ack).length,
+    alerts: alerts.filter((item) => !item.is_ack).length,
     bindings: current_bindings.length
   };
 
@@ -321,7 +307,7 @@ export function RealtimeDashboardPage() {
     wristband: offline_devices.filter((item) => item.device_type === 'wristband').length
   };
 
-  const open_alerts = displayed_alerts.filter((item) => !item.is_ack);
+  const open_alerts = alerts.filter((item) => !item.is_ack);
   const alert_level_summary = {
     critical: open_alerts.filter((item) => item.level === 'critical').length,
     warning: open_alerts.filter((item) => item.level === 'warning').length,
@@ -584,7 +570,7 @@ export function RealtimeDashboardPage() {
         {drawer_mode === 'business_alerts' ? (
           <List
             locale={{ emptyText: '当前没有未确认业务告警' }}
-            dataSource={displayed_alerts.filter((item) => !item.is_ack)}
+            dataSource={open_alerts}
             renderItem={(item) => (
               <List.Item>
                 <List.Item.Meta

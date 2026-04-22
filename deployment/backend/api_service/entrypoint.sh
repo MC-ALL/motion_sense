@@ -4,11 +4,21 @@ set -eu
 runtime_dir="/runtime/config/backend/api_service"
 defaults_dir="/opt/motion_sense/deployment/backend/api_service/defaults"
 bootstrap_admin_path="$runtime_dir/bootstrap_admin.txt"
+gateway_command_token_path="/runtime/secrets/backend_gateway_command_token.txt"
 
 mkdir -p "$runtime_dir" /runtime/secrets
 
 if [ ! -f "$runtime_dir/app_settings.yaml" ]; then
   cp "$defaults_dir/default_app_settings.yaml" "$runtime_dir/app_settings.yaml"
+fi
+
+if [ ! -f "$gateway_command_token_path" ]; then
+  if [ -n "${BACKEND_COMMAND_GATEWAY_CHANNEL_TOKEN:-}" ]; then
+    printf '%s\n' "${BACKEND_COMMAND_GATEWAY_CHANNEL_TOKEN}" > "$gateway_command_token_path"
+  else
+    python -c 'import secrets; print(secrets.token_urlsafe(32))' > "$gateway_command_token_path"
+  fi
+  chmod 600 "$gateway_command_token_path"
 fi
 
 python - <<'PY'

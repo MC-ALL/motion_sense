@@ -47,21 +47,35 @@ class IngestService:
                 continue
 
             if item.kind in {"telemetry", "status", "binding"}:
+                normalized_binding_payload = item.payload
+                binding_action = None
+                binding_wristband_id = None
+                binding_equipment_id = None
                 if item.kind == "binding":
+                    binding_action = str(item.payload.get("action", "bind")).lower()
+                    binding_wristband_id = str(item.payload.get("wristband_id", parsed.device_id))
+                    binding_equipment_id = str(item.payload.get("equipment_id", ""))
                     await self._store.record_binding_event(
                         gym_id=parsed.gym_id,
-                        wristband_id=str(item.payload.get("wristband_id", parsed.device_id)),
-                        equipment_id=str(item.payload.get("equipment_id", "")),
-                        action=str(item.payload.get("action", "bind")),
+                        wristband_id=binding_wristband_id,
+                        equipment_id=binding_equipment_id,
+                        action=binding_action,
                         reason=item.payload.get("reason"),
                         ts=payload_ts(item.payload),
                     )
+                    normalized_binding_payload = {
+                        **item.payload,
+                        "wristband_id": binding_wristband_id,
+                        "current_equipment_id": (
+                            binding_equipment_id if binding_action == "bind" and binding_equipment_id else None
+                        ),
+                    }
                     if (
                         self._workout_aggregation_service is not None
-                        and str(item.payload.get("action", "bind")).lower() == "unbind"
+                        and binding_action == "unbind"
                     ):
                         await self._workout_aggregation_service.aggregate_recent_wristband_activity(
-                            wristband_id=str(item.payload.get("wristband_id", parsed.device_id)),
+                            wristband_id=binding_wristband_id,
                             gym_id=parsed.gym_id,
                             end=payload_triggered_at(item.payload),
                         )
@@ -82,7 +96,7 @@ class IngestService:
                     status=status,
                     online=coerce_online(status),
                     last_seen_ts=payload_ts(item.payload),
-                    payload=item.payload,
+                    payload=normalized_binding_payload,
                 )
 
                 if item.kind == "telemetry":
@@ -115,6 +129,25 @@ class IngestService:
                     )
                     if self._ops_service is not None:
                         self._ops_service.record_realtime_message("device_status")
+                elif item.kind == "binding":
+                    message_type = "binding_upsert" if binding_action == "bind" else "binding_remove"
+                    await self._realtime_service.publish(
+                        {
+                            "type": message_type,
+                            "data": {
+                                "gym_id": device.gym_id,
+                                "device_type": "wristband",
+                                "device_id": binding_wristband_id,
+                                "wristband_id": binding_wristband_id,
+                                "equipment_id": binding_equipment_id or None,
+                                "ts": device.last_seen_ts,
+                                "status": device.status,
+                                "reason": item.payload.get("reason"),
+                            },
+                        }
+                    )
+                    if self._ops_service is not None:
+                        self._ops_service.record_realtime_message(message_type)
 
         return len(batch.items)
 

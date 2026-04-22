@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.api.deps import get_event_store, is_unrestricted_user, require_rest_user
 from app.models.ai import AiAnalyzeRequest, AiReportDetail, AiReportStatus, AiReportSummary
 from app.models.auth import AuthUser
 from app.models.user import StoredUser
+from app.services.ai_report_service import AiReportService
 from app.storage.store import Store
 
 
@@ -23,6 +24,7 @@ router = APIRouter(
     status_code=status.HTTP_201_CREATED,
 )
 async def analyze_ai_report(
+    request: Request,
     payload: AiAnalyzeRequest,
     user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
@@ -36,6 +38,7 @@ async def analyze_ai_report(
 
     return await _create_queued_ai_report(
         store=store,
+        ai_report_service=_get_ai_report_service(request),
         target_user=target_user,
         start=payload.start,
         end=payload.end,
@@ -128,6 +131,7 @@ async def get_ai_report(
     status_code=status.HTTP_201_CREATED,
 )
 async def retry_ai_report(
+    request: Request,
     report_id: str,
     user: AuthUser = Depends(require_rest_user),
     store: Store = Depends(get_event_store),
@@ -148,6 +152,7 @@ async def retry_ai_report(
 
     return await _create_queued_ai_report(
         store=store,
+        ai_report_service=_get_ai_report_service(request),
         target_user=target_user,
         start=report.start,
         end=report.end,
@@ -157,6 +162,7 @@ async def retry_ai_report(
 async def _create_queued_ai_report(
     *,
     store: Store,
+    ai_report_service: AiReportService | None,
     target_user: StoredUser,
     start: str,
     end: str,
@@ -168,7 +174,7 @@ async def _create_queued_ai_report(
         limit=5000,
         offset=0,
     )
-    return await store.create_ai_report(
+    report = await store.create_ai_report(
         user_id=target_user.username,
         status="queued",
         start=start,
@@ -181,6 +187,15 @@ async def _create_queued_ai_report(
         raw_markdown=None,
         error_message=None,
     )
+    if ai_report_service is not None:
+        await ai_report_service.publish_report_update(report, target_user=target_user)
+        ai_report_service.enqueue_report(report.report_id)
+    return report
+
+
+def _get_ai_report_service(request: Request) -> AiReportService | None:
+    candidate = getattr(request.app.state, "ai_report_service", None)
+    return candidate if isinstance(candidate, AiReportService) else None
 
 
 def _ensure_ai_report_scope(*, current_user: AuthUser, target_user: StoredUser) -> None:

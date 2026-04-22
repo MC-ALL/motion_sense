@@ -26,6 +26,7 @@ from app.api import (
 from app.services.auth_service import AuthService
 from app.services.ai_report_service import AiReportService
 from app.services.device_config_service import DeviceConfigService
+from app.services.gateway_command_websocket_manager import GatewayCommandWebSocketManager
 from app.services.ingest_service import IngestService
 from app.services.ops_service import BackendOpsService
 from app.services.ops_websocket_manager import OpsWebSocketManager
@@ -43,10 +44,11 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI):
         event_store = create_store(runtime_settings)
         websocket_manager = WebSocketManager()
+        gateway_command_websocket_manager = GatewayCommandWebSocketManager()
         ops_websocket_manager = OpsWebSocketManager()
         realtime_service = RealtimeService(runtime_settings, websocket_manager)
         auth_service = AuthService(runtime_settings.auth, event_store)
-        ai_report_service = AiReportService(runtime_settings, event_store)
+        ai_report_service = AiReportService(runtime_settings, event_store, realtime_service)
         workout_aggregation_service = WorkoutAggregationService(event_store)
         ops_service = BackendOpsService(
             runtime_settings,
@@ -65,9 +67,12 @@ def create_app(settings: RuntimeSettings | None = None) -> FastAPI:
             delivery_lease_s=runtime_settings.device_command.delivery_lease_s,
             expire_after_s=runtime_settings.device_command.expire_after_s,
             ops_service=ops_service,
+            gateway_command_manager=gateway_command_websocket_manager,
         )
         app.state.event_store = event_store
+        app.state.settings = runtime_settings
         app.state.websocket_manager = websocket_manager
+        app.state.gateway_command_websocket_manager = gateway_command_websocket_manager
         app.state.ops_websocket_manager = ops_websocket_manager
         app.state.realtime_service = realtime_service
         app.state.auth_service = auth_service

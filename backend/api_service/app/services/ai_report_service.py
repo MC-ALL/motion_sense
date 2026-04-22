@@ -10,19 +10,28 @@ from urllib import request as urllib_request
 from app.models.ai import AiReportDetail
 from app.models.user import StoredUser
 from app.models.workout import WorkoutSessionSummary
+from app.services.realtime_service import RealtimeService
 from app.settings import RuntimeSettings
 from app.storage.store import Store
 
 
 class AiReportService:
-    def __init__(self, settings: RuntimeSettings, store: Store) -> None:
+    def __init__(
+        self,
+        settings: RuntimeSettings,
+        store: Store,
+        realtime_service: RealtimeService,
+    ) -> None:
         self._settings = settings
         self._store = store
+        self._realtime_service = realtime_service
         self._worker_task: asyncio.Task[None] | None = None
+        self._report_queue: asyncio.Queue[str] = asyncio.Queue()
 
     async def start(self) -> None:
         if not self._settings.ai.auto_process or self._worker_task is not None:
             return
+        await self.recover_pending_reports()
         self._worker_task = asyncio.create_task(self._run_loop(), name="backend-ai-report-worker")
 
     async def stop(self) -> None:
@@ -35,33 +44,50 @@ class AiReportService:
             pass
         self._worker_task = None
 
-    async def process_pending_reports(self) -> int:
-        queued_reports = await self._store.list_ai_reports(
-            status="queued",
-            limit=self._settings.ai.batch_size,
-            offset=0,
-        )
-        for item in queued_reports:
-            await self.process_report(item.report_id)
-        return len(queued_reports)
+    def enqueue_report(self, report_id: str) -> None:
+        if not self._settings.ai.auto_process:
+            return
+        self._report_queue.put_nowait(report_id)
+
+    async def recover_pending_reports(self) -> int:
+        queued_report_ids = await self._list_report_ids(status="queued")
+        generating_report_ids = await self._list_report_ids(status="generating")
+        for report_id in generating_report_ids:
+            await self._store.update_ai_report(
+                report_id=report_id,
+                status="queued",
+                error_message=None,
+                finished_at=None,
+            )
+        for report_id in [*queued_report_ids, *generating_report_ids]:
+            self.enqueue_report(report_id)
+        return len(queued_report_ids) + len(generating_report_ids)
 
     async def process_report(self, report_id: str) -> AiReportDetail | None:
         report = await self._store.get_ai_report(report_id=report_id)
         if report is None or report.status != "queued":
             return report
+        target_user = await self._store.get_user(username=report.user_id)
+        if target_user is None:
+            raise RuntimeError("user not found for ai report generation")
 
-        await self._store.update_ai_report(report_id=report_id, status="generating")
+        generating_report = await self._store.update_ai_report(report_id=report_id, status="generating")
+        if generating_report is not None:
+            await self.publish_report_update(generating_report, target_user=target_user)
         try:
             completed_payload = await self._build_completed_payload(report)
         except Exception as exc:
-            return await self._store.update_ai_report(
+            failed_report = await self._store.update_ai_report(
                 report_id=report_id,
                 status="failed",
                 error_message=str(exc),
                 finished_at=_now_iso(),
             )
+            if failed_report is not None:
+                await self.publish_report_update(failed_report, target_user=target_user)
+            return failed_report
 
-        return await self._store.update_ai_report(
+        completed_report = await self._store.update_ai_report(
             report_id=report_id,
             status="completed",
             summary_title=completed_payload["summary_title"],
@@ -72,19 +98,57 @@ class AiReportService:
             raw_markdown=completed_payload["raw_markdown"],
             finished_at=_now_iso(),
         )
+        if completed_report is not None:
+            await self.publish_report_update(completed_report, target_user=target_user)
+        return completed_report
 
     async def _run_loop(self) -> None:
         while True:
-            processed_count = 0
+            report_id: str | None = None
             try:
-                processed_count = await self.process_pending_reports()
-            except Exception:
-                processed_count = 0
+                report_id = await self._report_queue.get()
+                try:
+                    await self.process_report(report_id)
+                except Exception:
+                    pass
+            finally:
+                if report_id is not None:
+                    self._report_queue.task_done()
 
-            if processed_count == 0:
-                await asyncio.sleep(self._settings.ai.poll_interval_s)
-                continue
-            await asyncio.sleep(0)
+    async def _list_report_ids(self, *, status: str) -> list[str]:
+        report_ids: list[str] = []
+        offset = 0
+        while True:
+            reports = await self._store.list_ai_reports(
+                status=status,
+                limit=self._settings.ai.batch_size,
+                offset=offset,
+            )
+            if not reports:
+                break
+            report_ids.extend(item.report_id for item in reports)
+            if len(reports) < self._settings.ai.batch_size:
+                break
+            offset += len(reports)
+        return report_ids
+
+    async def publish_report_update(
+        self,
+        report: AiReportDetail,
+        *,
+        target_user: StoredUser,
+    ) -> None:
+        await self._realtime_service.publish(
+            {
+                "type": "ai_report",
+                "data": report.model_dump(exclude_none=True),
+                "scope": {
+                    "user_id": target_user.username,
+                    "gym_ids": target_user.gym_ids,
+                    "device_ids": target_user.device_ids,
+                },
+            }
+        )
 
     async def _build_completed_payload(self, report: AiReportDetail) -> dict[str, Any]:
         target_user = await self._store.get_user(username=report.user_id)

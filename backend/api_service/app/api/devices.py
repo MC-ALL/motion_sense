@@ -7,6 +7,7 @@ from app.api.deps import (
     filter_devices_for_user,
     get_device_config_service,
     get_event_store,
+    get_realtime_service,
     require_admin_user,
     require_rest_user,
 )
@@ -23,6 +24,7 @@ from app.services.device_config_service import (
     DeviceConfigService,
     DeviceConfigTargetNotFoundError,
 )
+from app.services.realtime_service import RealtimeService
 from app.storage.store import Store
 
 
@@ -49,6 +51,7 @@ async def register_device(
     payload: DeviceRegistrationRequest,
     _: object = Depends(require_admin_user),
     store: Store = Depends(get_event_store),
+    realtime_service: RealtimeService = Depends(get_realtime_service),
 ) -> DeviceSummary:
     gateway_id = _normalize_gateway_id(
         device_type=payload.device_type,
@@ -56,7 +59,7 @@ async def register_device(
         gateway_id=payload.gateway_id,
     )
     try:
-        return await store.register_device(
+        device = await store.register_device(
             gym_id=payload.gym_id,
             device_type=payload.device_type,
             device_id=payload.device_id,
@@ -65,6 +68,8 @@ async def register_device(
             location=payload.location,
             metadata=payload.metadata,
         )
+        await realtime_service.publish({"type": "device_upsert", "data": device.model_dump()})
+        return device
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -88,6 +93,7 @@ async def update_device(
     payload: DeviceRegistrationUpdateRequest,
     _: object = Depends(require_admin_user),
     store: Store = Depends(get_event_store),
+    realtime_service: RealtimeService = Depends(get_realtime_service),
 ) -> DeviceSummary:
     existing = await store.get_device(device_id=device_id)
     if existing is None:
@@ -106,6 +112,7 @@ async def update_device(
     updated = await store.update_device_registration(device_id=device_id, updates=updates)
     if updated is None:
         raise HTTPException(status_code=404, detail="device not found")
+    await realtime_service.publish({"type": "device_upsert", "data": updated.model_dump()})
     return updated
 
 
@@ -114,10 +121,24 @@ async def delete_device(
     device_id: str,
     _: object = Depends(require_admin_user),
     store: Store = Depends(get_event_store),
+    realtime_service: RealtimeService = Depends(get_realtime_service),
 ) -> DeviceDeleteResponse:
+    existing = await store.get_device(device_id=device_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="device not found")
     deleted = await store.delete_device(device_id=device_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="device not found")
+    await realtime_service.publish(
+        {
+            "type": "device_delete",
+            "data": {
+                "device_id": existing.device_id,
+                "device_type": existing.device_type,
+                "gym_id": existing.gym_id,
+            },
+        }
+    )
     return DeviceDeleteResponse()
 
 

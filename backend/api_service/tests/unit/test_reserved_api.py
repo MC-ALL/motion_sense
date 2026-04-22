@@ -250,13 +250,17 @@ def test_ai_report_routes_create_and_read_queued_records() -> None:
         list_items = list_response.json()
         assert len(list_items) == 1
         assert list_items[0]["report_id"] == created["report_id"]
-        assert list_items[0]["status"] == "queued"
+        assert list_items[0]["status"] in {"queued", "completed"}
 
         detail_response = client.get(f"/api/v1/ai/reports/{created['report_id']}")
         assert detail_response.status_code == 200
         report_detail = detail_response.json()
         assert report_detail["report_id"] == created["report_id"]
-        assert report_detail["summary_title"] == "student_ai 训练分析待生成"
+        assert report_detail["status"] in {"queued", "completed"}
+        assert report_detail["summary_title"] in {
+            "student_ai 训练分析待生成",
+            "student_ai 训练分析报告",
+        }
         assert report_detail["evidence_session_ids"] == []
 
 

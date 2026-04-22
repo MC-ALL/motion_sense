@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services.auth_service import generate_password_hash
+from app.services.websocket_manager import WebSocketAccessScope, _has_ai_report_access
 from app.settings import RuntimeSettings
 
 
@@ -215,3 +216,49 @@ def test_scope_filters_business_websocket_stream() -> None:
             assert pushed["type"] == "telemetry"
             assert pushed["data"]["device_id"] == "eq-001"
             assert pushed["data"]["gym_id"] == "gym-gz-01"
+
+
+def test_ai_report_scope_matches_teacher_and_student_rules() -> None:
+    student_scope = WebSocketAccessScope(
+        username="student_a",
+        role="student",
+        gym_ids={"gym-gz-01"},
+        device_ids={"wb-001"},
+    )
+    teacher_scope = WebSocketAccessScope(
+        username="teacher_a",
+        role="teacher",
+        gym_ids={"gym-gz-01"},
+        device_ids=set(),
+    )
+    unrelated_teacher_scope = WebSocketAccessScope(
+        username="teacher_b",
+        role="teacher",
+        gym_ids={"gym-sz-01"},
+        device_ids={"wb-888"},
+    )
+
+    assert _has_ai_report_access(
+        student_scope,
+        target_username="student_a",
+        target_gym_ids={"gym-gz-01"},
+        target_device_ids={"wb-001"},
+    )
+    assert not _has_ai_report_access(
+        student_scope,
+        target_username="student_b",
+        target_gym_ids={"gym-gz-01"},
+        target_device_ids={"wb-002"},
+    )
+    assert _has_ai_report_access(
+        teacher_scope,
+        target_username="student_a",
+        target_gym_ids={"gym-gz-01"},
+        target_device_ids={"wb-001"},
+    )
+    assert not _has_ai_report_access(
+        unrelated_teacher_scope,
+        target_username="student_a",
+        target_gym_ids={"gym-gz-01"},
+        target_device_ids={"wb-001"},
+    )

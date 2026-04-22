@@ -127,6 +127,27 @@ def test_influx_event_buffer_treats_missing_tables_as_empty_pending() -> None:
     asyncio.run(scenario())
 
 
+def test_influx_event_buffer_wait_for_pending_is_notified_by_append() -> None:
+    settings = RuntimeSettings(influxdb={"base_url": "http://influxdb.test:8181"})
+    buffer = InfluxEventBuffer(settings)
+
+    async def scenario() -> None:
+        waiter = asyncio.create_task(buffer.wait_for_pending(1.0))
+        await asyncio.sleep(0)
+        await buffer.append(
+            IngestItem(
+                kind="telemetry",
+                topic="gym/gym-gz-01/equipment/eq-003/telemetry",
+                payload={"ts": 1712345678, "power_w": 301.1},
+            ),
+            parse_topic("gym/gym-gz-01/equipment/eq-003/telemetry"),
+        )
+        assert await waiter is True
+        await buffer._client.aclose()
+
+    asyncio.run(scenario())
+
+
 def test_influx_event_buffer_treats_missing_delivery_log_as_empty_ack_set() -> None:
     requests: list[httpx.Request] = []
 
