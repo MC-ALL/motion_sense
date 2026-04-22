@@ -4,7 +4,6 @@ export interface RuntimeConfig {
   backend_ws_url: string;
   ops_base_url: string;
   ops_ws_url: string;
-  refresh_interval_ms: number;
 }
 
 declare global {
@@ -18,8 +17,7 @@ const default_config: RuntimeConfig = {
   backend_base_url: '',
   backend_ws_url: '/api/ws',
   ops_base_url: '',
-  ops_ws_url: '/api/ws/ops',
-  refresh_interval_ms: 15000
+  ops_ws_url: '/api/ws/ops'
 };
 
 export function get_runtime_config(): RuntimeConfig {

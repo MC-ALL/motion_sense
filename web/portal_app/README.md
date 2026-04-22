@@ -48,7 +48,8 @@
 - 业务接口：`/api/v1/*` 与 `WS /api/ws`
 - 运维接口：`/api/v1/ops/*` 与 `WS /api/ws/ops`
 - 默认部署下通过 Nginx 单端口同源代理访问，不直接把浏览器指向多个后端端口。
-- 运行时配置包含：`app_name`、`backend_base_url`、`backend_ws_url`、`ops_base_url`、`ops_ws_url`、`refresh_interval_ms`。
+- 运行时配置包含：`app_name`、`backend_base_url`、`backend_ws_url`、`ops_base_url`、`ops_ws_url`。
+- 实时仪表盘与 AI 报告页采用“REST 首次加载 + WebSocket 增量更新 + WebSocket 重连后的单次 REST 补同步”，不保留固定低频轮询。
 - 页面说明、文案与权限边界应与 [design/06-网页端.md](/home/circuitx/Work/motion_sense/design/06-网页端.md) 一致。
 
 ## 测试流程

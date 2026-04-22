@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Drawer, List, Space, Statistic, Table, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -157,10 +157,14 @@ export function RealtimeDashboardPage() {
   const hydrate_snapshot = use_business_realtime_store((state) => state.hydrate_snapshot);
   const clear_snapshot = use_business_realtime_store((state) => state.clear_snapshot);
   const session = use_auth_store((state) => state.session);
+  const previous_ws_state_ref = useRef<'idle' | 'connecting' | 'open' | 'closed'>('idle');
+  const has_seen_open_once_ref = useRef(false);
 
   useEffect(() => {
     if (!session) {
       disconnect();
+      previous_ws_state_ref.current = 'idle';
+      has_seen_open_once_ref.current = false;
       return;
     }
     connect();
@@ -168,6 +172,29 @@ export function RealtimeDashboardPage() {
       disconnect();
     };
   }, [connect, disconnect, session]);
+
+  const load_snapshot = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!session) {
+        set_loading(false);
+        set_error(null);
+        clear_snapshot();
+        return;
+      }
+
+      if (!silent) {
+        set_loading(true);
+      }
+      set_error(null);
+      const [device_items, alert_items] = await Promise.all([fetch_devices(), fetch_business_alerts({ is_ack: false })]);
+      hydrate_snapshot({ devices: device_items, alerts: alert_items });
+      if (!silent) {
+        set_loading(false);
+      }
+    },
+    [clear_snapshot, hydrate_snapshot, session]
+  );
 
   useEffect(() => {
     if (!session) {
@@ -180,23 +207,14 @@ export function RealtimeDashboardPage() {
     let mounted = true;
 
     async function load() {
-      set_loading(true);
-      set_error(null);
       try {
-        const [device_items, alert_items] = await Promise.all([fetch_devices(), fetch_business_alerts({ is_ack: false })]);
-        if (!mounted) {
-          return;
-        }
-        hydrate_snapshot({ devices: device_items, alerts: alert_items });
+        await load_snapshot();
       } catch (load_error) {
         if (!mounted) {
           return;
         }
         set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.dashboard_load_failed);
-      } finally {
-        if (mounted) {
-          set_loading(false);
-        }
+        set_loading(false);
       }
     }
 
@@ -205,7 +223,24 @@ export function RealtimeDashboardPage() {
     return () => {
       mounted = false;
     };
-  }, [clear_snapshot, hydrate_snapshot, session]);
+  }, [clear_snapshot, load_snapshot, session]);
+
+  useEffect(() => {
+    const previous_ws_state = previous_ws_state_ref.current;
+    previous_ws_state_ref.current = ws_state;
+
+    if (!session || ws_state !== 'open' || previous_ws_state === 'open') {
+      return;
+    }
+    if (!has_seen_open_once_ref.current) {
+      has_seen_open_once_ref.current = true;
+      return;
+    }
+
+    void load_snapshot({ silent: true }).catch((load_error) => {
+      set_error(load_error instanceof Error ? load_error.message : page_error_fallbacks.dashboard_load_failed);
+    });
+  }, [load_snapshot, session, ws_state]);
 
   const devices = useMemo(() => Object.values(devices_by_id), [devices_by_id]);
   const alerts = useMemo(

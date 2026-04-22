@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { AxiosError } from 'axios';
 import { Button, Descriptions, List, Select, Space, Spin, Tag } from 'antd';
@@ -145,10 +145,13 @@ export function AiReportsPage() {
   const [candidate_usernames, set_candidate_usernames] = useState<string[]>([]);
   const [retrying, set_retrying] = useState(false);
   const ai_reports_by_id = use_business_realtime_store((state) => state.ai_reports_by_id);
+  const ws_state = use_business_realtime_store((state) => state.ws_state);
   const connect = use_business_realtime_store((state) => state.connect);
   const disconnect = use_business_realtime_store((state) => state.disconnect);
   const replace_ai_reports = use_business_realtime_store((state) => state.replace_ai_reports);
   const upsert_ai_report = use_business_realtime_store((state) => state.upsert_ai_report);
+  const previous_ws_state_ref = useRef<'idle' | 'connecting' | 'open' | 'closed'>('idle');
+  const has_seen_open_once_ref = useRef(false);
 
   const can_switch_user = session?.user.role === 'admin' || session?.user.role === 'teacher';
   const selected_window = (search_params.get('window') as WindowKey | null) ?? '30d';
@@ -160,6 +163,8 @@ export function AiReportsPage() {
   useEffect(() => {
     if (!session) {
       disconnect();
+      previous_ws_state_ref.current = 'idle';
+      has_seen_open_once_ref.current = false;
       return;
     }
     connect();
@@ -216,6 +221,40 @@ export function AiReportsPage() {
     };
   }, [can_switch_user, session]);
 
+  const load_page = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!session) {
+        set_loading(false);
+        set_error(null);
+        set_reserved_response(null);
+        replace_ai_reports([]);
+        return;
+      }
+
+      if (!silent) {
+        set_loading(true);
+      }
+      setErrorState();
+      if (report_id) {
+        const detail = await fetch_ai_report_detail(report_id);
+        replace_ai_reports([detail]);
+      } else {
+        const list = await fetch_ai_reports({
+          user_id: selected_username || undefined,
+          status: selected_status === 'all' ? undefined : selected_status,
+          start: build_start_time(selected_window),
+          end: new Date().toISOString()
+        });
+        replace_ai_reports(list.map(normalize_ai_report_summary));
+      }
+      if (!silent) {
+        set_loading(false);
+      }
+    },
+    [report_id, replace_ai_reports, selected_status, selected_username, selected_window, session]
+  );
+
   useEffect(() => {
     if (!session) {
       set_loading(false);
@@ -226,29 +265,9 @@ export function AiReportsPage() {
     }
 
     let mounted = true;
-    async function load_page() {
-      set_loading(true);
-      setErrorState();
+    async function load() {
       try {
-        if (report_id) {
-          const detail = await fetch_ai_report_detail(report_id);
-          if (!mounted) {
-            return;
-          }
-          replace_ai_reports([detail]);
-          return;
-        }
-
-        const list = await fetch_ai_reports({
-          user_id: selected_username || undefined,
-          status: selected_status === 'all' ? undefined : selected_status,
-          start: build_start_time(selected_window),
-          end: new Date().toISOString()
-        });
-        if (!mounted) {
-          return;
-        }
-        replace_ai_reports(list.map(normalize_ai_report_summary));
+        await load_page();
       } catch (load_error) {
         if (!mounted) {
           return;
@@ -261,18 +280,39 @@ export function AiReportsPage() {
           return;
         }
         set_error(describe_error(load_error, page_error_fallbacks.ai_reports_load_failed));
-      } finally {
-        if (mounted) {
-          set_loading(false);
-        }
+        set_loading(false);
       }
     }
 
-    void load_page();
+    void load();
     return () => {
       mounted = false;
     };
-  }, [report_id, replace_ai_reports, search_params, selected_status, selected_username, selected_window, session]);
+  }, [load_page, replace_ai_reports, search_params, session]);
+
+  useEffect(() => {
+    const previous_ws_state = previous_ws_state_ref.current;
+    previous_ws_state_ref.current = ws_state;
+
+    if (!session || ws_state !== 'open' || previous_ws_state === 'open') {
+      return;
+    }
+    if (!has_seen_open_once_ref.current) {
+      has_seen_open_once_ref.current = true;
+      return;
+    }
+
+    void load_page({ silent: true }).catch((load_error) => {
+      const reserved = read_reserved_response(load_error);
+      if (reserved) {
+        set_reserved_response(reserved);
+        set_error(null);
+        replace_ai_reports([]);
+        return;
+      }
+      set_error(describe_error(load_error, page_error_fallbacks.ai_reports_load_failed));
+    });
+  }, [load_page, replace_ai_reports, session, ws_state]);
 
   function setErrorState() {
     set_error(null);

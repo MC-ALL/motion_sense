@@ -11,7 +11,6 @@ backend_base_url="${WEB_PORTAL_BACKEND_BASE_URL:-}"
 backend_ws_url="${WEB_PORTAL_BACKEND_WS_URL:-/api/ws}"
 ops_base_url="${WEB_PORTAL_OPS_BASE_URL:-}"
 ops_ws_url="${WEB_PORTAL_OPS_WS_URL:-/api/ws/ops}"
-refresh_interval_ms="${WEB_PORTAL_REFRESH_INTERVAL_MS:-15000}"
 
 mkdir -p "$runtime_dir"
 
@@ -32,8 +31,7 @@ window.__motion_sense_runtime__ = {
   backend_base_url: "${backend_base_url_escaped}",
   backend_ws_url: "${backend_ws_url_escaped}",
   ops_base_url: "${ops_base_url_escaped}",
-  ops_ws_url: "${ops_ws_url_escaped}",
-  refresh_interval_ms: ${refresh_interval_ms}
+  ops_ws_url: "${ops_ws_url_escaped}"
 };
 EOF
 }

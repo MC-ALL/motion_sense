@@ -3,6 +3,5 @@ window.__motion_sense_runtime__ = {
   backend_base_url: '',
   backend_ws_url: '/api/ws',
   ops_base_url: '',
-  ops_ws_url: '/api/ws/ops',
-  refresh_interval_ms: 15000
+  ops_ws_url: '/api/ws/ops'
 };

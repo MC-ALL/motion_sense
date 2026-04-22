@@ -34,7 +34,6 @@
 | `WEB_PORTAL_BACKEND_WS_URL` | `/api/ws` | `web_portal_app` | 网页端访问后台业务 WS 地址 | 默认保持同源 |
 | `WEB_PORTAL_OPS_BASE_URL` | `''` | `web_portal_app` | 网页端访问运维 REST 地址 | 默认保持同源；仅在你明确不用 Nginx 同源代理时再覆盖 |
 | `WEB_PORTAL_OPS_WS_URL` | `/api/ws/ops` | `web_portal_app` | 网页端访问运维 WS 地址 | 默认保持同源 |
-| `WEB_PORTAL_REFRESH_INTERVAL_MS` | `15000` | `web_portal_app` | 网页端轮询刷新间隔 | 按现场负载调整 |
 | `WEB_PORTAL_RUNTIME_CONFIG_MODE` | `render` | `web_portal_app` | 网页运行时配置生成策略 | 默认每次启动按环境变量重渲染；仅在明确要保留宿主机现有文件时改为 `preserve` |
 
 说明：

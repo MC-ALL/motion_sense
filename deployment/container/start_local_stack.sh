@@ -243,8 +243,7 @@ window.__motion_sense_runtime__ = {
   backend_base_url: 'http://127.0.0.1:${backend_host_port}',
   backend_ws_url: 'ws://127.0.0.1:${backend_host_port}/api/ws',
   ops_base_url: 'http://127.0.0.1:${ops_host_port}',
-  ops_ws_url: 'ws://127.0.0.1:${ops_host_port}/api/ws/ops',
-  refresh_interval_ms: 15000
+  ops_ws_url: 'ws://127.0.0.1:${ops_host_port}/api/ws/ops'
 };
 EOF
 
