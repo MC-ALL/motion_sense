@@ -1,124 +1,52 @@
-# 后台端
+# backend
 
-当前后台实现位于 `backend/api_service/`，聚焦第 1 迭代的最小可用闭环。
+`backend/` 存放后台业务模块源码入口，当前只有一个可运行模块 `api_service/`。
 
-## 当前已实现接口
+## 目录功能
 
-- `POST /api/v1/ingest/batch`
-- `GET /api/v1/devices`
-- `GET /api/v1/devices/{id}`
-- `POST /api/v1/devices/{id}/config`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
-- `POST /api/v1/auth/logout`
-- `POST /api/v1/devices/{id}/ota`（预留，当前返回 `501`）
-- `GET /api/v1/ota/tasks`（预留，当前返回 `501`）
-- `GET /api/v1/ota/tasks/{task_id}`（预留，当前返回 `501`）
-- `GET /api/v1/gateway/{gateway_id}/commands/pending`
-- `GET /api/v1/gateway/commands/{command_id}`
-- `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
-- `POST /api/v1/ai/analyze`（预留，当前返回 `501`）
-- `GET /api/v1/ai/reports`（预留，当前返回 `501`）
-- `GET /api/v1/ai/reports/{id}`（预留，当前返回 `501`）
-- `GET /api/v1/alerts`
-- `GET /api/v1/alerts/{id}`
-- `PATCH /api/v1/alerts/{id}/ack`
-- `POST /api/v1/alerts/batch-ack`
-- `GET /api/v1/telemetry/wristband/{id}`
-- `GET /api/v1/telemetry/equipment/{id}`
-- `GET /api/v1/telemetry/env/{id}`
-- `GET /api/v1/telemetry/env/{id}/aggregate`
-- `GET /api/v1/wristband/{id}/bindings`
-- `GET /ops/v1/health`
-- `GET /ops/v1/health/components`
-- `GET /ops/v1/stats`
-- `WS /ops/ws`
-- `GET /healthz`
-- `GET /api/ws`
+- 提供后台业务代码入口与模块级说明。
+- 聚合后台 API、鉴权、训练档案、AI 报告相关实现。
+- 约定后台部署资产位于仓库根目录 `deployment/backend/`。
 
-## 路由逻辑
+## 目录结构
 
-后台应用在 [main.py](/Users/circuitx/Work/motion_sense/backend/api_service/app/main.py) 中按以下顺序挂载路由：
+- `api_service/`：异步 FastAPI 服务。
+- `README.md`：后台目录入口说明。
 
-1. `health.router`：健康检查 `GET /healthz`
-2. `ingest.router`：网关批量入库 `POST /api/v1/ingest/batch`
-3. `auth.router`：JWT 登录、刷新、退出
-4. `devices.router`：设备查询与配置下发
-5. `alerts.router`：告警查询、确认、批量确认
-6. `telemetry.router`：手环 / 器材 / 环境历史查询与环境聚合查询
-7. `bindings.router`：手环绑定历史
-8. `gateway_commands.router`：配置命令轮询与结果回报
-9. `ota.router`：OTA 预留接口
-10. `ai.router`：AI 预留接口
-11. `websocket.router`：实时推送 `GET /api/ws`
-12. `ops.router`：后台自观测接口 `GET /ops/v1/*`、`WS /ops/ws`
+## 模块功能
 
-主数据流如下：
+当前后台负责：
+- 网关批量入库 `POST /api/v1/ingest/batch`
+- JWT 登录、刷新、退出
+- 用户管理、设备管理、告警查询与确认
+- 遥测历史查询、训练档案、训练会话聚合
+- 手环绑定维护与绑定历史查询
+- 业务 WebSocket 推送
+- AI 报告创建、列表、详情与重新生成
+- 后台自观测 `/ops/v1/*` 与 `/ops/ws`
 
-1. 网关调用 `POST /api/v1/ingest/batch`
-2. `IngestService` 解析批次并写入存储层
-3. 写入成功后通过 `RealtimeService` 推送到 WebSocket
-4. 如启用 `redis`，则经 Redis Pub/Sub 做跨实例广播
-5. 后台调用 `POST /api/v1/devices/{id}/config` 时，创建待执行配置命令
-6. 网关调用 `GET /api/v1/gateway/{gateway_id}/commands/pending` 拉取命令并在本地执行 / 转发 MQTT
-7. 网关调用 `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result` 回报结果
+## 接口约束
 
-## 运行模式
+- 业务 REST、WebSocket、MQTT 映射统一以 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 为准。
+- 设备配置结果当前只能确认“网关已执行/已转发”，不代表设备最终 ACK。
+- OTA 相关路由仍保留占位接口，不纳入当前实现范围。
 
-当前后台是异步 FastAPI 服务，支持两类存储模式：
-
-- `memory`：单元测试与最小本地运行默认使用
-- `postgres`：基于异步 `psycopg` 的 PostgreSQL / TimescaleDB 持久化
-
-实时广播支持两类模式：
-
-- `local`：单进程内存广播
-- `redis`：跨实例 Redis Pub/Sub 广播
-
-## 本地构建
+## 测试流程
 
 ```bash
-container build \
-  --build-arg PYTHON_BASE=python:3.13-slim \
-  -t motion-sense-backend-api-local \
-  -f deployment/backend/api_service/Dockerfile .
+# 从仓库根目录执行
+python3 -m compileall backend/api_service/app
+docker run --rm -v "$PWD:/workspace" -w /workspace/backend/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```
 
-## 已完成验证
+## 部署流程
 
-- `POST /api/v1/ingest/batch` 可写入 TimescaleDB / PostgreSQL
-- `GET /api/v1/devices/{id}` 可返回设备快照
-- `PATCH /api/v1/alerts/{id}/ack` 可更新告警确认状态
-- `GET /api/v1/telemetry/equipment/{id}` 可返回历史数据
-- `GET /api/v1/wristband/{id}/bindings` 可返回绑定历史
-- `GET /api/v1/telemetry/env/{id}/aggregate` 可返回环境聚合结果
-- `POST /api/v1/alerts/batch-ack` 可批量确认告警
-- `POST /api/v1/devices/{id}/config` 与 `/api/v1/gateway/*/commands/*` 已具备配置命令闭环
-- 配置命令已具备领取租约、失败重试与超时收敛能力
-- `GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws` 已具备后台自观测能力
-- `redis` 实时模式已在 macOS Apple `container` 上验证
+- 镜像与默认配置位于 `deployment/backend/`。
+- Linux 正式部署由 `deployment/compose/docker-compose.yaml` 聚合 `deployment/backend/compose/docker-compose.yaml`。
+- 运行时配置与密钥统一落在 `deployment/runtime/`。
 
-## 运行配置
+## 后续改进
 
-- `/runtime/config/backend/api_service/app_settings.yaml` 首次启动由 `default_app_settings.yaml` 生成
-- 修改 `app_settings.yaml` 后需重启 `api_service`
-- 修改 Redis 运行参数后需重启 `redis`
-- 修改 TimescaleDB 镜像、初始化 SQL 或持久卷参数后需重启 `timescaledb`
-
-## 风险与待补项
-
-- `redis` 仅验证了单后台实例广播，多实例自动化覆盖尚缺
-- JWT refresh session 当前先用内存轮换，黑名单与持久化会话仍待实现
-- 设备侧当前未预留 ACK 机制，配置命令成功只代表网关已本地执行或已转发 MQTT
-- AI 实际集成仍待实现
-- OTA 当前仅保留接口预留，不纳入后续开发计划
-
-## 单元测试
-
-```bash
-container run --remove \
-  --volume "$PWD:/workspace" \
-  --workdir /workspace/backend/api_service \
-  python:3.13-slim \
-  sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
-```
+- AI 从当前单进程自动消费推进到独立 worker / 队列化。
+- 强化 refresh session 与审计持久化能力。
+- 在不破坏接口契约的前提下补充更多后台集成测试。

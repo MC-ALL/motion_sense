@@ -1,18 +1,24 @@
-# Apple Container 本地联调
+# deployment container
 
-本目录存放仓库级 Apple `container` 本地联调脚本，负责统一拉起 `04 网关端`、`05 后台端`、`06 网页端` 与 `09 运维观测端`。
+`deployment/container/` 存放 Apple `container` 本地整栈联调脚本。
 
-## 脚本说明
+## 目录功能
 
-- `build_local_images.sh`：构建整栈本地镜像。
-- `start_local_stack.sh`：拉起整栈本地容器。
-- `verify_system_stack.sh`：验证基础链路、登录、配置闭环与页面入口。
-- `verify_database_stack.sh`：验证 TimescaleDB / Redis / InfluxDB 联调。
-- `verify_user_scope_stack.sh`：验证 `teacher` / `student` 权限边界。
-- `verify_regression_stack.sh`：按顺序串行执行整栈回归。
-- `stop_local_stack.sh`：停止本地联调容器与网络。
+- 构建本地联调镜像。
+- 拉起 backend、gateway、ops_observer、web 的本地容器栈。
+- 提供数据库、权限与基础链路回归脚本。
 
-## 常用命令
+## 目录结构
+
+- `build_local_images.sh`：构建本地镜像。
+- `start_local_stack.sh`：启动本地整栈容器。
+- `stop_local_stack.sh`：停止容器与网络。
+- `verify_system_stack.sh`：验证基础业务链路与网页入口。
+- `verify_database_stack.sh`：验证 TimescaleDB、Redis、InfluxDB 链路。
+- `verify_user_scope_stack.sh`：验证教师/学生权限边界。
+- `verify_regression_stack.sh`：串行执行整栈回归。
+
+## 脚本用法
 
 ```bash
 sh deployment/container/build_local_images.sh
@@ -22,7 +28,18 @@ sh deployment/container/verify_regression_stack.sh
 sh deployment/container/stop_local_stack.sh
 ```
 
-说明：
+## 环境配置要求
+
+- macOS 或支持 Apple `container` CLI 的环境。
+- 需要本地可用的 `container` 命令。
 - 这些脚本约定在仓库根目录执行。
-- 网关特有的运行时初始化、MQTT 打点、韧性验证、运维鉴权验证仍保留在 `deployment/gateway/container/`。
-- 所有容器共享统一运行时目录 `deployment/runtime/`。
+
+## 基础设施要求
+
+- 所有容器共享 `deployment/runtime/`。
+- 网关专项脚本仍位于 `deployment/gateway/container/`。
+
+## 后续改进
+
+- 补充更多本地专项回归组合脚本。
+- 继续降低宿主机环境差异带来的联调问题。

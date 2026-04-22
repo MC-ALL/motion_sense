@@ -1,71 +1,78 @@
-# API 服务
+# backend api_service
 
-这是第 1 迭代的异步 FastAPI 后台服务。
+`backend/api_service` 是后台异步 FastAPI 服务，负责业务 API、鉴权、实时广播、训练会话聚合与 AI 报告生成基线。
 
-## 当前实现范围
+## 目录功能
 
-- 批量入库：`POST /api/v1/ingest/batch`
-- JWT 认证：`POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`
-- 用户管理：`GET/POST/PATCH/DELETE /api/v1/users`
-- 设备、告警、遥测、绑定历史查询接口
-- WebSocket 实时接口：`GET /api/ws`
-- 自观测接口：`GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`
-- 设备配置下发：`POST /api/v1/devices/{id}/config`
-- OTA 预留接口：`POST /api/v1/devices/{id}/ota`、`GET /api/v1/ota/tasks*`
-- 网关命令轮询：`GET /api/v1/gateway/{gateway_id}/commands/pending`
-- 命令结果回报：`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
-- AI 预留接口：`POST /api/v1/ai/analyze`、`GET /api/v1/ai/reports*`
-- 存储后端：`memory`、`postgres`
-- 实时广播后端：`local`、`redis`
+- `app/`：业务代码、路由、模型、服务层与存储层。
+- `tests/`：单元测试。
+- `pyproject.toml`：Python 包与测试依赖定义。
+- `README.md`：模块说明。
 
-## 路由结构
+## 目录结构
 
-- `/healthz`：健康检查
-- `/api/v1/ingest/*`：网关批量上报入口
-- `/api/v1/auth/*`：JWT 登录、刷新、退出
-- `/api/v1/users/*`：用户管理
-- `/api/v1/devices/*`：设备查询与配置下发
-- `/api/v1/ota/*`：OTA 预留接口
-- `/api/v1/gateway/*`：配置命令轮询与状态回报
-- `/api/v1/alerts/*`：告警查询与确认
-- `/api/v1/telemetry/*`：历史遥测与环境聚合
-- `/api/v1/wristband/*`：手环绑定历史
-- `/api/v1/ai/*`：AI 预留接口
-- `/api/ws`：实时推送
-- `/ops/v1/*`、`/ops/ws`：后台自观测接口
+- `app/api/`：FastAPI 路由。
+- `app/models/`：请求/响应与领域模型。
+- `app/services/`：鉴权、入库、实时推送、AI 报告、训练会话聚合等服务。
+- `app/storage/`：`memory` 与 `postgres` 两套存储实现。
+- `tests/unit/`：后台单元测试。
 
-## 配置下发行为
+## 模块功能
 
-- 后台仅负责创建配置命令，不直接连接 MQTT Broker
-- 命令由目标网关通过 `/api/v1/gateway/{gateway_id}/commands/pending` 轮询拉取
-- 网关对当前网关配置执行本地落地，对器材端 / 环境端配置转发到局域网 MQTT
-- 命令状态支持 `pending`、`succeeded`、`failed`、`timed_out`
-- 网关拉取待执行命令时，后台会递增 `attempt_count` 并设置短期 `leased_until`
-- 网关回报 `failed` 后，命令会按 `retry_backoff_s` 重入队列；超过 `max_attempts` 或 `expires_at` 后结束
-- 设备侧当前未预留 ACK 机制，`succeeded` 不代表设备已最终持久化
-- 目标 topic 格式仍为 `gym/{gym_id}/{device_type}/{device_id}/config`
+- 接收网关批量入库请求，并把遥测、告警、绑定、状态写入存储层。
+- 管理用户、设备、告警、训练档案、训练会话与 AI 报告。
+- 通过 `local` 或 `redis` 实时广播业务事件到 `/api/ws`。
+- 提供后台自观测 `/ops/v1/health`、`/ops/v1/health/components`、`/ops/v1/stats` 与 `WS /ops/ws`。
+- 在 `ai.auto_process=true` 时自动消费 `queued` 报告，推进到 `completed/failed`。
 
-## 运行配置文件生成
+## 接口约束
 
-- 首次启动会将 `deployment/backend/api_service/defaults/default_app_settings.yaml`
-  复制到 `/runtime/config/backend/api_service/app_settings.yaml`
-- 首次启动会补齐后台管理员密码哈希、JWT 密钥，并生成
-  `/runtime/config/backend/api_service/bootstrap_admin.txt`
-- refresh session 当前已落地到存储层；在 `memory` 存储模式下随进程生命周期存在，在 `postgres` 存储模式下可跨进程重建继续使用
-- `bootstrap_admin.txt` 仅用于首次取回后台管理员用户名/密码，后续应自行轮换
-- 当前 bootstrap admin 仍由部署配置托管：可用它登录并创建业务账号，但不允许通过 `/api/v1/users` 直接改密、降权或删除
-- 后续修改在下次 `api_service` 重启后生效
+核心路由如下：
+- 健康：`GET /healthz`
+- 入库：`POST /api/v1/ingest/batch`
+- 认证：`POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`
+- 用户：`GET/POST/PATCH/DELETE /api/v1/users`
+- 设备：`GET /api/v1/devices`、`GET /api/v1/devices/{id}`、`POST /api/v1/devices`、`PATCH /api/v1/devices/{id}`、`DELETE /api/v1/devices/{id}`、`POST /api/v1/devices/{id}/config`
+- 告警：`GET /api/v1/alerts`、`GET /api/v1/alerts/{id}`、`PATCH /api/v1/alerts/{id}/ack`、`POST /api/v1/alerts/batch-ack`
+- 遥测：`GET /api/v1/telemetry/wristband/{id}`、`GET /api/v1/telemetry/equipment/{id}`、`GET /api/v1/telemetry/env/{id}`、`GET /api/v1/telemetry/env/{id}/aggregate`
+- 绑定：`GET /api/v1/wristband/{id}/bindings`、`GET/POST /api/v1/user-wristband-bindings`、`POST /api/v1/user-wristband-bindings/{id}/unbind`、`GET /api/v1/user-wristband-bindings/overview`
+- 训练：`GET /api/v1/users/{username}/training-profile`、`GET/POST/PATCH /api/v1/workout-sessions`、`GET /api/v1/workout-sessions/{session_id}`、`POST /api/v1/workout-sessions/aggregate`
+- AI：`POST /api/v1/ai/analyze`、`GET /api/v1/ai/reports`、`GET /api/v1/ai/reports/{report_id}`、`POST /api/v1/ai/reports/{report_id}/retry`
+- 网关配置命令：`WS /api/v1/gateway/{gateway_id}/commands/ws`、`GET /api/v1/gateway/{gateway_id}/commands/pending`、`GET /api/v1/gateway/commands/{command_id}`、`POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
+- WebSocket：`GET /api/ws`
+- 运维：`GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`
+- OTA 占位：`POST /api/v1/devices/{id}/ota`、`GET /api/v1/ota/tasks`、`GET /api/v1/ota/tasks/{task_id}`
 
-## 当前鉴权边界
+约束：
+- 路径、字段与权限边界必须与 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 一致。
+- `storage_backend` 仅支持 `memory`、`postgres`；`realtime_backend` 仅支持 `local`、`redis`。
+- `ai.provider` 当前支持 `builtin` 与 OpenAI 兼容模式；模型变体通过 `model_variant=reasoner|chat` 切换。
+- OpenAI 兼容模式的 token 默认从 `/runtime/secrets/backend_ai_api_key.txt` 读取，不写入仓库。
+- 网关命令通道共享 token 默认从 `/runtime/secrets/backend_gateway_command_token.txt` 读取；在线网关通过 `command_ready` 事件被唤醒后再补拉 pending。
 
-- 第 1 迭代部署默认 `auth.enforce_rest = true`、`auth.enforce_ws = true`
-- 登录后可获得 `admin`、`teacher`、`student` 角色 JWT，并附带 `gym_ids` / `device_ids` 归属范围
-- `admin` 不受归属限制；`teacher` 可访问 `gym_ids` 对应场馆与 `device_ids` 明确绑定的设备；`student` 仅可访问 `device_ids` 明确绑定的设备
-- `/api/v1/users/*`、`POST/PATCH/DELETE /api/v1/devices*`、`POST /api/v1/devices/{id}/config`、`/ops/v1/*`、`/ops/ws` 仅允许 `admin`
-- `PATCH /api/v1/alerts/{id}/ack`、`POST /api/v1/alerts/batch-ack` 允许 `admin | teacher`
-- 业务读接口与 `GET /api/ws` 会按登录用户的 `gym_ids` / `device_ids` 继续过滤结果
-- 设备查询、告警、遥测、绑定历史、配置下发、健康查询、AI 预留接口、OTA 预留接口、`/api/ws` 会要求 Bearer JWT
-- 网关内网链路暂不加 JWT：
-  `POST /api/v1/ingest/batch`、
-  `GET /api/v1/gateway/{gateway_id}/commands/pending`、
-  `POST /api/v1/gateway/{gateway_id}/commands/{command_id}/result`
+## 测试流程
+
+```bash
+# 从仓库根目录执行
+python3 -m compileall backend/api_service/app
+docker run --rm -v "$PWD:/workspace" -w /workspace/backend/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+```
+
+当前测试覆盖：
+- 健康检查、配置与权限设置
+- 入库、设备管理、用户管理、权限边界
+- 告警、训练会话、AI 报告、WebSocket
+- 预留接口与角色访问控制
+
+## 部署流程
+
+1. 使用 `deployment/backend/api_service/Dockerfile` 构建后台镜像。
+2. 首次启动由 `deployment/backend/api_service/entrypoint.sh` 把 `default_app_settings.yaml` 渲染到 `/runtime/config/backend/api_service/app_settings.yaml`。
+3. Linux 正式部署通过 `deployment/backend/compose/docker-compose.yaml` 启动 `backend_timescaledb`、`backend_redis`、`backend_api_service`。
+4. 整栈验证建议从仓库根执行 `sh deployment/compose/start_stack.sh` 和对应 `verify_*` 脚本。
+
+## 后续改进
+
+- 将 AI 处理从进程内轮询推进到独立 worker / 任务队列。
+- 增补流式输出、报告编辑痕迹与更细粒度失败恢复。
+- 强化数据库迁移、会话黑名单与多实例广播测试。

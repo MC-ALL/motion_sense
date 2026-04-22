@@ -1,86 +1,47 @@
-# 网关端
+# gateway
 
-本目录对应 `04-网关端` 的服务栈与部署资产。
+`gateway/` 存放网关侧代码，包含边缘处理服务 `edge_processor` 与联调用设备模拟器 `device_simulator`。
+
+## 目录功能
+
+- 承载 MQTT 数据接入、规则处理、本地缓冲与后台上报代码。
+- 提供设备模拟器，便于在没有真实设备时持续打点。
+- 约定网关部署资产位于仓库根目录 `deployment/gateway/`。
 
 ## 目录结构
 
-- `edge_processor/`：Python 3.13 异步应用源码与测试
-- `device_simulator/`：独立 Python 3.13 异步 MQTT 设备模拟器源码与测试
-- `../deployment/gateway/mosquitto/defaults/`：Broker 默认配置模板，首次启动复制到运行挂载目录
-- `../deployment/gateway/influxdb/defaults/`：InfluxDB 默认初始化模板
-- `../deployment/gateway/`：Dockerfile、入口脚本、默认模板与网关专项测试脚本
+- `edge_processor/`：网关异步处理服务。
+- `device_simulator/`：MQTT 模拟器。
+- `README.md`：网关目录入口说明。
 
-## 路由与链路逻辑
+## 模块功能
 
-网关当前 HTTP / WebSocket 侧暴露以下路由：
+- `edge_processor`：订阅设备 MQTT、写入 InfluxDB 本地缓冲、批量上报后台、通过命令 WebSocket + pending 兜底执行配置命令、输出健康快照。
+- `device_simulator`：批量模拟器材、手环、环境节点的遥测、状态、绑定与异常场景。
 
-- `GET /healthz`
-- `GET /ops/v1/health`
-- `GET /ops/v1/health/components`
-- `GET /ops/v1/stats`
-- `WS /ops/ws`
+## 接口约束
 
-真正的主链路不在 HTTP，而在 MQTT 与后台 HTTP 批量上报：
+- MQTT topic、payload 字段、后台命令通道路径以 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 为准。
+- `edge_processor` 对外只开放健康与运维接口；业务侧不直接暴露设备管理 REST。
+- 部署与镜像构建统一走 `deployment/gateway/`，不要在源码目录下新增独立部署脚本。
 
-1. `edge_processor` 订阅 `telemetry / alert / binding / status`
-2. 收到事件后先写入本地 InfluxDB 缓冲
-3. 按批次调用后台 `POST /api/v1/ingest/batch`
-4. 网关侧生成的 `alert/status` 也会先写入缓冲，再发布回 MQTT
-5. 配置更新通过 `gym/{gym_id}/gateway/{gateway_id}/config` 写入本地规则文件并热重载
-
-## macOS 本地测试
-
-Linux 部署仍以 Docker Compose 为主。
-
-在 macOS 上，使用 Apple `container` CLI 按镜像分别构建与运行，而不是直接使用 Compose。例如：
+## 测试流程
 
 ```bash
-container build \
-  --build-arg PYTHON_BASE=python:3.13-slim \
-  -t motion-sense-edge-processor-local \
-  -f deployment/gateway/edge_processor/Dockerfile .
+# 从仓库根目录执行
+python3 -m compileall gateway/edge_processor/app
+docker run --rm -v "$PWD:/workspace" -w /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+docker run --rm -v "$PWD:/workspace" -w /workspace/gateway/device_simulator python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```
 
-整栈联调命令见仓库根目录 `deployment/container/README.md`；网关专项脚本说明见 `deployment/gateway/container/README.md`。
+## 部署流程
 
-## 运行时挂载
+- 镜像、默认配置、Broker、InfluxDB 与专项脚本统一位于 `deployment/gateway/`。
+- Linux 正式部署由 `deployment/gateway/compose/docker-compose.yaml` 负责网关相关服务。
+- Apple `container` 本地联调通过 `deployment/container/` 与 `deployment/gateway/container/` 的组合脚本完成。
 
-Compose 约定以下宿主机挂载目录位于 `deployment/runtime/`：
+## 后续改进
 
-- `config/`
-- `secrets/`
-- `certs/`
-
-运行期数据使用 Docker 命名卷保存 Mosquitto 与 InfluxDB 数据。
-
-## 当前进展
-
-- `edge_processor` 已支持 MQTT 事件落地到本地 InfluxDB 后再上传后台
-- 后台成功响应后，会在 InfluxDB 中写入投递标记，避免重复补发
-- `rules.yaml` 改写与重载检测已实现
-- 已支持 P1 规则：`EQ_OVERLOAD`、`CO2_HIGH`、`CO2_CRITICAL`、`PM25_HIGH`、`TEMP_HIGH`
-- 已支持 `DEVICE_OFFLINE` 监控，并发布 MQTT `alert` 与 retained `status`
-- 已支持后台配置命令轮询、失败回报、重试领取与超时收敛
-- 已支持基础设施健康采集与本地 `/ops/v1/*`、`/ops/ws` 观测输出
-- 已支持网关自观测接口 `/ops/v1/*` 与 `/ops/ws`
-- 在 macOS + Apple `container` 上已验证完整链路：
-  `mosquitto -> edge_processor -> InfluxDB 缓冲 -> backend/api_service -> TimescaleDB`
-- 在 macOS + Apple `container` 上已验证：
-  设备入库、配置命令闭环、运维健康汇总视图
-- 设备在线/离线检测改为使用网关接收时间，避免设备时钟漂移导致瞬时误判离线
-- 已新增独立 `device_simulator` 模块骨架，默认可模拟 10 台器材、10 个手环、10 个环境节点，并通过单 MQTT 连接持续发布随机场景数据
-
-## 当前风险
-
-- Linux 生产环境下，Mosquitto 绑定挂载的密钥 / 证书文件权限初始化仍需进一步加固
-- 设备侧仍未提供 ACK 机制，当前“配置成功”仅表示网关已执行本地处理或已转发到局域网 MQTT
-
-## 运行时规则说明
-
-- `/runtime/config/edge_processor/app_settings.yaml`、`rules.yaml`、`logging.yaml` 首次启动自动生成
-- `/runtime/config/device_simulator/simulator_settings.yaml` 首次启动自动生成
-- `/runtime/config/influxdb/admin_token.txt` 由 InfluxDB 首次启动生成，`edge_processor` 会复用
-- 编辑 `rules.yaml` 可热重载
-- 编辑 `app_settings.yaml` 需要重启 `edge_processor`
-- 编辑 `simulator_settings.yaml` 需要重启 `device_simulator`
-- 修改 InfluxDB 保留策略或存储参数需要重启 `influxdb`
+- MQTT TLS 与证书权限检查仍需收尾。
+- 设备 ACK 机制尚未落地，配置闭环仍停留在“网关已执行/已转发”。
+- 真实设备接入前仍应补充更多契约测试与端到端回归。
