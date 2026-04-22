@@ -60,7 +60,12 @@ docker compose -f deployment/gateway/compose/docker-compose.yaml config
 sh deployment/gateway/container/prepare_runtime.sh
 sh deployment/gateway/container/publish_sample_telemetry.sh
 sh deployment/gateway/container/verify_gateway_resilience.sh
+sh deployment/gateway/container/verify_ops_auth_stack.sh
 ```
+
+补充说明：
+- `device_simulator` 只提供镜像与默认配置资产，当前不在 `deployment/gateway/compose/docker-compose.yaml` 的默认服务列表中。
+- Linux 正式验收中的网关批量上报验证统一走仓库级 `sh deployment/compose/verify_gateway_batch_stack.sh`。
 
 ## 后续改进
 

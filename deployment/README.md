@@ -56,7 +56,13 @@ Linux 正式部署：
 ```bash
 docker compose -f deployment/compose/docker-compose.yaml config
 sh deployment/compose/start_stack.sh
+sh deployment/compose/verify_ops_auth_stack.sh
 sh deployment/compose/verify_system_stack.sh
+sh deployment/compose/verify_gateway_batch_stack.sh
+sh deployment/compose/verify_training_archive_stack.sh
+sh deployment/compose/verify_workout_aggregation_stack.sh
+sh deployment/compose/verify_ai_stack.sh
+sh deployment/compose/verify_database_stack.sh
 sh deployment/compose/stop_stack.sh
 ```
 

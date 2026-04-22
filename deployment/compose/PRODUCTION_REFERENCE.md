@@ -88,6 +88,7 @@ sh deployment/compose/start_stack.sh
 | `deployment/runtime/config/mosquitto/acl.conf` | `gateway_mosquitto` entrypoint | Broker ACL | 首次按 `MOSQUITTO_USER` 渲染 |
 | `deployment/runtime/config/ops_observer/api_service/app_settings.yaml` | `ops_observer_api_service` entrypoint | 运维端运行时配置 | 首次从默认模板复制 |
 | `deployment/runtime/config/web/portal_app/runtime_config.js` | `web_portal_app` entrypoint | 网页运行时配置 | 默认随容器启动按环境变量重渲染；`WEB_PORTAL_RUNTIME_CONFIG_MODE=preserve` 时保留现有文件 |
+| `deployment/runtime/secrets/backend_gateway_command_token.txt` | `backend_api_service` entrypoint | 后台到网关命令通道共享 token | 首次生成，权限 `600`；`gateway_edge_processor` 启动时会等待该文件 |
 | `deployment/runtime/secrets/mosquitto.passwd` | `gateway_mosquitto` entrypoint | MQTT 口令文件 | 首次生成 |
 | `deployment/runtime/secrets/edge_processor_ops_token.txt` | `gateway_edge_processor` entrypoint | 网关 ops token | 首次生成，权限 `600` |
 | `deployment/runtime/secrets/backend_ai_api_key.txt` | 宿主机人工投放 | 外部 AI 提供方 token | 可选；建议权限 `600`；可通过 `sh deployment/compose/write_backend_ai_api_key.sh` 写入 |
@@ -99,6 +100,7 @@ sh deployment/compose/start_stack.sh
 | `deployment/runtime/config/backend/api_service/bootstrap_admin.txt` | 高 | 包含后台 bootstrap admin 明文密码 |
 | `deployment/runtime/config/backend/api_service/app_settings.yaml` | 高 | 包含后台 JWT secret 与密码哈希 |
 | `deployment/runtime/config/influxdb/admin_token.txt` | 高 | 包含 Influx admin token |
+| `deployment/runtime/secrets/backend_gateway_command_token.txt` | 高 | 后台到网关命令通道共享 token |
 | `deployment/runtime/secrets/mosquitto.passwd` | 高 | MQTT 账号密码文件 |
 | `deployment/runtime/secrets/edge_processor_ops_token.txt` | 高 | 网关运维 token |
 | `deployment/runtime/secrets/backend_ai_api_key.txt` | 高 | 外部 AI 提供方 token |
@@ -141,10 +143,14 @@ sh deployment/compose/start_stack.sh
 |------|------|
 | 启动并等待健康 | `sh deployment/compose/start_stack.sh` |
 | 打印首登信息 | `sh deployment/compose/print_bootstrap_credentials.sh` |
+| 写入 AI token | `sh deployment/compose/write_backend_ai_api_key.sh` |
+| 切换 AI 模型档位 | `sh deployment/compose/switch_backend_ai_model.sh reasoner` |
 | 运维鉴权回归 | `sh deployment/compose/verify_ops_auth_stack.sh` |
 | 业务链路回归 | `sh deployment/compose/verify_system_stack.sh` |
+| 网关批量上报回归 | `sh deployment/compose/verify_gateway_batch_stack.sh` |
 | 训练档案回归 | `sh deployment/compose/verify_training_archive_stack.sh` |
 | 训练会话汇聚回归 | `sh deployment/compose/verify_workout_aggregation_stack.sh` |
+| AI 报告回归 | `sh deployment/compose/verify_ai_stack.sh` |
 | 数据链路回归 | `sh deployment/compose/verify_database_stack.sh` |
 | 停栈 | `sh deployment/compose/stop_stack.sh` |
 

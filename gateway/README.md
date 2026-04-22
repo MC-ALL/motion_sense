@@ -21,7 +21,7 @@
 
 ## 接口约束
 
-- MQTT topic、payload 字段、后台命令通道路径以 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 为准。
+- MQTT topic、payload 字段、后台命令通道路径以 [design/07-通讯接口定义.md](../design/07-通讯接口定义.md) 为准。
 - `edge_processor` 对外只开放健康与运维接口；业务侧不直接暴露设备管理 REST。
 - 部署与镜像构建统一走 `deployment/gateway/`，不要在源码目录下新增独立部署脚本。
 
@@ -38,6 +38,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace/gateway/device_simulator pyth
 
 - 镜像、默认配置、Broker、InfluxDB 与专项脚本统一位于 `deployment/gateway/`。
 - Linux 正式部署由 `deployment/gateway/compose/docker-compose.yaml` 负责网关相关服务。
+- `device_simulator` 当前提供独立镜像与默认配置，但不默认包含在 Linux 正式 Compose 栈内；需要时单独启动到目标 MQTT 网络。
 - Apple `container` 本地联调通过 `deployment/container/` 与 `deployment/gateway/container/` 的组合脚本完成。
 
 ## 后续改进

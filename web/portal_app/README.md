@@ -50,7 +50,7 @@
 - 默认部署下通过 Nginx 单端口同源代理访问，不直接把浏览器指向多个后端端口。
 - 运行时配置包含：`app_name`、`backend_base_url`、`backend_ws_url`、`ops_base_url`、`ops_ws_url`。
 - 实时仪表盘与 AI 报告页采用“REST 首次加载 + WebSocket 增量更新 + WebSocket 重连后的单次 REST 补同步”，不保留固定低频轮询。
-- 页面说明、文案与权限边界应与 [design/06-网页端.md](/home/circuitx/Work/motion_sense/design/06-网页端.md) 一致。
+- 页面说明、文案与权限边界应与 [design/06-网页端.md](../../design/06-网页端.md) 一致。
 
 ## 测试流程
 
@@ -73,5 +73,5 @@ docker run --rm -v "$PWD:/workspace" -w /workspace/web/portal_app node:24-alpine
 ## 后续改进
 
 - 增加页面级自动化回归测试。
-- 补齐 AI 流式输出、长任务提示与验收流程组件。
+- 补齐 AI 长任务提示、训练时间线、证据视图与验收流程组件；流式输出仍作为后续增强项。
 - 继续优化训练档案、设备管理和健康中心的操作效率。

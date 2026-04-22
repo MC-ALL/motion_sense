@@ -28,3 +28,4 @@ sh deployment/ops_observer/container/verify_ops_observer_api.sh
 ## 后续改进
 
 - 增加 WebSocket 与异常场景验证。
+- 补充与 Linux Compose 正式验收顺序的对应关系说明。

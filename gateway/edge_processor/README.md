@@ -42,7 +42,7 @@
 ## 接口约束
 
 - HTTP 后台交互路径由 `app/settings.py` 管理，默认前缀为 `http://backend:8000/api/v1`。
-- MQTT 主题与消息字段必须对齐 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md)。
+- MQTT 主题与消息字段必须对齐 [design/07-通讯接口定义.md](../../design/07-通讯接口定义.md)。
 - `ops_auth.enforce_rest` / `ops_auth.enforce_ws` 开启后，运维接口必须携带 token。
 - 运行时配置路径固定为 `/runtime/config/edge_processor/app_settings.yaml`，规则与日志模板分别位于 `/runtime/config/edge_processor/rules.yaml`、`logging.yaml`。
 

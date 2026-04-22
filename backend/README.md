@@ -28,7 +28,7 @@
 
 ## 接口约束
 
-- 业务 REST、WebSocket、MQTT 映射统一以 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 为准。
+- 业务 REST、WebSocket、MQTT 映射统一以 [design/07-通讯接口定义.md](../design/07-通讯接口定义.md) 为准。
 - 设备配置结果当前只能确认“网关已执行/已转发”，不代表设备最终 ACK。
 - OTA 相关路由仍保留占位接口，不纳入当前实现范围。
 
@@ -48,6 +48,6 @@ docker run --rm -v "$PWD:/workspace" -w /workspace/backend/api_service python:3.
 
 ## 后续改进
 
-- AI 从当前进程内自动消费继续推进到独立 worker / 队列化。
-- 强化 refresh session 与审计持久化能力。
-- 在不破坏接口契约的前提下补充更多后台集成测试。
+- AI 从当前进程内自动消费继续推进到独立 worker / 队列化，并补细失败恢复。
+- 强化 refresh session、审计持久化与正式推理链路治理能力。
+- 在不破坏接口契约的前提下补充更多后台集成测试与生产化回归。

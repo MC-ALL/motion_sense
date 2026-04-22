@@ -23,7 +23,8 @@
 
 - 页面可见性与权限边界必须与后台角色模型一致。
 - 运行时地址通过 `runtime_config.js` 注入，不依赖构建期 `.env`。
-- 业务和运维接口契约以 [design/06-网页端.md](/home/circuitx/Work/motion_sense/design/06-网页端.md) 与 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 为准。
+- 实时仪表盘与 AI 报告页采用“REST 首次加载 + WebSocket 增量 + WebSocket 重连后单次 REST 补同步”，不保留固定低频轮询。
+- 业务和运维接口契约以 [design/06-网页端.md](../design/06-网页端.md) 与 [design/07-通讯接口定义.md](../design/07-通讯接口定义.md) 为准。
 
 ## 测试流程
 
@@ -41,5 +42,5 @@ docker run --rm -v "$PWD:/workspace" -w /workspace/web/portal_app node:24-alpine
 ## 后续改进
 
 - 增加更多页面级回归测试与自动化 UI 验收。
-- 补齐 AI 流式生成后的前端交互态与人工校对流程。
+- 补训练时间线、结构化证据视图、更细粒度长任务提示与人工校对流程；AI 流式生成仍作为后续增强项。
 - 继续打磨教师/管理员的操作效率与页面引导。

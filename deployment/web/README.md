@@ -48,3 +48,4 @@ sh deployment/compose/start_stack.sh
 
 - 增加前端 smoke test 与静态资源校验。
 - 继续细化远端 SSH 转发访问场景下的部署说明。
+- 补充“WebSocket 重连后单次 REST 补同步”相关的排障说明与浏览器验收要点。

@@ -45,7 +45,7 @@
 - OTA 占位：`POST /api/v1/devices/{id}/ota`、`GET /api/v1/ota/tasks`、`GET /api/v1/ota/tasks/{task_id}`
 
 约束：
-- 路径、字段与权限边界必须与 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 一致。
+- 路径、字段与权限边界必须与 [design/07-通讯接口定义.md](../../design/07-通讯接口定义.md) 一致。
 - `storage_backend` 仅支持 `memory`、`postgres`；`realtime_backend` 仅支持 `local`、`redis`。
 - `ai.provider` 当前支持 `builtin` 与 OpenAI 兼容模式；模型变体通过 `model_variant=reasoner|chat` 切换。
 - `ai.wakeup_backend` 当前支持 `local`、`redis`；Linux Compose 默认使用 `redis` 以适配多实例唤醒。
@@ -76,5 +76,5 @@ docker run --rm -v "$PWD:/workspace" -w /workspace/backend/api_service python:3.
 ## 后续改进
 
 - 将 AI 处理从当前进程内 worker 继续演进到独立任务队列 / 独立进程。
-- 增补流式输出、报告编辑痕迹与更细粒度失败恢复。
-- 强化数据库迁移、会话黑名单与多实例集成测试。
+- 细化 AI 失败分类、超时收敛、重试与人工恢复流程，并继续增强报告内容质量与证据引用。
+- 强化数据库迁移、会话黑名单与多实例集成测试；流式输出仍作为后续增强项。

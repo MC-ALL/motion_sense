@@ -29,6 +29,7 @@
 - `python3 -m compileall backend/api_service/app gateway/edge_processor/app ops_observer/api_service/app`
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/backend/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`
+- `container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/device_simulator python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/ops_observer/api_service python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"`
 - `container run --remove --volume "$PWD:/workspace" --workdir /workspace/web/portal_app node:24-alpine sh -lc "npm ci && npm run build"`
 - `sh deployment/container/build_local_images.sh && sh deployment/gateway/container/prepare_runtime.sh && sh deployment/container/start_local_stack.sh && sh deployment/container/verify_regression_stack.sh && sh deployment/container/stop_local_stack.sh`
@@ -44,16 +45,17 @@
 ## 当前工作记忆
 - 已完成 `04/05/06/09` 第一迭代核心链路、权限模型、健康观测、Apple `container` 整栈回归
 - 已完成部署目录统一重构为 `deployment/<module>/`、仓库级 `deployment/container/`、`deployment/compose/` 与单一 `deployment/runtime/`
-- 已完成 Linux Compose 路径上的 `start_stack.sh`、`verify_ops_auth_stack.sh`、`verify_system_stack.sh`、`verify_training_archive_stack.sh`、`verify_workout_aggregation_stack.sh`、`verify_ai_stack.sh`
+- 已完成 Linux Compose 路径上的 `start_stack.sh`、`verify_ops_auth_stack.sh`、`verify_system_stack.sh`、`verify_gateway_batch_stack.sh`、`verify_training_archive_stack.sh`、`verify_workout_aggregation_stack.sh`、`verify_ai_stack.sh`
 - 已完成单端口同源网页入口、后台与 `ops_observer` 强制鉴权、训练档案聚合、设备管理中的手环绑定维护
-- 已完成后台 AI `queued -> generating -> completed/failed` 基线、重新生成接口与网页 AI 报告详情页联通
+- 已完成后台 AI `queued -> generating -> completed/failed` 基线、重新生成接口、多实例唤醒与网页 AI 报告详情页联通
+- 已完成网关批量上报的最小聚合窗口与阈值触发优化，以及网页端“WebSocket 重连后单次 REST 补同步”策略
 
 ## 下一步
-- 以 `design/08-开发排期.md` 的“当前优先待办（轮询替换与实时链路）”作为统一 TODO 入口；每完成一轮工作后先回查并勾选已完成项
+- 以 `design/08-开发排期.md` 的“2026-04-22 后续工作计划”作为统一后续计划入口；完成一轮工作后先同步回查文档口径
 - 在目标主机执行 `docker compose -f deployment/compose/docker-compose.yaml config`，先确认 Compose `include` 可用
 - Linux 正式部署时补齐 Mosquitto `acl.conf`、`passwd`、证书文件的属主与权限初始化
 - 继续优先做迁移验证、整栈起栈回归，再进入生产化收尾
-- 后台 AI 下一阶段聚焦多实例唤醒、流式输出、失败恢复与正式报告内容增强
+- 后台 AI 下一阶段聚焦独立队列化、失败恢复与正式报告内容增强；流式输出仅作为后续增强项
 - 生产化剩余重点聚焦 MQTT TLS、上线/回滚手册与可观测性补强
 
 ## 提交规范

@@ -106,17 +106,19 @@ ss -ltnp | egrep ':1883|:5432|:6379|:8000|:8080|:8090|:8181'
 ## 6. 防火墙与访问面确认
 
 按当前默认部署，通常只需要按实际访问面开放：
-- `8080/tcp` 网页端
-- `8000/tcp` 后台 API
-- `8090/tcp` 运维观测 API
+- `8080/tcp` 网页端单入口
 - `1883/tcp` MQTT 接入
 
 以下端口通常只建议内网或仅主机侧使用：
+- `8000/tcp`
+- `8090/tcp`
 - `5432/tcp`
 - `6379/tcp`
 - `8181/tcp`
 
 要求：
+- 浏览器访问场景优先只暴露 `8080`，通过同源代理转发 backend 与 `ops_observer`
+- `8000`、`8090` 仅在需要直连 API / 运维接口时再开放到受控来源
 - 如果数据库与 Redis 不需要对外访问，应通过主机防火墙或安全组限制来源
 - 不要默认把 `5432`、`6379`、`8181` 暴露到公网
 
@@ -155,7 +157,7 @@ docker pull node:24-alpine
 - `MOSQUITTO_USER`
 - `MOSQUITTO_PASSWORD`
 - 是否启用 MQTT TLS
-- 网页端是否仍使用默认 `127.0.0.1` 地址，还是改成实际域名 / IP
+- 网页端是否继续使用默认同源配置（推荐），还是显式改成实际域名 / IP / 路径前缀
 
 要求：
 - 正式环境不要长期保留默认数据库密码 `change_me_at_deploy`
@@ -189,6 +191,7 @@ ls -l deployment/runtime/certs
 - `deployment/runtime/config/backend/api_service/bootstrap_admin.txt`
 - `deployment/runtime/config/influxdb/admin_token.txt`
 - `deployment/runtime/config/web/portal_app/runtime_config.js`
+- `deployment/runtime/secrets/backend_gateway_command_token.txt`
 - `deployment/runtime/secrets/edge_processor_ops_token.txt`
 - `deployment/runtime/secrets/mosquitto.passwd`
 

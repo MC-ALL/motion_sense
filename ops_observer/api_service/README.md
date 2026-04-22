@@ -35,7 +35,7 @@
 
 ## 接口约束
 
-- 接口输出字段与权限约束以 [design/09-运维观测端.md](/home/circuitx/Work/motion_sense/design/09-运维观测端.md) 和 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md) 为准。
+- 接口输出字段与权限约束以 [design/09-运维观测端.md](../../design/09-运维观测端.md) 和 [design/07-通讯接口定义.md](../../design/07-通讯接口定义.md) 为准。
 - 运行时配置路径固定为 `/runtime/config/ops_observer/api_service/app_settings.yaml`。
 - SQLite 数据路径默认 `/runtime/data/ops_observer/ops_observer.sqlite3`。
 - 开启 `auth.enforce_rest/ws` 后，网页端必须使用后台 JWT 访问该服务。

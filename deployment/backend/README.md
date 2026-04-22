@@ -17,7 +17,7 @@
 ## 脚本与配置文件
 
 - `api_service/Dockerfile`：构建后台 API 镜像。
-- `api_service/entrypoint.sh`：生成 `/runtime/config/backend/api_service/app_settings.yaml`、后台 bootstrap admin/JWT 运行时文件，以及共享的 `/runtime/secrets/backend_gateway_command_token.txt`。
+- `api_service/entrypoint.sh`：生成 `/runtime/config/backend/api_service/app_settings.yaml`，在首启时回填 bootstrap admin 密码与 JWT secrets，并生成共享的 `/runtime/secrets/backend_gateway_command_token.txt`。
 - `api_service/defaults/default_app_settings.yaml`：后台默认配置模板。
 - `timescaledb/Dockerfile`：构建 TimescaleDB 镜像。
 - `compose/docker-compose.yaml`：定义 `backend_timescaledb`、`backend_redis`、`backend_api_service`。
@@ -53,5 +53,5 @@ sh deployment/compose/start_stack.sh
 ## 后续改进
 
 - 补充数据库迁移策略与版本管理。
-- 继续细化 AI provider 与密钥管理说明。
-- 增补后台单模块 smoke test。
+- 继续细化 AI provider、密钥管理与独立 worker / 队列化部署说明。
+- 增补后台单模块 smoke test 与生产化故障演练说明。

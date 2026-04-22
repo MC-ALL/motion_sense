@@ -16,7 +16,7 @@
 - `verify_system_stack.sh`：验证基础业务链路与网页入口。
 - `verify_database_stack.sh`：验证 TimescaleDB、Redis、InfluxDB 链路。
 - `verify_user_scope_stack.sh`：验证教师/学生权限边界。
-- `verify_regression_stack.sh`：串行执行整栈回归。
+- `verify_regression_stack.sh`：串行执行基础链路、数据库、权限，以及 `deployment/gateway/container/verify_gateway_resilience.sh` 网关韧性回归。
 
 ## 脚本用法
 
@@ -37,7 +37,7 @@ sh deployment/container/stop_local_stack.sh
 ## 基础设施要求
 
 - 所有容器共享 `deployment/runtime/`。
-- 网关专项脚本仍位于 `deployment/gateway/container/`。
+- 网关专项脚本仍位于 `deployment/gateway/container/`，其中 `prepare_runtime.sh` 用于预生成网关运行时目录，`verify_gateway_resilience.sh` 用于 Broker 重连、缓冲补发与规则热重载回归。
 
 ## 后续改进
 

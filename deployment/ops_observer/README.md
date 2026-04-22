@@ -43,3 +43,4 @@ sh deployment/ops_observer/container/verify_ops_observer_api.sh
 
 - 补充运维聚合模块单独起栈与 smoke test 说明。
 - 强化阈值与告警策略的运行时配置方式。
+- 补充聚合层日志/异常观测与生产化验收说明。

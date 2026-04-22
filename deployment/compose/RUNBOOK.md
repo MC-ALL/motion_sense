@@ -119,6 +119,17 @@ sh deployment/compose/verify_system_stack.sh
 - 配置命令闭环通过
 - 网页入口与运维聚合视图通过
 
+## 5.1 网关批量上报验收
+
+```bash
+sh deployment/compose/verify_gateway_batch_stack.sh
+```
+
+预期结果：
+- 网关批量聚合窗口与阈值配置读取通过
+- burst 遥测按单批上传到后台
+- gateway `/ops/v1/stats` 中可见批量上传成功计数与 `last_batch_size`
+
 ## 6. 数据链路验收
 
 ```bash
@@ -175,6 +186,12 @@ sh deployment/compose/verify_ai_stack.sh
 http://127.0.0.1:8080/
 ```
 
+如通过远端 SSH 访问，优先转发单端口：
+
+```bash
+ssh -L 8080:127.0.0.1:8080 user@your-server
+```
+
 人工检查：
 - 使用 bootstrap admin 登录网页端
 - “健康中心”显示 backend / gateway 为 `healthy`
@@ -223,6 +240,12 @@ sh deployment/compose/verify_ops_auth_stack.sh
 
 ```bash
 sh deployment/compose/verify_system_stack.sh
+```
+
+若表现为高频设备数据入库慢、网关 flush 异常或 burst 上报行为异常，再执行：
+
+```bash
+sh deployment/compose/verify_gateway_batch_stack.sh
 ```
 
 若表现为训练档案、绑定维护或训练会话摘要异常，再执行：

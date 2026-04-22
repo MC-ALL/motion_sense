@@ -27,14 +27,15 @@
 
 ## 接口约束
 
-- MQTT 主题与字段名必须对齐 [design/07-通讯接口定义.md](/home/circuitx/Work/motion_sense/design/07-通讯接口定义.md)。
+- MQTT 主题与字段名必须对齐 [design/07-通讯接口定义.md](../../design/07-通讯接口定义.md)。
 - 当前兼容后台与网页实现，手环 `current_equipment_id` 使用字符串设备 ID。
 - 运行时配置文件固定为 `/runtime/config/device_simulator/simulator_settings.yaml`，首次启动由 `deployment/gateway/device_simulator/defaults/default_simulator_settings.yaml` 生成。
 
 ## 测试流程
 
 ```bash
-container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/device_simulator python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+# 从仓库根目录执行
+docker run --rm -v "$PWD:/workspace" -w /workspace/gateway/device_simulator python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
 ```
 
 ## 部署流程
@@ -42,6 +43,7 @@ container run --remove --volume "$PWD:/workspace" --workdir /workspace/gateway/d
 1. 使用 `deployment/gateway/device_simulator/Dockerfile` 构建镜像。
 2. 由 `deployment/gateway/device_simulator/entrypoint.sh` 生成或读取运行时配置。
 3. 根据需要把容器加入本地联调网络或独立测试环境，连接到目标 Mosquitto。
+4. `device_simulator` 当前不在默认 Linux Compose 正式栈中自动启动，主要用于联调、回归和数据打点。
 
 ## 后续改进
 

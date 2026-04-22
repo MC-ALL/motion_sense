@@ -15,7 +15,7 @@
 
 - `web_portal_app` 暴露 `8080` 端口。
 - 运行时配置挂载目录为 `deployment/runtime/config`。
-- 默认通过环境变量覆盖 `backend/ops` 地址和刷新周期。
+- 默认通过环境变量覆盖 `app_name`、`backend/ops` 的 REST/WS 地址，以及 `WEB_PORTAL_RUNTIME_CONFIG_MODE`。
 
 ## 环境配置要求
 
