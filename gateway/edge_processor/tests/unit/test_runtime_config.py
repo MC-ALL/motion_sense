@@ -77,3 +77,18 @@ def test_wait_for_rules_reload_is_notified_by_gateway_config_update(tmp_path: Pa
         assert await waiter is True
 
     asyncio.run(scenario())
+
+
+def test_gateway_config_warns_for_restart_required_batch_fields(caplog) -> None:
+    settings = RuntimeSettings()
+    manager = RuntimeConfigManager(settings)
+
+    manager.update_from_gateway_config(
+        {
+            "batch_interval_s": 5,
+            "batch_min_window_s": 0.5,
+            "batch_trigger_threshold": 32,
+        }
+    )
+
+    assert "restart-required fields" in caplog.text

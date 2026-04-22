@@ -45,7 +45,12 @@ class RuntimeConfigManager:
             self._mark_rules_changed()
             LOGGER.info("updated alert rules from gateway config")
 
-        if "batch_interval_s" in payload or "backend_base_url" in payload:
+        if (
+            "batch_interval_s" in payload
+            or "batch_min_window_s" in payload
+            or "batch_trigger_threshold" in payload
+            or "backend_base_url" in payload
+        ):
             LOGGER.warning(
                 "gateway config contains restart-required fields; change will apply after edge_processor restart"
             )

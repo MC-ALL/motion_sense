@@ -4,6 +4,8 @@ host: 0.0.0.0
 port: 8080
 log_level: INFO
 batch_interval_s: 10
+batch_min_window_s: 1.0
+batch_trigger_threshold: 20
 health_interval_s: 15
 rules_reload_interval_s: 5
 backend:

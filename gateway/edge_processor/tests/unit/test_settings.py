@@ -27,3 +27,24 @@ def test_load_settings_reads_gateway_command_channel_token_from_secret_file(
 
     assert settings.backend.gateway_command_channel_token_file == str(secret_path)
     assert settings.backend.gateway_command_channel_token == "gateway-command-token"
+
+
+def test_load_settings_reads_batch_aggregation_overrides(tmp_path: Path) -> None:
+    config_path = tmp_path / "app_settings.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "app_name: motion-sense-edge-processor",
+                "batch_interval_s: 10",
+                "batch_min_window_s: 0.5",
+                "batch_trigger_threshold: 32",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.batch_interval_s == 10
+    assert settings.batch_min_window_s == 0.5
+    assert settings.batch_trigger_threshold == 32

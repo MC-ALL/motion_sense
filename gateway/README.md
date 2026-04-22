@@ -16,7 +16,7 @@
 
 ## 模块功能
 
-- `edge_processor`：订阅设备 MQTT、写入 InfluxDB 本地缓冲、批量上报后台、通过命令 WebSocket + pending 兜底执行配置命令、输出健康快照。
+- `edge_processor`：订阅设备 MQTT、写入 InfluxDB 本地缓冲、按聚合窗口/阈值策略批量上报后台、通过命令 WebSocket + pending 兜底执行配置命令、输出健康快照。
 - `device_simulator`：批量模拟器材、手环、环境节点的遥测、状态、绑定与异常场景。
 
 ## 接口约束

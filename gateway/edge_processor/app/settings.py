@@ -73,6 +73,8 @@ class RuntimeSettings(BaseModel):
     port: int = 8080
     log_level: str = "INFO"
     batch_interval_s: int = 10
+    batch_min_window_s: float = Field(default=1.0, ge=0.0)
+    batch_trigger_threshold: int = Field(default=20, ge=1)
     command_poll_interval_s: int = 3
     health_interval_s: int = 15
     rules_reload_interval_s: int = 5
@@ -112,6 +114,10 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         raw["gym_id"] = value
     if value := os.environ.get("EDGE_PROCESSOR_BATCH_INTERVAL_S"):
         raw["batch_interval_s"] = int(value)
+    if value := os.environ.get("EDGE_PROCESSOR_BATCH_MIN_WINDOW_S"):
+        raw["batch_min_window_s"] = float(value)
+    if value := os.environ.get("EDGE_PROCESSOR_BATCH_TRIGGER_THRESHOLD"):
+        raw["batch_trigger_threshold"] = int(value)
     if value := os.environ.get("EDGE_PROCESSOR_COMMAND_POLL_INTERVAL_S"):
         raw["command_poll_interval_s"] = int(value)
     if value := os.environ.get("EDGE_PROCESSOR_HEALTH_INTERVAL_S"):

@@ -34,7 +34,7 @@
   - `gym/+/env/+/alert`
   - `gym/+/env/+/status`
   - `gym/+/gateway/+/config`
-- 将事件先写入 InfluxDB 3 Core 本地缓冲，再批量上报后台 `POST /api/v1/ingest/batch`。
+- 将事件先写入 InfluxDB 3 Core 本地缓冲，再按“最小聚合窗口 + 阈值触发 + 定时兜底回放”策略批量上报后台 `POST /api/v1/ingest/batch`。
 - 通过后台命令 WebSocket 接收 `command_ready`，并在长连接异常时回退到 pending 轮询；执行后回报结果。
 - 通过规则文件热重载生成本地告警与 retained 状态。
 - 对外提供 `GET /healthz`、`GET /ops/v1/health`、`GET /ops/v1/health/components`、`GET /ops/v1/stats`、`WS /ops/ws`。
