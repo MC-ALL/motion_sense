@@ -14,7 +14,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class RuntimeConfigManager:
+    """Apply runtime config updates that do not require process restart."""
+
     def __init__(self, settings: RuntimeSettings) -> None:
+        """Create a runtime config manager.
+
+        :param settings: Runtime settings for this edge processor instance.
+        """
         self._settings = settings
         self._rules_path = Path("/runtime/config/edge_processor/rules.yaml")
         self._last_rules_mtime_ns: int | None = None
@@ -22,9 +28,15 @@ class RuntimeConfigManager:
 
     @property
     def rules_path(self) -> Path:
+        """Return the active rules file path watched by the rule engine."""
         return self._rules_path
 
     def update_from_gateway_config(self, payload: dict[str, Any]) -> None:
+        """Apply gateway configuration published through MQTT.
+
+        :param payload: Gateway config payload. Alert rules are written to the
+            runtime rules file; restart-required settings are logged only.
+        """
         alert_rules = payload.get("alert_rules")
         rule_global = payload.get("global")
         time_source = payload.get("time_source")
@@ -56,6 +68,10 @@ class RuntimeConfigManager:
             )
 
     def poll_rules_reload(self) -> bool:
+        """Check whether the rules file changed since the previous poll.
+
+        :return: ``True`` when the rule engine should reload its rules.
+        """
         if not self._rules_path.exists():
             return False
 
@@ -68,6 +84,11 @@ class RuntimeConfigManager:
         return True
 
     async def wait_for_rules_reload(self, timeout_s: float) -> bool:
+        """Wait for an explicit or filesystem-detected rules reload signal.
+
+        :param timeout_s: Maximum seconds to wait before falling back to polling.
+        :return: ``True`` when rules should be reloaded.
+        """
         try:
             await asyncio.wait_for(self._rules_reload_event.wait(), timeout=timeout_s)
         except TimeoutError:
@@ -77,12 +98,14 @@ class RuntimeConfigManager:
         return True
 
     def sync_rules_reload_state(self) -> None:
+        """Align the cached file mtime with the current rules file state."""
         if not self._rules_path.exists():
             self._last_rules_mtime_ns = None
             return
         self._last_rules_mtime_ns = self._rules_path.stat().st_mtime_ns
 
     def _mark_rules_changed(self) -> None:
+        """Mark rules as changed after this process writes the rules file."""
         if self._rules_path.exists():
             self._last_rules_mtime_ns = self._rules_path.stat().st_mtime_ns
         else:
@@ -91,6 +114,7 @@ class RuntimeConfigManager:
 
     @staticmethod
     def _read_yaml(path: Path) -> dict[str, Any]:
+        """Read a YAML mapping from disk, returning an empty mapping if missing."""
         if not path.exists():
             return {}
         return yaml.safe_load(path.read_text(encoding="utf-8")) or {}

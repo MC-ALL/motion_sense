@@ -9,14 +9,29 @@ from app.settings import RuntimeSettings
 
 
 async def _noop_start(self: EdgeProcessorRunner) -> None:
+    """Replace runner startup during API tests.
+
+    :param self: Runner instance owned by the FastAPI app.
+    :return: None.
+    """
     return None
 
 
 async def _noop_stop(self: EdgeProcessorRunner) -> None:
+    """Replace runner shutdown during API tests.
+
+    :param self: Runner instance owned by the FastAPI app.
+    :return: None.
+    """
     return None
 
 
 def _sample_report() -> GatewayHealthReportRequest:
+    """Build a representative gateway health report snapshot.
+
+    :return: Health report containing healthy and offline components for ops
+        endpoint assertions.
+    """
     return GatewayHealthReportRequest(
         gateway_id="gw-test-001",
         gym_id="gym-gz-01",
@@ -55,6 +70,13 @@ def _sample_report() -> GatewayHealthReportRequest:
 
 
 def test_gateway_ops_endpoints_return_latest_snapshot(monkeypatch) -> None:
+    """Verify ops REST endpoints expose latest health and counter state.
+
+    :param monkeypatch: Pytest fixture used to disable runner background
+        startup and shutdown.
+    :return: None. Assertions validate health summary, component list, and
+        stats payload.
+    """
     monkeypatch.setattr(EdgeProcessorRunner, "start", _noop_start)
     monkeypatch.setattr(EdgeProcessorRunner, "stop", _noop_stop)
 
@@ -90,6 +112,12 @@ def test_gateway_ops_endpoints_return_latest_snapshot(monkeypatch) -> None:
 
 
 def test_gateway_ops_websocket_ping_pong(monkeypatch) -> None:
+    """Verify ops WebSocket sends an initial snapshot and responds to ping.
+
+    :param monkeypatch: Pytest fixture used to disable runner background
+        startup and shutdown.
+    :return: None. Assertions validate the snapshot envelope and pong reply.
+    """
     monkeypatch.setattr(EdgeProcessorRunner, "start", _noop_start)
     monkeypatch.setattr(EdgeProcessorRunner, "stop", _noop_stop)
 
@@ -107,6 +135,12 @@ def test_gateway_ops_websocket_ping_pong(monkeypatch) -> None:
 
 
 def test_gateway_ops_rest_requires_token_when_enabled(monkeypatch) -> None:
+    """Verify REST ops endpoints enforce bearer token authentication.
+
+    :param monkeypatch: Pytest fixture used to disable runner background
+        startup and shutdown.
+    :return: None. Assertions cover missing, invalid, and valid token cases.
+    """
     monkeypatch.setattr(EdgeProcessorRunner, "start", _noop_start)
     monkeypatch.setattr(EdgeProcessorRunner, "stop", _noop_stop)
 
@@ -138,6 +172,12 @@ def test_gateway_ops_rest_requires_token_when_enabled(monkeypatch) -> None:
 
 
 def test_gateway_ops_websocket_requires_token_when_enabled(monkeypatch) -> None:
+    """Verify ops WebSocket enforces token authentication.
+
+    :param monkeypatch: Pytest fixture used to disable runner background
+        startup and shutdown.
+    :return: None. Assertions cover missing, invalid, and valid token cases.
+    """
     monkeypatch.setattr(EdgeProcessorRunner, "start", _noop_start)
     monkeypatch.setattr(EdgeProcessorRunner, "stop", _noop_stop)
 

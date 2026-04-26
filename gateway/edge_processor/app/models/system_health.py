@@ -17,6 +17,8 @@ HealthStatus = Literal["healthy", "degraded", "offline", "unknown"]
 
 
 class GatewayHealthComponentInput(BaseModel):
+    """Health state for one gateway-local dependency or component."""
+
     component_id: str
     component_type: ComponentType
     display_name: str
@@ -30,6 +32,8 @@ class GatewayHealthComponentInput(BaseModel):
 
 
 class GatewayHealthReportRequest(BaseModel):
+    """Aggregated gateway health report built from component checks."""
+
     gateway_id: str
     gym_id: str
     reported_at: str

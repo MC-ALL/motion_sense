@@ -12,14 +12,25 @@ from app.settings import RuntimeSettings
 
 
 class GatewayHealthReporter:
+    """Collect local dependency health for ops_observer."""
+
     def __init__(self, settings: RuntimeSettings) -> None:
+        """Create a health reporter.
+
+        :param settings: Runtime settings for local and upstream health probes.
+        """
         self._settings = settings
         self._client = httpx.AsyncClient(timeout=settings.backend.request_timeout_s)
 
     async def close(self) -> None:
+        """Close the shared HTTP client used by health probes."""
         await self._client.aclose()
 
     async def collect_report(self) -> GatewayHealthReportRequest:
+        """Collect a complete gateway health report.
+
+        :return: Component-level health report for this gateway and gym.
+        """
         reported_at = datetime.now(UTC).isoformat()
         return GatewayHealthReportRequest(
             gateway_id=self._settings.gateway_id,
@@ -35,6 +46,7 @@ class GatewayHealthReporter:
         )
 
     async def _check_gateway_api(self, checked_at: str) -> GatewayHealthComponentInput:
+        """Check the edge processor's own HTTP health endpoint."""
         endpoint = f"http://127.0.0.1:{self._settings.port}/healthz"
         return await self._check_http_component(
             component_id="gateway_api",
@@ -45,6 +57,7 @@ class GatewayHealthReporter:
         )
 
     def _edge_processor_component(self, checked_at: str) -> GatewayHealthComponentInput:
+        """Return the process-alive component record."""
         return GatewayHealthComponentInput(
             component_id="edge_processor",
             component_type="edge_processor",
@@ -56,6 +69,7 @@ class GatewayHealthReporter:
         )
 
     async def _check_mqtt_broker(self, checked_at: str) -> GatewayHealthComponentInput:
+        """Check whether the local MQTT broker accepts TCP connections."""
         start = time.monotonic()
         detail = None
         online = False
@@ -87,6 +101,7 @@ class GatewayHealthReporter:
         )
 
     async def _check_influxdb(self, checked_at: str) -> GatewayHealthComponentInput:
+        """Check whether InfluxDB accepts a minimal SQL query."""
         endpoint = f"{self._settings.influxdb.base_url}/api/v3/query_sql"
         start = time.monotonic()
         detail = None
@@ -131,6 +146,7 @@ class GatewayHealthReporter:
         )
 
     async def _check_backend_api(self, checked_at: str) -> GatewayHealthComponentInput:
+        """Check the backend health endpoint configured for this gateway."""
         return await self._check_http_component(
             component_id="backend_api",
             component_type="backend_api",
@@ -148,6 +164,15 @@ class GatewayHealthReporter:
         endpoint: str,
         checked_at: str,
     ) -> GatewayHealthComponentInput:
+        """Check an HTTP component and normalize the result.
+
+        :param component_id: Stable component identifier for ops views.
+        :param component_type: Component type enum value used by ops_observer.
+        :param display_name: Human-readable component name.
+        :param endpoint: HTTP URL to probe.
+        :param checked_at: ISO timestamp shared by this health report.
+        :return: Component health record.
+        """
         start = time.monotonic()
         detail = None
         online = False
@@ -174,6 +199,7 @@ class GatewayHealthReporter:
         )
 
     def _backend_health_url(self) -> str:
+        """Resolve backend health URL from an API base URL."""
         base_url = self._settings.backend.base_url.rstrip("/")
         if base_url.endswith("/api/v1"):
             return f"{base_url[:-7]}{self._settings.backend.health_path}"
@@ -181,10 +207,12 @@ class GatewayHealthReporter:
 
 
 def _latency_ms(start: float) -> int:
+    """Return elapsed milliseconds since a monotonic start time."""
     return max(int((time.monotonic() - start) * 1000), 0)
 
 
 def _response_summary(response: httpx.Response) -> str:
+    """Return a short diagnostic string for a successful HTTP response."""
     if not response.content:
         return f"http {response.status_code}"
     try:

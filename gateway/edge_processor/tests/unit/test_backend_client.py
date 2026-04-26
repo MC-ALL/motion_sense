@@ -9,9 +9,21 @@ from app.settings import RuntimeSettings
 
 
 def test_backend_client_fetches_and_reports_gateway_commands() -> None:
+    """Verify pending command fetch and command result reporting.
+
+    :return: None. Assertions confirm that the backend client parses leased
+        commands, posts execution results, and uses the expected REST paths.
+    """
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Return mocked backend responses for command polling and reporting.
+
+        :param request: Outbound HTTP request issued by ``BackendClient``.
+        :return: HTTP response matching the command API endpoint under test.
+        :raises AssertionError: If the client calls an unexpected method or
+            path.
+        """
         requests.append(request)
 
         if request.method == "GET" and request.url.path == "/api/v1/gateway/gw-test-001/commands/pending":
@@ -88,6 +100,11 @@ def test_backend_client_fetches_and_reports_gateway_commands() -> None:
     )
 
     async def scenario() -> None:
+        """Run the asynchronous client workflow inside the synchronous test.
+
+        :return: None. Assertions validate parsed command fields and returned
+            command result state.
+        """
         await original_client.aclose()
         commands = await client.fetch_pending_commands()
         assert len(commands) == 1

@@ -15,18 +15,33 @@ from app.utils.topic_parser import ParsedTopic
 
 @dataclass(slots=True)
 class BufferedEvent:
+    """Pending ingest event reconstructed from the local InfluxDB buffer."""
+
     event_id: str
     item: IngestItem
 
 
 @dataclass(slots=True)
 class PendingInfluxWrite:
+    """Line protocol body waiting to be flushed to InfluxDB."""
+
     event_id: str
     body: str
 
 
 class InfluxEventBuffer:
+    """Durable local replay buffer backed by InfluxDB 3 Core.
+
+    Each MQTT event is written twice: once into a common replay measurement and
+    once into a kind-specific measurement for local diagnostics. Delivery acks
+    are append-only markers, so replay can survive process restarts.
+    """
+
     def __init__(self, settings: RuntimeSettings) -> None:
+        """Create a buffer client for the configured InfluxDB instance.
+
+        :param settings: Runtime settings containing InfluxDB connection details.
+        """
         self._settings = settings
         self._client = httpx.AsyncClient(
             base_url=settings.influxdb.base_url,
@@ -40,6 +55,7 @@ class InfluxEventBuffer:
         self._pending_notifications: asyncio.Queue[None] = asyncio.Queue(maxsize=1)
 
     async def initialize(self) -> None:
+        """Verify that the configured InfluxDB database is reachable."""
         response = await self._client.post(
             "/api/v3/query_sql",
             json={
@@ -51,10 +67,17 @@ class InfluxEventBuffer:
         response.raise_for_status()
 
     async def close(self) -> None:
+        """Flush queued line protocol writes and close the HTTP client."""
         await self._flush_pending()
         await self._client.aclose()
 
     async def append(self, item: IngestItem, parsed_topic: ParsedTopic) -> str:
+        """Append one ingest event to the local replay buffer.
+
+        :param item: Normalized ingest item built from an MQTT message.
+        :param parsed_topic: Parsed topic fields used as query tags.
+        :return: Deterministic event id derived from kind, topic, and payload.
+        """
         payload_json = _canonical_payload(item.payload)
         event_id = _event_id(item.kind, item.topic, payload_json)
         received_at = datetime.now(UTC)
@@ -91,6 +114,12 @@ class InfluxEventBuffer:
         return event_id
 
     async def list_pending(self, limit: int) -> list[BufferedEvent]:
+        """List undelivered events ordered from oldest to newest.
+
+        :param limit: Maximum number of events to return after delivered markers
+            are filtered out.
+        :return: Buffered events ready for backend replay.
+        """
         await self._flush_pending()
         response = await self._query_sql(_pending_events_query(limit * 8))
         if response.status_code >= 500 or _is_missing_table_response(response):
@@ -132,6 +161,10 @@ class InfluxEventBuffer:
         return events
 
     async def ack_delivered(self, event_ids: list[str]) -> None:
+        """Mark events as delivered after a successful backend upload.
+
+        :param event_ids: Event ids that the backend accepted.
+        """
         if not event_ids:
             return
 
@@ -147,6 +180,7 @@ class InfluxEventBuffer:
         await self._write_lines("\n".join(lines))
 
     async def _flush_pending(self) -> None:
+        """Flush queued line protocol writes in bounded batches."""
         async with self._flush_lock:
             batch: list[PendingInfluxWrite] = []
             max_batch_size = max(1, self._settings.influxdb.write_batch_size)
@@ -162,6 +196,11 @@ class InfluxEventBuffer:
                 await self._write_lines("\n".join(item.body for item in batch))
 
     async def wait_for_pending(self, timeout_s: float) -> bool:
+        """Wait until new pending writes exist or the timeout expires.
+
+        :param timeout_s: Maximum seconds to wait.
+        :return: ``True`` if pending writes are available.
+        """
         if not self._pending_writes.empty():
             return True
         try:
@@ -171,6 +210,7 @@ class InfluxEventBuffer:
             return False
 
     async def _query_sql(self, query: str) -> httpx.Response:
+        """Run a SQL query against the configured InfluxDB database."""
         return await self._client.post(
             "/api/v3/query_sql",
             json={
@@ -181,6 +221,7 @@ class InfluxEventBuffer:
         )
 
     async def _write_lines(self, body: str) -> None:
+        """Write line protocol to InfluxDB using millisecond precision."""
         response = await self._client.post(
             "/api/v3/write_lp",
             params={
@@ -194,6 +235,7 @@ class InfluxEventBuffer:
 
 
 def _pending_events_query(limit: int) -> str:
+    """Build the replay queue query."""
     return f"""
 SELECT
   event_id,
@@ -208,6 +250,7 @@ LIMIT {int(limit)}
 
 
 def _delivered_events_query(limit: int) -> str:
+    """Build the delivered marker query."""
     return f"""
 SELECT
   event_id
@@ -218,6 +261,7 @@ LIMIT {int(limit)}
 
 
 def _parse_jsonl_rows(payload: str) -> list[dict[str, object]]:
+    """Parse InfluxDB JSONL query output into row dictionaries."""
     rows: list[dict[str, object]] = []
     for line in payload.splitlines():
         if not line.strip():
@@ -227,6 +271,7 @@ def _parse_jsonl_rows(payload: str) -> list[dict[str, object]]:
 
 
 def _is_missing_table_response(response: httpx.Response) -> bool:
+    """Return whether InfluxDB reported a missing measurement/table."""
     if response.status_code != 400:
         return False
     body = response.text.lower()
@@ -234,21 +279,25 @@ def _is_missing_table_response(response: httpx.Response) -> bool:
 
 
 def _build_headers(settings: RuntimeSettings) -> dict[str, str]:
+    """Build optional InfluxDB authorization headers."""
     if settings.influxdb.auth_token:
         return {"Authorization": f"Bearer {settings.influxdb.auth_token}"}
     return {}
 
 
 def _canonical_payload(payload: dict) -> str:
+    """Serialize payloads deterministically for idempotent event ids."""
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 def _event_id(kind: str, topic: str, payload_json: str) -> str:
+    """Build a stable id for deduplicating replayed MQTT events."""
     digest = hashlib.sha1(f"{kind}\n{topic}\n{payload_json}".encode("utf-8")).hexdigest()
     return digest
 
 
 def _payload_ts_seconds(item: IngestItem) -> int:
+    """Resolve the payload timestamp, falling back to current time."""
     raw = item.payload.get("ts")
     if isinstance(raw, bool):
         return _to_millis(datetime.now(UTC)) // 1000
@@ -258,6 +307,7 @@ def _payload_ts_seconds(item: IngestItem) -> int:
 
 
 def _to_millis(value: datetime) -> int:
+    """Convert a datetime to Unix milliseconds."""
     return int(value.timestamp() * 1000)
 
 
@@ -271,6 +321,7 @@ def _build_queue_line(
     payload_ts_s: int,
     received_at_ms: int,
 ) -> str:
+    """Build the common replay measurement line for one event."""
     tags = {
         "gateway_id": gateway_id,
         "gym_id": parsed_topic.gym_id,
@@ -298,6 +349,7 @@ def _build_kind_line(
     payload_ts_s: int,
     received_at_ms: int,
 ) -> str:
+    """Build the kind-specific diagnostic measurement line for one event."""
     tags = {
         "gateway_id": gateway_id,
         "gym_id": parsed_topic.gym_id,
@@ -319,6 +371,7 @@ def _build_line(
     fields: dict[str, str | int | float | bool],
     timestamp_ms: int,
 ) -> str:
+    """Build one InfluxDB line protocol record."""
     tags_part = ",".join(
         f"{_escape_tag_key(key)}={_escape_tag_value(value)}" for key, value in tags.items() if value
     )
@@ -329,14 +382,17 @@ def _build_line(
 
 
 def _escape_measurement(value: str) -> str:
+    """Escape an InfluxDB measurement name."""
     return value.replace("\\", "\\\\").replace(",", "\\,").replace(" ", "\\ ")
 
 
 def _escape_tag_key(value: str) -> str:
+    """Escape an InfluxDB tag key."""
     return _escape_tag_value(value)
 
 
 def _escape_tag_value(value: str) -> str:
+    """Escape an InfluxDB tag value."""
     return (
         value.replace("\\", "\\\\")
         .replace(",", "\\,")
@@ -346,6 +402,7 @@ def _escape_tag_value(value: str) -> str:
 
 
 def _escape_field_key(value: str) -> str:
+    """Escape an InfluxDB field key."""
     return (
         value.replace("\\", "\\\\")
         .replace(",", "\\,")
@@ -355,6 +412,7 @@ def _escape_field_key(value: str) -> str:
 
 
 def _format_field_value(value: str | int | float | bool) -> str:
+    """Format a Python scalar as an InfluxDB field value."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):

@@ -14,6 +14,11 @@ router = APIRouter(tags=["ops"])
 def _require_ops_rest_token(
     request: Request,
 ) -> None:
+    """Validate the optional bearer token for gateway ops REST endpoints.
+
+    :param request: FastAPI request carrying app state and authorization header.
+    :raises HTTPException: If auth is enabled and the token is missing or invalid.
+    """
     settings: RuntimeSettings = request.app.state.runtime_settings
     if not settings.ops_auth.enforce_rest:
         return
@@ -33,6 +38,7 @@ def _require_ops_rest_token(
 
 @router.get("/ops/v1/health")
 async def get_gateway_ops_health(request: Request) -> dict:
+    """Return the gateway-level health summary for ops_observer."""
     _require_ops_rest_token(request)
     runner: EdgeProcessorRunner = request.app.state.runner
     summary = await runner.get_ops_health_summary()
@@ -41,6 +47,7 @@ async def get_gateway_ops_health(request: Request) -> dict:
 
 @router.get("/ops/v1/health/components")
 async def get_gateway_ops_components(request: Request) -> list[dict]:
+    """Return component-level gateway health records for ops_observer."""
     _require_ops_rest_token(request)
     runner: EdgeProcessorRunner = request.app.state.runner
     components = await runner.get_ops_components()
@@ -49,6 +56,7 @@ async def get_gateway_ops_components(request: Request) -> list[dict]:
 
 @router.get("/ops/v1/stats")
 async def get_gateway_ops_stats(request: Request) -> dict:
+    """Return gateway runtime counters for ops_observer."""
     _require_ops_rest_token(request)
     runner: EdgeProcessorRunner = request.app.state.runner
     stats = await runner.get_ops_stats()
@@ -57,6 +65,10 @@ async def get_gateway_ops_stats(request: Request) -> dict:
 
 @router.websocket("/ops/ws")
 async def gateway_ops_websocket(websocket: WebSocket) -> None:
+    """Serve gateway ops snapshots and ping/pong over WebSocket.
+
+    :param websocket: FastAPI WebSocket connection from ops_observer.
+    """
     settings: RuntimeSettings = websocket.app.state.runtime_settings
     if settings.ops_auth.enforce_ws:
         expected_token = settings.ops_auth.token

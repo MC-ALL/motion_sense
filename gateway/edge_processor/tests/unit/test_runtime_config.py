@@ -7,6 +7,13 @@ from app.settings import RuntimeSettings
 
 
 def test_gateway_config_rewrites_rules_file(tmp_path: Path, monkeypatch) -> None:
+    """Verify gateway config updates rewrite alert rules on disk.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :param monkeypatch: Pytest fixture used to redirect the manager rules path.
+    :return: None. Assertions validate the rendered rules file contains the
+        updated offline rule.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text("alert_rules: {}\n", encoding="utf-8")
 
@@ -30,6 +37,13 @@ def test_gateway_config_rewrites_rules_file(tmp_path: Path, monkeypatch) -> None
 
 
 def test_gateway_config_updates_rule_global_settings(tmp_path: Path, monkeypatch) -> None:
+    """Verify gateway config can update global rule settings.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :param monkeypatch: Pytest fixture used to redirect the manager rules path.
+    :return: None. Assertions validate persisted check interval and time
+        source settings.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text("alert_rules: {}\nglobal:\n  time_source: payload_ts\n", encoding="utf-8")
 
@@ -45,6 +59,13 @@ def test_gateway_config_updates_rule_global_settings(tmp_path: Path, monkeypatch
 
 
 def test_poll_rules_reload_only_reports_actual_changes(tmp_path: Path, monkeypatch) -> None:
+    """Verify rules reload polling only reports real file changes.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :param monkeypatch: Pytest fixture used to redirect the manager rules path.
+    :return: None. Assertions cover initial sync, no-change polling, and mtime
+        based change detection.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text("alert_rules: {}\n", encoding="utf-8")
 
@@ -62,6 +83,12 @@ def test_poll_rules_reload_only_reports_actual_changes(tmp_path: Path, monkeypat
 
 
 def test_wait_for_rules_reload_is_notified_by_gateway_config_update(tmp_path: Path, monkeypatch) -> None:
+    """Verify gateway config updates notify rules reload waiters.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :param monkeypatch: Pytest fixture used to redirect the manager rules path.
+    :return: None. Assertions confirm the waiter completes after config update.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text("alert_rules: {}\n", encoding="utf-8")
 
@@ -71,6 +98,10 @@ def test_wait_for_rules_reload_is_notified_by_gateway_config_update(tmp_path: Pa
     manager.sync_rules_reload_state()
 
     async def scenario() -> None:
+        """Wait for reload notification while applying a config update.
+
+        :return: None.
+        """
         waiter = asyncio.create_task(manager.wait_for_rules_reload(timeout_s=1.0))
         await asyncio.sleep(0)
         manager.update_from_gateway_config({"alert_rules": {"DEVICE_OFFLINE": {"enabled": True}}})
@@ -80,6 +111,11 @@ def test_wait_for_rules_reload_is_notified_by_gateway_config_update(tmp_path: Pa
 
 
 def test_gateway_config_warns_for_restart_required_batch_fields(caplog) -> None:
+    """Verify runtime config warns about batch fields that need restart.
+
+    :param caplog: Pytest fixture used to inspect emitted log messages.
+    :return: None. Assertions confirm restart-required fields are logged.
+    """
     settings = RuntimeSettings()
     manager = RuntimeConfigManager(settings)
 

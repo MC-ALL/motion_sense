@@ -15,6 +15,8 @@ DEFAULT_GATEWAY_COMMAND_TOKEN_PATH = Path("/runtime/secrets/backend_gateway_comm
 
 
 class HttpBackendSettings(BaseModel):
+    """Backend API endpoints and timeouts used by the gateway."""
+
     base_url: str = "http://backend:8000/api/v1"
     ingest_path: str = "/ingest/batch"
     gateway_command_pending_path: str = "/gateway/{gateway_id}/commands/pending"
@@ -28,6 +30,8 @@ class HttpBackendSettings(BaseModel):
 
 
 class MqttSettings(BaseModel):
+    """Local MQTT broker connection and subscription settings."""
+
     host: str = "mosquitto"
     port: int = 1883
     client_id: str = "gw-001-edge-processor"
@@ -50,6 +54,8 @@ class MqttSettings(BaseModel):
 
 
 class InfluxdbSettings(BaseModel):
+    """InfluxDB 3 Core settings for the local replay buffer."""
+
     base_url: str = "http://influxdb:8181"
     database_name: str = "gym_local"
     auth_token: str | None = None
@@ -60,12 +66,16 @@ class InfluxdbSettings(BaseModel):
 
 
 class OpsAuthSettings(BaseModel):
+    """Token enforcement settings for gateway ops endpoints."""
+
     enforce_rest: bool = False
     enforce_ws: bool = False
     token: str | None = None
 
 
 class RuntimeSettings(BaseModel):
+    """Top-level runtime configuration for the edge processor service."""
+
     app_name: str = "motion-sense-edge-processor"
     gateway_id: str = "gw-001"
     gym_id: str = "gym-gz-01"
@@ -85,6 +95,13 @@ class RuntimeSettings(BaseModel):
 
 
 def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSettings:
+    """Load runtime settings from YAML, environment variables, and secret files.
+
+    :param config_path: YAML config path. Missing files are allowed and defaults are
+        used instead.
+    :return: Validated runtime settings.
+    :raises RuntimeError: If the combined configuration fails validation.
+    """
     path = Path(config_path)
     raw: dict[str, Any] = {}
     if path.exists():
@@ -99,6 +116,7 @@ def load_settings(config_path: Path | str = DEFAULT_CONFIG_PATH) -> RuntimeSetti
 
 
 def _apply_env_overrides(raw: dict[str, Any]) -> None:
+    """Merge supported environment variables and default secret files into config."""
     backend = raw.setdefault("backend", {})
     influxdb = raw.setdefault("influxdb", {})
     mqtt = raw.setdefault("mqtt", {})
@@ -187,6 +205,7 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
 
 
 def _apply_gateway_command_secret_file(backend: dict[str, Any]) -> None:
+    """Resolve the shared gateway command token from an explicit or default file."""
     configured_path = backend.get("gateway_command_channel_token_file")
     candidate_path = (
         Path(configured_path)

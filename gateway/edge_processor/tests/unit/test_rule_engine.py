@@ -5,6 +5,12 @@ from app.utils.topic_parser import parse_topic
 
 
 def test_rule_engine_uses_window_and_emits_once_until_recovery(tmp_path: Path) -> None:
+    """Verify windowed alerts emit once until telemetry recovers.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :return: None. Assertions cover window accumulation, duplicate
+        suppression, recovery, and a later re-trigger.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text(
         "\n".join(
@@ -42,6 +48,11 @@ def test_rule_engine_uses_window_and_emits_once_until_recovery(tmp_path: Path) -
 
 
 def test_rule_engine_reads_device_offline_timeout(tmp_path: Path) -> None:
+    """Verify device offline timeout and global interval are loaded from rules.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :return: None. Assertions validate offline rule fields and global defaults.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text(
         "\n".join(
@@ -70,6 +81,12 @@ def test_rule_engine_reads_device_offline_timeout(tmp_path: Path) -> None:
 
 
 def test_rule_engine_clears_window_state_after_rule_disabled(tmp_path: Path) -> None:
+    """Verify disabling a rule clears accumulated window state.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :return: None. Assertions ensure re-enabling the rule starts from a clean
+        observation window.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text(
         "\n".join(
@@ -133,6 +150,12 @@ def test_rule_engine_clears_window_state_after_rule_disabled(tmp_path: Path) -> 
 
 
 def test_rule_engine_uses_gateway_received_time_source(tmp_path: Path) -> None:
+    """Verify gateway receive time can drive rule windows.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :return: None. Assertions confirm alert timestamps use
+        ``gateway_received_at_s`` when configured.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text(
         "\n".join(
@@ -162,6 +185,12 @@ def test_rule_engine_uses_gateway_received_time_source(tmp_path: Path) -> None:
 
 
 def test_rule_engine_backend_received_at_falls_back_to_gateway_time(tmp_path: Path) -> None:
+    """Verify unsupported backend time source falls back to gateway time.
+
+    :param tmp_path: Temporary directory used for an isolated rules file.
+    :return: None. Assertions confirm observed time comes from
+        ``gateway_received_at_s`` rather than payload metadata.
+    """
     rules_path = tmp_path / "rules.yaml"
     rules_path.write_text(
         "\n".join(

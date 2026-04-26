@@ -19,6 +19,14 @@ async def batch_uploader_loop(
     event_buffer,
     on_batch_result: BatchResultCallback | None = None,
 ) -> None:
+    """Continuously replay buffered ingest events to the backend.
+
+    :param settings: Runtime settings containing batch and replay thresholds.
+    :param backend_client: Client with a ``post_batch`` coroutine.
+    :param event_buffer: Local buffer exposing pending, wait, and ack operations.
+    :param on_batch_result: Optional callback used by ops counters.
+    :return: This loop runs until cancelled.
+    """
     trigger_threshold = min(
         max(settings.batch_trigger_threshold, 1),
         settings.influxdb.replay_batch_size,
@@ -95,6 +103,13 @@ def _should_wait_for_more_events(
     pending_count: int,
     trigger_threshold: int,
 ) -> bool:
+    """Decide whether the current batch window should aggregate more events.
+
+    :param aggregate_deadline: Monotonic deadline for the current aggregation window.
+    :param pending_count: Number of pending records already visible in the buffer.
+    :param trigger_threshold: Count that causes an immediate upload.
+    :return: ``True`` when the loop should wait before querying the full batch.
+    """
     if aggregate_deadline is None:
         return False
     if pending_count >= trigger_threshold:

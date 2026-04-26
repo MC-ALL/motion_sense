@@ -10,6 +10,8 @@ CommandStatus = Literal["pending", "succeeded", "failed", "timed_out"]
 
 
 class DeviceConfigCommandRecord(BaseModel):
+    """Configuration command leased from the backend command queue."""
+
     command_id: str
     gateway_id: str
     device_id: str
@@ -34,11 +36,15 @@ class DeviceConfigCommandRecord(BaseModel):
 
 
 class GatewayPendingCommandList(BaseModel):
+    """Pending command response returned by the backend for one gateway."""
+
     gateway_id: str
     items: list[DeviceConfigCommandRecord] = Field(default_factory=list)
 
 
 class GatewayCommandResultRequest(BaseModel):
+    """Execution result posted back after the gateway handles a command."""
+
     status: Literal["succeeded", "failed"]
     reported_at: str
     detail: str | None = None

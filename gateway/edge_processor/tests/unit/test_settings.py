@@ -8,6 +8,12 @@ from app.settings import load_settings
 def test_load_settings_reads_gateway_command_channel_token_from_secret_file(
     tmp_path: Path,
 ) -> None:
+    """Verify gateway command token can be loaded from a secret file.
+
+    :param tmp_path: Temporary directory used for config and secret files.
+    :return: None. Assertions validate the configured secret-file path and the
+        loaded token value.
+    """
     config_path = tmp_path / "app_settings.yaml"
     secret_path = tmp_path / "backend_gateway_command_token.txt"
     config_path.write_text(
@@ -30,6 +36,12 @@ def test_load_settings_reads_gateway_command_channel_token_from_secret_file(
 
 
 def test_load_settings_reads_batch_aggregation_overrides(tmp_path: Path) -> None:
+    """Verify batch aggregation settings are loaded from YAML.
+
+    :param tmp_path: Temporary directory used for an isolated config file.
+    :return: None. Assertions validate interval, minimum window, and threshold
+        overrides.
+    """
     config_path = tmp_path / "app_settings.yaml"
     config_path.write_text(
         "\n".join(

@@ -10,9 +10,20 @@ from app.utils.topic_parser import parse_topic
 
 
 def test_influx_event_buffer_uses_write_and_query_endpoints() -> None:
+    """Verify Influx buffer writes, queries, and delivery acknowledgements.
+
+    :return: None. Assertions validate endpoint usage, line protocol content,
+        pending-event parsing, and ack write format.
+    """
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Mock InfluxDB query and line protocol endpoints.
+
+        :param request: Outbound HTTP request issued by ``InfluxEventBuffer``.
+        :return: HTTP response representing readiness, pending rows, or writes.
+        :raises AssertionError: If an unexpected endpoint is called.
+        """
         requests.append(request)
 
         if request.url.path == "/api/v3/query_sql":
@@ -51,6 +62,11 @@ def test_influx_event_buffer_uses_write_and_query_endpoints() -> None:
     )
 
     async def scenario() -> None:
+        """Run append, pending query, and ack operations.
+
+        :return: None. Assertions validate the pending event parsed from the
+            mocked query response.
+        """
         await original_client.aclose()
         await buffer.initialize()
         event_id = await buffer.append(
@@ -94,9 +110,20 @@ def test_influx_event_buffer_uses_write_and_query_endpoints() -> None:
 
 
 def test_influx_event_buffer_treats_missing_tables_as_empty_pending() -> None:
+    """Verify a missing ingest table is treated as no pending data.
+
+    :return: None. Assertions confirm table-not-found responses do not fail
+        replay scans.
+    """
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Mock readiness and missing-table query responses.
+
+        :param request: Outbound HTTP request issued by ``InfluxEventBuffer``.
+        :return: Successful readiness response or missing-table error.
+        :raises AssertionError: If an unexpected endpoint is called.
+        """
         requests.append(request)
 
         if request.url.path == "/api/v3/query_sql":
@@ -118,6 +145,11 @@ def test_influx_event_buffer_treats_missing_tables_as_empty_pending() -> None:
     )
 
     async def scenario() -> None:
+        """Initialize the buffer and query pending rows.
+
+        :return: None. Assertion validates that missing tables yield an empty
+            pending list.
+        """
         await original_client.aclose()
         await buffer.initialize()
         pending = await buffer.list_pending(10)
@@ -128,10 +160,19 @@ def test_influx_event_buffer_treats_missing_tables_as_empty_pending() -> None:
 
 
 def test_influx_event_buffer_wait_for_pending_is_notified_by_append() -> None:
+    """Verify appending an event wakes pending-data waiters.
+
+    :return: None. Assertions confirm ``wait_for_pending`` observes the append
+        notification.
+    """
     settings = RuntimeSettings(influxdb={"base_url": "http://influxdb.test:8181"})
     buffer = InfluxEventBuffer(settings)
 
     async def scenario() -> None:
+        """Start a waiter, append an event, and assert notification delivery.
+
+        :return: None.
+        """
         waiter = asyncio.create_task(buffer.wait_for_pending(1.0))
         await asyncio.sleep(0)
         await buffer.append(
@@ -149,9 +190,21 @@ def test_influx_event_buffer_wait_for_pending_is_notified_by_append() -> None:
 
 
 def test_influx_event_buffer_treats_missing_delivery_log_as_empty_ack_set() -> None:
+    """Verify a missing delivery log does not hide pending ingest rows.
+
+    :return: None. Assertions confirm replay candidates are returned when only
+        the ack table is absent.
+    """
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Mock pending-row query with a missing delivery-log table.
+
+        :param request: Outbound HTTP request issued by ``InfluxEventBuffer``.
+        :return: HTTP response for readiness, delivery-log lookup, or pending
+            events.
+        :raises AssertionError: If an unexpected endpoint is called.
+        """
         requests.append(request)
 
         if request.url.path == "/api/v3/query_sql":
@@ -187,6 +240,10 @@ def test_influx_event_buffer_treats_missing_delivery_log_as_empty_ack_set() -> N
     )
 
     async def scenario() -> None:
+        """Query pending rows while the delivery log is absent.
+
+        :return: None. Assertions validate that the ingest row remains pending.
+        """
         await original_client.aclose()
         await buffer.initialize()
         pending = await buffer.list_pending(10)
@@ -198,9 +255,21 @@ def test_influx_event_buffer_treats_missing_delivery_log_as_empty_ack_set() -> N
 
 
 def test_influx_event_buffer_batches_pending_writes_before_query() -> None:
+    """Verify queued appends are batched before a pending query executes.
+
+    :return: None. Assertions confirm a single line protocol write contains
+        all queued events.
+    """
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Mock InfluxDB responses for batched-write verification.
+
+        :param request: Outbound HTTP request issued by ``InfluxEventBuffer``.
+        :return: HTTP response for readiness, delivery-log lookup, pending
+            query, or write.
+        :raises AssertionError: If an unexpected endpoint is called.
+        """
         requests.append(request)
 
         if request.url.path == "/api/v3/query_sql":
@@ -233,6 +302,10 @@ def test_influx_event_buffer_batches_pending_writes_before_query() -> None:
     )
 
     async def scenario() -> None:
+        """Append multiple events and force the write queue to flush.
+
+        :return: None.
+        """
         await original_client.aclose()
         await buffer.initialize()
         for index in range(3):
@@ -257,9 +330,21 @@ def test_influx_event_buffer_batches_pending_writes_before_query() -> None:
 
 
 def test_influx_event_buffer_prefers_recent_pending_rows_and_restores_order() -> None:
+    """Verify pending queries fetch recent rows then restore chronological order.
+
+    :return: None. Assertions confirm delivered rows are skipped and remaining
+        rows are ordered oldest-first for replay.
+    """
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        """Mock pending and delivered row query responses.
+
+        :param request: Outbound HTTP request issued by ``InfluxEventBuffer``.
+        :return: HTTP response for readiness, delivered IDs, or candidate
+            pending rows.
+        :raises AssertionError: If an unexpected endpoint is called.
+        """
         requests.append(request)
 
         if request.url.path == "/api/v3/query_sql":
@@ -314,6 +399,10 @@ def test_influx_event_buffer_prefers_recent_pending_rows_and_restores_order() ->
     )
 
     async def scenario() -> None:
+        """Collect pending events from mocked out-of-order query rows.
+
+        :return: None. Assertions validate the final replay order.
+        """
         await original_client.aclose()
         await buffer.initialize()
         pending = await buffer.list_pending(2)

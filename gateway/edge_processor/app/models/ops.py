@@ -9,6 +9,8 @@ HealthStatus = Literal["healthy", "degraded", "offline", "unknown"]
 
 
 class GatewayOpsHealthSummary(BaseModel):
+    """Gateway health summary exposed through the ops API and WebSocket."""
+
     module_id: str
     module_type: Literal["gateway"] = "gateway"
     gateway_id: str
@@ -23,6 +25,8 @@ class GatewayOpsHealthSummary(BaseModel):
 
 
 class GatewayOpsStats(BaseModel):
+    """Runtime counters exposed to ops_observer for gateway observability."""
+
     module_id: str
     module_type: Literal["gateway"] = "gateway"
     gateway_id: str
@@ -57,10 +61,14 @@ class GatewayOpsStats(BaseModel):
 
 
 class GatewayOpsSnapshotMessage(BaseModel):
+    """Ops WebSocket snapshot message for gateway health updates."""
+
     type: Literal["ops_snapshot"] = "ops_snapshot"
     data: GatewayOpsHealthSummary
 
 
 class GatewayOpsStatsMessage(BaseModel):
+    """Reserved ops WebSocket stats message shape."""
+
     type: Literal["ops_stats"] = "ops_stats"
     data: dict[str, Any]

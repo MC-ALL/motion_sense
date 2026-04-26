@@ -15,7 +15,13 @@ LOGGER = logging.getLogger(__name__)
 
 
 class MqttPublisher:
+    """Lazy MQTT publisher used for generated alerts, status, and configs."""
+
     def __init__(self, settings: RuntimeSettings) -> None:
+        """Create a lazy MQTT publisher.
+
+        :param settings: Runtime settings containing broker connection details.
+        """
         self._settings = settings
         self._client: Client | None = None
         self._connect_lock = asyncio.Lock()
@@ -28,6 +34,14 @@ class MqttPublisher:
         qos: int,
         retain: bool,
     ) -> None:
+        """Publish a JSON payload to the local MQTT broker.
+
+        :param topic: Destination MQTT topic.
+        :param payload: JSON-serializable object to publish.
+        :param qos: MQTT QoS level for the message.
+        :param retain: Whether the broker should retain the published payload.
+        :raises Exception: Re-raises the final publish failure after one reconnect.
+        """
         encoded_payload = json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
 
         for attempt in range(2):
@@ -46,9 +60,11 @@ class MqttPublisher:
                 await asyncio.sleep(1)
 
     async def close(self) -> None:
+        """Close the MQTT connection if it has been opened."""
         await self._reset_client()
 
     async def _ensure_connected(self) -> Client:
+        """Return a connected MQTT client, creating one lazily if needed."""
         if self._client is not None:
             return self._client
 
@@ -68,6 +84,7 @@ class MqttPublisher:
             return client
 
     async def _reset_client(self) -> None:
+        """Drop and close the cached MQTT client after publish failure or shutdown."""
         async with self._connect_lock:
             client = self._client
             self._client = None

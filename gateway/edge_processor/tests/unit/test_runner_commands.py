@@ -6,7 +6,13 @@ from app.settings import RuntimeSettings
 
 
 class FakeBackendClient:
+    """Backend client fake that records reported command results."""
+
     def __init__(self) -> None:
+        """Initialize captured result reports.
+
+        :return: None.
+        """
         self.reported: list[tuple[str, GatewayCommandResultRequest]] = []
 
     async def report_command_result(
@@ -15,6 +21,12 @@ class FakeBackendClient:
         command_id: str,
         result: GatewayCommandResultRequest,
     ) -> DeviceConfigCommandRecord:
+        """Capture a command result and return the backend's updated record.
+
+        :param command_id: Command ID reported by the runner.
+        :param result: Result payload generated after command execution.
+        :return: Updated command record mirroring backend API behavior.
+        """
         self.reported.append((command_id, result))
         return DeviceConfigCommandRecord(
             command_id=command_id,
@@ -42,7 +54,13 @@ class FakeBackendClient:
 
 
 class FakeMqttPublisher:
+    """MQTT publisher fake that records outbound device config messages."""
+
     def __init__(self) -> None:
+        """Initialize captured MQTT publishes.
+
+        :return: None.
+        """
         self.messages: list[dict[str, object]] = []
 
     async def publish_json(
@@ -53,6 +71,14 @@ class FakeMqttPublisher:
         qos: int,
         retain: bool,
     ) -> None:
+        """Record one JSON publish request.
+
+        :param topic: MQTT topic used by the runner.
+        :param payload: JSON payload sent to the device.
+        :param qos: MQTT QoS selected by the command record.
+        :param retain: MQTT retained flag selected by the command record.
+        :return: None.
+        """
         self.messages.append(
             {
                 "topic": topic,
@@ -64,24 +90,53 @@ class FakeMqttPublisher:
 
 
 class FakeRuntimeConfigManager:
+    """Runtime config fake that records gateway configuration payloads."""
+
     def __init__(self) -> None:
+        """Initialize captured config updates.
+
+        :return: None.
+        """
         self.payloads: list[dict[str, object]] = []
 
     def update_from_gateway_config(self, payload: dict[str, object]) -> None:
+        """Record a gateway runtime config update.
+
+        :param payload: Config payload applied by a gateway command.
+        :return: None.
+        """
         self.payloads.append(payload)
 
 
 class FakeGatewayCommandChannel:
+    """Gateway command channel fake that invokes the wake callback once."""
+
     def __init__(self) -> None:
+        """Initialize listen-call counter.
+
+        :return: None.
+        """
         self.listen_calls = 0
 
     async def listen(self, on_command_ready) -> None:
+        """Invoke the runner wake callback then simulate channel closure.
+
+        :param on_command_ready: Callback passed by the runner when commands
+            are available.
+        :return: None.
+        :raises RuntimeError: Always, to end this test channel loop.
+        """
         self.listen_calls += 1
         await on_command_ready()
         raise RuntimeError("channel closed")
 
 
 def test_runner_executes_gateway_and_device_commands() -> None:
+    """Verify runner command execution for gateway and device targets.
+
+    :return: None. Assertions confirm gateway configs are applied locally,
+        device configs are published to MQTT, and results flush to backend.
+    """
     settings = RuntimeSettings(gateway_id="gw-test-001")
     runner = EdgeProcessorRunner(settings)
     asyncio.run(runner._backend_client.close())
@@ -138,6 +193,10 @@ def test_runner_executes_gateway_and_device_commands() -> None:
     )
 
     async def scenario() -> None:
+        """Execute sample commands and flush cached results.
+
+        :return: None.
+        """
         gateway_result = await runner._execute_command(gateway_command)
         assert gateway_result.status == "succeeded"
         assert fake_runtime_config.payloads[0]["alert_rules"]["DEVICE_OFFLINE"]["enabled"] is True
@@ -157,6 +216,11 @@ def test_runner_executes_gateway_and_device_commands() -> None:
 
 
 def test_runner_gateway_command_channel_wakes_poll_loop() -> None:
+    """Verify the command WebSocket channel wakes the pending poll loop.
+
+    :return: None. Assertions confirm the wake event is set after the fake
+        channel receives ``command_ready``.
+    """
     settings = RuntimeSettings(gateway_id="gw-test-001")
     runner = EdgeProcessorRunner(settings)
     asyncio.run(runner._backend_client.close())
@@ -165,6 +229,10 @@ def test_runner_gateway_command_channel_wakes_poll_loop() -> None:
     runner._gateway_command_channel = FakeGatewayCommandChannel()
 
     async def scenario() -> None:
+        """Run the command channel loop until the wake callback fires.
+
+        :return: None.
+        """
         runner._command_wakeup_event.clear()
         task = asyncio.create_task(runner._command_channel_loop())
         await asyncio.sleep(0)

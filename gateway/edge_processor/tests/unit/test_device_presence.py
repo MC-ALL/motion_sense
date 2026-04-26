@@ -3,6 +3,11 @@ from app.utils.topic_parser import parse_topic
 
 
 def test_device_presence_marks_offline_and_recovers() -> None:
+    """Verify offline transition emits once and resets after recovery.
+
+    :return: None. Assertions cover first timeout, duplicate suppression,
+        recovery, and a second offline transition.
+    """
     tracker = DevicePresenceTracker()
     topic = parse_topic("gym/gym-gz-01/equipment/eq-001/telemetry")
 
@@ -25,6 +30,11 @@ def test_device_presence_marks_offline_and_recovers() -> None:
 
 
 def test_device_presence_uses_gateway_receive_time_instead_of_device_ts() -> None:
+    """Verify offline checks use gateway receive time, not payload timestamp.
+
+    :return: None. Assertions confirm a stale device timestamp does not force
+        an offline transition while the gateway receive time is still fresh.
+    """
     tracker = DevicePresenceTracker()
     topic = parse_topic("gym/gym-gz-01/equipment/eq-001/telemetry")
 
