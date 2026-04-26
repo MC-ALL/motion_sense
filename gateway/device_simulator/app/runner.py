@@ -19,7 +19,15 @@ PUBLISH_GROUPS = ("equipment", "wristband", "env")
 
 
 class DeviceSimulatorRunner:
+    """Coordinate simulated devices and MQTT publishing tasks."""
+
     def __init__(self, settings: RuntimeSettings) -> None:
+        """Create simulator profiles, scenario engine, and publish queues.
+
+        :param settings: Runtime settings controlling device counts, MQTT, and
+            scenario probabilities.
+        :return: None.
+        """
         self._settings = settings
         self._profiles: SimulatorProfiles = build_device_profiles(settings)
         self._engine = ScenarioEngine(settings, self._profiles)
@@ -29,6 +37,12 @@ class DeviceSimulatorRunner:
         }
 
     async def run_forever(self) -> None:
+        """Connect to MQTT and run simulator loops until cancelled.
+
+        :return: This coroutine normally runs forever.
+        :raises asyncio.CancelledError: Propagated when the process is shutting
+            down.
+        """
         while True:
             try:
                 async with AsyncExitStack() as stack:
@@ -60,6 +74,12 @@ class DeviceSimulatorRunner:
                 await asyncio.sleep(2.0)
 
     async def _run_connected(self, publishers: dict[str, SimulatorMqttPublisher]) -> None:
+        """Run all generator and publish loops while MQTT publishers are open.
+
+        :param publishers: Connected publishers keyed by publish group.
+        :return: None. The method returns only when one child task fails or is
+            cancelled.
+        """
         tasks = [
             asyncio.create_task(
                 self._publish_loop(group, publisher),
@@ -68,15 +88,24 @@ class DeviceSimulatorRunner:
             for group, publisher in publishers.items()
         ]
         tasks.extend(
-            asyncio.create_task(self._equipment_loop(profile.identity.device_id), name=f"sim-equipment-{profile.identity.device_id}")
+            asyncio.create_task(
+                self._equipment_loop(profile.identity.device_id),
+                name=f"sim-equipment-{profile.identity.device_id}",
+            )
             for profile in self._profiles.equipment
         )
         tasks.extend(
-            asyncio.create_task(self._wristband_loop(profile.identity.device_id), name=f"sim-wristband-{profile.identity.device_id}")
+            asyncio.create_task(
+                self._wristband_loop(profile.identity.device_id),
+                name=f"sim-wristband-{profile.identity.device_id}",
+            )
             for profile in self._profiles.wristbands
         )
         tasks.extend(
-            asyncio.create_task(self._env_loop(profile.identity.device_id), name=f"sim-env-{profile.identity.device_id}")
+            asyncio.create_task(
+                self._env_loop(profile.identity.device_id),
+                name=f"sim-env-{profile.identity.device_id}",
+            )
             for profile in self._profiles.env_nodes
         )
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
@@ -91,6 +120,11 @@ class DeviceSimulatorRunner:
                     await task
 
     async def _equipment_loop(self, device_id: str) -> None:
+        """Generate equipment messages at the configured interval.
+
+        :param device_id: Equipment device ID to advance.
+        :return: This coroutine runs forever until cancelled.
+        """
         await self._sleep_startup_jitter(device_id)
         interval_s = self._settings.intervals.equipment_telemetry_ms / 1000.0
         while True:
@@ -98,6 +132,11 @@ class DeviceSimulatorRunner:
             await asyncio.sleep(interval_s)
 
     async def _wristband_loop(self, device_id: str) -> None:
+        """Generate wristband messages at the configured interval.
+
+        :param device_id: Wristband device ID to advance.
+        :return: This coroutine runs forever until cancelled.
+        """
         await self._sleep_startup_jitter(device_id)
         interval_s = self._settings.intervals.wristband_telemetry_ms / 1000.0
         while True:
@@ -105,6 +144,11 @@ class DeviceSimulatorRunner:
             await asyncio.sleep(interval_s)
 
     async def _env_loop(self, device_id: str) -> None:
+        """Generate environment-node messages at the configured interval.
+
+        :param device_id: Environment node ID to advance.
+        :return: This coroutine runs forever until cancelled.
+        """
         await self._sleep_startup_jitter(device_id)
         interval_s = self._settings.intervals.env_telemetry_ms / 1000.0
         while True:
@@ -112,10 +156,22 @@ class DeviceSimulatorRunner:
             await asyncio.sleep(interval_s)
 
     async def _enqueue_messages(self, messages: list[PublishedMessage]) -> None:
+        """Route generated messages to per-device-type publish queues.
+
+        :param messages: Messages returned by one scenario-engine step.
+        :return: None.
+        """
         for item in messages:
             await self._publish_queues[_publish_group_for_topic(item.topic)].put(item)
 
     async def _publish_loop(self, group: str, publisher: SimulatorMqttPublisher) -> None:
+        """Publish messages from one group queue.
+
+        :param group: Publish group name, matching one value from
+            ``PUBLISH_GROUPS``.
+        :param publisher: Connected MQTT publisher for this group.
+        :return: This coroutine runs forever until cancelled.
+        """
         queue = self._publish_queues[group]
         while True:
             item = await queue.get()
@@ -123,6 +179,11 @@ class DeviceSimulatorRunner:
             queue.task_done()
 
     async def _sleep_startup_jitter(self, device_id: str) -> None:
+        """Sleep a deterministic per-device startup jitter.
+
+        :param device_id: Device ID used to derive the jitter offset.
+        :return: None.
+        """
         jitter_window_ms = self._settings.intervals.startup_jitter_ms
         if jitter_window_ms <= 0:
             return
@@ -131,6 +192,13 @@ class DeviceSimulatorRunner:
 
 
 def _publish_group_for_topic(topic: str) -> str:
+    """Resolve the simulator publish group from an MQTT topic.
+
+    :param topic: MQTT topic in ``gym/{gym_id}/{device_type}/{device_id}/{action}``
+        form.
+    :return: Publish group used to select the outgoing queue.
+    :raises ValueError: If the topic shape or device type is unsupported.
+    """
     parts = topic.split("/")
     if len(parts) < 4:
         raise ValueError(f"invalid mqtt topic for simulator publish routing: {topic}")

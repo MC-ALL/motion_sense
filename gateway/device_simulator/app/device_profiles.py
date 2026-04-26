@@ -5,6 +5,12 @@ from app.settings import RuntimeSettings
 
 
 def build_device_profiles(settings: RuntimeSettings) -> SimulatorProfiles:
+    """Build deterministic simulator device profiles from runtime settings.
+
+    :param settings: Runtime settings containing gym ID and device counts.
+    :return: Equipment, wristband, and environment profiles used by the
+        scenario engine.
+    """
     gym_id = settings.gym_id
     equipment: list[EquipmentProfile] = []
     wristbands: list[WristbandProfile] = []

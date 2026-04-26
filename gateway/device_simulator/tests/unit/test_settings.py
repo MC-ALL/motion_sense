@@ -4,6 +4,11 @@ from app.settings import load_runtime_settings
 
 
 def test_load_runtime_settings_from_yaml(tmp_path: Path) -> None:
+    """Verify runtime settings are loaded from a YAML file.
+
+    :param tmp_path: Temporary directory used for the isolated settings file.
+    :return: None. Assertions validate top-level, MQTT, and scenario fields.
+    """
     path = tmp_path / "simulator_settings.yaml"
     path.write_text(
         """

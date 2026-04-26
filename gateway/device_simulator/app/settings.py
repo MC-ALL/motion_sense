@@ -11,6 +11,8 @@ DEFAULT_RUNTIME_SETTINGS_PATH = Path("/runtime/config/device_simulator/simulator
 
 
 class MqttSettings(BaseModel):
+    """MQTT broker settings for simulator publishers."""
+
     host: str = "mosquitto"
     port: int = 1883
     username: str = "admin"
@@ -22,6 +24,8 @@ class MqttSettings(BaseModel):
 
 
 class IntervalSettings(BaseModel):
+    """Publish intervals and startup jitter for simulated devices."""
+
     equipment_telemetry_ms: int = Field(default=1000, ge=50)
     wristband_telemetry_ms: int = Field(default=500, ge=50)
     env_telemetry_ms: int = Field(default=5000, ge=500)
@@ -30,6 +34,8 @@ class IntervalSettings(BaseModel):
 
 
 class ScenarioSettings(BaseModel):
+    """Device counts and probability knobs for generated scenarios."""
+
     equipment_count: int = Field(default=10, ge=1)
     wristband_count: int = Field(default=10, ge=1)
     env_count: int = Field(default=10, ge=0)
@@ -43,6 +49,8 @@ class ScenarioSettings(BaseModel):
 
 
 class RuntimeSettings(BaseModel):
+    """Top-level simulator runtime configuration."""
+
     gym_id: str = "gym-gz-01"
     mqtt: MqttSettings = Field(default_factory=MqttSettings)
     intervals: IntervalSettings = Field(default_factory=IntervalSettings)
@@ -50,6 +58,12 @@ class RuntimeSettings(BaseModel):
 
 
 def load_runtime_settings(path: Path | None = None) -> RuntimeSettings:
+    """Load simulator settings from YAML.
+
+    :param path: Optional settings file path. Defaults to the runtime path used
+        by the container entrypoint.
+    :return: Validated runtime settings.
+    """
     settings_path = path or DEFAULT_RUNTIME_SETTINGS_PATH
     raw: dict[str, Any] = {}
     if settings_path.exists():

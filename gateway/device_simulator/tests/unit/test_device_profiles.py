@@ -3,6 +3,11 @@ from app.settings import RuntimeSettings
 
 
 def test_build_device_profiles_uses_expected_counts() -> None:
+    """Verify profile generation respects configured device counts.
+
+    :return: None. Assertions validate generated counts, ID formatting, and the
+        default wristband-to-equipment relay mapping.
+    """
     settings = RuntimeSettings.model_validate(
         {
             "gym_id": "gym-test-01",
