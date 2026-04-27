@@ -57,6 +57,7 @@ sh deployment/compose/start_stack.sh
 |-------|----|---------|------|
 | `BACKEND_STORAGE_BACKEND` | `postgres` | `backend_api_service` | 后台存储后端 |
 | `BACKEND_REALTIME_BACKEND` | `redis` | `backend_api_service` | 后台实时后端 |
+| `BACKEND_REALTIME_TELEMETRY_FLUSH_INTERVAL_MS` | `500` | `backend_api_service` | 遥测实时推送合并窗口，降低网页端高频刷新压力 |
 | `BACKEND_DATABASE_HOST` | `backend_timescaledb` | `backend_api_service` | 后台连接 DB 的容器地址 |
 | `BACKEND_DATABASE_PORT` | `5432` | `backend_api_service` | 后台连接 DB 端口 |
 | `BACKEND_DATABASE_NAME` | `motion_sense` | `backend_api_service` | 后台数据库名 |

@@ -4,6 +4,7 @@ port: 8000
 log_level: INFO
 storage_backend: memory
 realtime_backend: local
+realtime_telemetry_flush_interval_ms: 500
 ws_heartbeat_timeout_s: 45
 cors_origins:
   - "*"

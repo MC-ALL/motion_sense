@@ -47,6 +47,7 @@
 约束：
 - 路径、字段与权限边界必须与 [design/07-通讯接口定义.md](../../design/07-通讯接口定义.md) 一致。
 - `storage_backend` 仅支持 `memory`、`postgres`；`realtime_backend` 仅支持 `local`、`redis`。
+- `realtime_telemetry_flush_interval_ms` 控制实时遥测 WS 合并窗口；默认 `500`，设为 `0` 可恢复逐条推送。
 - `ai.provider` 当前支持 `builtin` 与 OpenAI 兼容模式；模型变体通过 `model_variant=reasoner|chat` 切换。
 - `ai.wakeup_backend` 当前支持 `local`、`redis`；Linux Compose 默认使用 `redis` 以适配多实例唤醒。
 - OpenAI 兼容模式的 token 默认从 `/runtime/secrets/backend_ai_api_key.txt` 读取，不写入仓库。
