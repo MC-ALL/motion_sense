@@ -38,7 +38,7 @@ def test_rule_engine_uses_window_and_emits_once_until_recovery(tmp_path: Path) -
 
     alerts = engine.evaluate_telemetry(topic, {"ts": 102, "co2_ppm": 1300})
     assert len(alerts) == 1
-    assert alerts[0].code == "CO2_HIGH"
+    assert alerts[0].alert_type == "co2_high"
     assert alerts[0].value == 1300
 
     assert engine.evaluate_telemetry(topic, {"ts": 103, "co2_ppm": 1400}) == []
@@ -146,7 +146,7 @@ def test_rule_engine_clears_window_state_after_rule_disabled(tmp_path: Path) -> 
     assert engine.evaluate_telemetry(topic, {"ts": 103, "co2_ppm": 1500}) == []
     alerts = engine.evaluate_telemetry(topic, {"ts": 104, "co2_ppm": 1600})
     assert len(alerts) == 1
-    assert alerts[0].code == "CO2_HIGH"
+    assert alerts[0].alert_type == "co2_high"
 
 
 def test_rule_engine_uses_gateway_received_time_source(tmp_path: Path) -> None:

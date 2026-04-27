@@ -206,14 +206,14 @@ trap 'cleanup_payloads; cleanup' EXIT INT TERM
 
 reconnect_ts="$(date +%s)"
 cat > "${reconnect_payload_file}" <<EOF
-{"ts":${reconnect_ts},"device_id":"eq-reconnect-01","status":"active","rep_count":8,"power_w":288.0,"gateway_id":"gw-001"}
+{"ts":${reconnect_ts},"rep_count":8,"power_w":288.0,"rated_power_w":500.0,"energy_wh":0.5}
 EOF
 
 sh deployment/gateway/container/publish_sample_telemetry.sh \
   "gym/gym-gz-01/equipment/eq-reconnect-01/telemetry" \
   "${reconnect_payload_file}"
 
-broker_reconnect_check="import json, os; body=json.loads(os.environ['BODY_JSON']); assert any(item['payload'].get('device_id') == 'eq-reconnect-01' and item['payload'].get('power_w') == 288.0 and item['payload'].get('ts') == ${reconnect_ts} for item in body)"
+broker_reconnect_check="import json, os; body=json.loads(os.environ['BODY_JSON']); assert any(item['payload'].get('power_w') == 288.0 and item['payload'].get('rated_power_w') == 500.0 and item['payload'].get('ts') == ${reconnect_ts} for item in body)"
 broker_reconnect_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/telemetry/equipment/eq-reconnect-01" \
   "${broker_reconnect_check}" \
@@ -222,7 +222,7 @@ broker_reconnect_json="$(wait_for_json \
 
 pre_reload_ts="$(date +%s)"
 cat > "${rule_payload_a_file}" <<EOF
-{"ts":${pre_reload_ts},"device_id":"env-rule-01","co2_ppm":700,"temperature_c":26.5,"humidity":52.0}
+{"ts":${pre_reload_ts},"temperature":26.5,"humidity":52.0,"co2_ppm":700,"pm2_5":18,"lux":320}
 EOF
 
 sh deployment/gateway/container/publish_sample_telemetry.sh \
@@ -231,7 +231,7 @@ sh deployment/gateway/container/publish_sample_telemetry.sh \
 
 pre_reload_alerts_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/alerts?device_id=env-rule-01" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert not any(item["code"] == "CO2_HIGH" for item in body)' \
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert not any(item.get("payload", {}).get("alert_type") == "co2_high" for item in body)' \
   60 \
   "${backend_auth_header}")"
 
@@ -255,10 +255,10 @@ sleep $((restore_wait_s + 2))
 reload_ts_a="$((pre_reload_ts + 1))"
 reload_ts_b="$((pre_reload_ts + 4))"
 cat > "${rule_payload_a_file}" <<EOF
-{"ts":${reload_ts_a},"device_id":"env-rule-01","co2_ppm":700,"temperature_c":26.5,"humidity":52.0}
+{"ts":${reload_ts_a},"temperature":26.5,"humidity":52.0,"co2_ppm":700,"pm2_5":18,"lux":320}
 EOF
 cat > "${rule_payload_b_file}" <<EOF
-{"ts":${reload_ts_b},"device_id":"env-rule-01","co2_ppm":710,"temperature_c":26.7,"humidity":51.0}
+{"ts":${reload_ts_b},"temperature":26.7,"humidity":51.0,"co2_ppm":710,"pm2_5":19,"lux":330}
 EOF
 
 sh deployment/gateway/container/publish_sample_telemetry.sh \
@@ -270,7 +270,7 @@ sh deployment/gateway/container/publish_sample_telemetry.sh \
 
 rules_reload_alert_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/alerts?device_id=env-rule-01" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert any(item["device_id"]=="env-rule-01" and item["code"]=="CO2_HIGH" for item in body)' \
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert any(item["device_id"]=="env-rule-01" and item.get("payload", {}).get("alert_type")=="co2_high" for item in body)' \
   60 \
   "${backend_auth_header}")"
 
@@ -304,10 +304,10 @@ cleanup_payloads_with_time_source() {
 trap 'cleanup_payloads_with_time_source; cleanup' EXIT INT TERM
 
 cat > "${time_source_payload_a_file}" <<EOF
-{"ts":100,"device_id":"env-time-source-01","co2_ppm":700,"temperature_c":26.5,"humidity":52.0}
+{"ts":100,"temperature":26.5,"humidity":52.0,"co2_ppm":700,"pm2_5":18,"lux":320}
 EOF
 cat > "${time_source_payload_b_file}" <<EOF
-{"ts":101,"device_id":"env-time-source-01","co2_ppm":710,"temperature_c":26.7,"humidity":51.0}
+{"ts":101,"temperature":26.7,"humidity":51.0,"co2_ppm":710,"pm2_5":19,"lux":330}
 EOF
 
 sh deployment/gateway/container/publish_sample_telemetry.sh \
@@ -322,7 +322,7 @@ sh deployment/gateway/container/publish_sample_telemetry.sh \
 
 time_source_alert_json="$(wait_for_json \
   "http://127.0.0.1:${backend_host_port}/api/v1/alerts?device_id=env-time-source-01" \
-  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert any(item["device_id"]=="env-time-source-01" and item["code"]=="CO2_HIGH" for item in body)' \
+  'import json, os; body=json.loads(os.environ["BODY_JSON"]); assert any(item["device_id"]=="env-time-source-01" and item.get("payload", {}).get("alert_type")=="co2_high" for item in body)' \
   60 \
   "${backend_auth_header}")"
 
