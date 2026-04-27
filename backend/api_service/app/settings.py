@@ -99,6 +99,7 @@ class RuntimeSettings(BaseModel):
     log_level: str = "INFO"
     storage_backend: str = "memory"
     realtime_backend: str = "local"
+    realtime_telemetry_flush_interval_ms: int = 500
     ws_heartbeat_timeout_s: int = 45
     ops_refresh_interval_s: int = 15
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
@@ -142,6 +143,8 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         raw["storage_backend"] = value
     if value := os.environ.get("BACKEND_REALTIME_BACKEND"):
         raw["realtime_backend"] = value
+    if value := os.environ.get("BACKEND_REALTIME_TELEMETRY_FLUSH_INTERVAL_MS"):
+        raw["realtime_telemetry_flush_interval_ms"] = int(value)
     if value := os.environ.get("BACKEND_OPS_REFRESH_INTERVAL_S"):
         raw["ops_refresh_interval_s"] = int(value)
     if value := os.environ.get("BACKEND_DATABASE_HOST"):

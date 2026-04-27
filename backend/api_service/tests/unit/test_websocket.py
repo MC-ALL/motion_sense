@@ -10,7 +10,9 @@ from app.settings import RuntimeSettings
 
 
 def test_websocket_ping_pong_and_subscription() -> None:
-    with TestClient(create_app()) as client:
+    settings = RuntimeSettings(realtime_telemetry_flush_interval_ms=10)
+
+    with TestClient(create_app(settings)) as client:
         with client.websocket_connect("/api/ws") as websocket:
             websocket.send_json({"type": "ping"})
             assert websocket.receive_json() == {"type": "pong"}
@@ -43,6 +45,41 @@ def test_websocket_ping_pong_and_subscription() -> None:
             assert pushed["type"] == "telemetry"
             assert pushed["data"]["device_id"] == "eq-002"
             assert pushed["data"]["power_w"] == 420.0
+
+
+def test_websocket_coalesces_realtime_telemetry_by_device() -> None:
+    settings = RuntimeSettings(
+        realtime_backend="local",
+        realtime_telemetry_flush_interval_ms=10,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        with client.websocket_connect("/api/ws") as websocket:
+            response = client.post(
+                "/api/v1/ingest/batch",
+                json={
+                    "gateway_id": "gw-001",
+                    "sent_at": "2026-04-14T15:30:00Z",
+                    "items": [
+                        {
+                            "kind": "telemetry",
+                            "topic": "gym/gym-gz-01/equipment/eq-002/telemetry",
+                            "payload": {"ts": 1712345680, "power_w": 420.0},
+                        },
+                        {
+                            "kind": "telemetry",
+                            "topic": "gym/gym-gz-01/equipment/eq-002/telemetry",
+                            "payload": {"ts": 1712345681, "power_w": 430.0},
+                        },
+                    ],
+                },
+            )
+
+            assert response.status_code == 200
+            pushed = websocket.receive_json()
+            assert pushed["type"] == "telemetry"
+            assert pushed["data"]["device_id"] == "eq-002"
+            assert pushed["data"]["power_w"] == 430.0
 
 
 def test_websocket_alert_broadcast_in_local_realtime_mode() -> None:

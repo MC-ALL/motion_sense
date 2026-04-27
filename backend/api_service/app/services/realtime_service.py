@@ -15,6 +15,9 @@ class RealtimeService:
         self._websocket_manager = websocket_manager
         self._redis: Redis | None = None
         self._listener_task: asyncio.Task[None] | None = None
+        self._telemetry_flush_task: asyncio.Task[None] | None = None
+        self._telemetry_buffer: dict[str, dict] = {}
+        self._telemetry_lock = asyncio.Lock()
 
     async def start(self) -> None:
         if self._settings.realtime_backend != "redis":
@@ -25,6 +28,17 @@ class RealtimeService:
         self._listener_task = asyncio.create_task(self._listen(), name="redis-realtime-listener")
 
     async def stop(self) -> None:
+        telemetry_flush_task = self._telemetry_flush_task
+        self._telemetry_flush_task = None
+        if telemetry_flush_task is not None:
+            telemetry_flush_task.cancel()
+            try:
+                await telemetry_flush_task
+            except asyncio.CancelledError:
+                pass
+
+        await self.flush_telemetry()
+
         if self._listener_task is not None:
             self._listener_task.cancel()
             try:
@@ -38,6 +52,22 @@ class RealtimeService:
             self._redis = None
 
     async def publish(self, message: dict) -> None:
+        if self._should_buffer_telemetry(message):
+            await self._buffer_telemetry(message)
+            return
+
+        await self._deliver(message)
+
+    async def flush_telemetry(self) -> None:
+        async with self._telemetry_lock:
+            messages = list(self._telemetry_buffer.values())
+            self._telemetry_buffer = {}
+            self._telemetry_flush_task = None
+
+        for message in messages:
+            await self._deliver(message)
+
+    async def _deliver(self, message: dict) -> None:
         if self._settings.realtime_backend != "redis":
             await self._websocket_manager.broadcast(message)
             return
@@ -49,6 +79,25 @@ class RealtimeService:
             self._settings.redis.channel,
             json.dumps(message, separators=(",", ":"), ensure_ascii=True),
         )
+
+    def _should_buffer_telemetry(self, message: dict) -> bool:
+        return (
+            message.get("type") == "telemetry"
+            and self._settings.realtime_telemetry_flush_interval_ms > 0
+        )
+
+    async def _buffer_telemetry(self, message: dict) -> None:
+        async with self._telemetry_lock:
+            self._telemetry_buffer[_telemetry_buffer_key(message)] = message
+            if self._telemetry_flush_task is None or self._telemetry_flush_task.done():
+                self._telemetry_flush_task = asyncio.create_task(
+                    self._flush_telemetry_later(),
+                    name="realtime-telemetry-flush",
+                )
+
+    async def _flush_telemetry_later(self) -> None:
+        await asyncio.sleep(self._settings.realtime_telemetry_flush_interval_ms / 1000)
+        await self.flush_telemetry()
 
     async def _listen(self) -> None:
         assert self._redis is not None
@@ -70,3 +119,13 @@ class RealtimeService:
                     await self._websocket_manager.broadcast(message)
         finally:
             await pubsub.aclose()
+
+
+def _telemetry_buffer_key(message: dict) -> str:
+    data = message.get("data")
+    if not isinstance(data, dict):
+        return str(id(message))
+    gym_id = data.get("gym_id", "")
+    device_type = data.get("device_type", "")
+    device_id = data.get("device_id", "")
+    return f"{gym_id}:{device_type}:{device_id}"
