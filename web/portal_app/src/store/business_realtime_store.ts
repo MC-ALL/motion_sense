@@ -13,6 +13,8 @@ import { get_auth_session } from '../utils/auth_session';
 
 const max_points = 200;
 const max_alerts = 50;
+const max_alert_index = 1000;
+const telemetry_flush_interval_ms = 250;
 
 interface BusinessRealtimeState {
   ws_state: 'idle' | 'connecting' | 'open' | 'closed';
@@ -34,8 +36,10 @@ interface BusinessRealtimeState {
 let websocket: WebSocket | null = null;
 let reconnect_timer: number | null = null;
 let ping_timer: number | null = null;
+let telemetry_flush_timer: number | null = null;
 let reconnect_delay_ms = 1000;
 let should_reconnect = true;
+let pending_telemetry_by_device: Record<string, TelemetryMessage['data']> = {};
 
 function clear_timers(): void {
   if (reconnect_timer !== null) {
@@ -46,6 +50,14 @@ function clear_timers(): void {
     window.clearInterval(ping_timer);
     ping_timer = null;
   }
+  if (telemetry_flush_timer !== null) {
+    window.clearTimeout(telemetry_flush_timer);
+    telemetry_flush_timer = null;
+  }
+}
+
+function clear_pending_telemetry(): void {
+  pending_telemetry_by_device = {};
 }
 
 function to_unix_seconds(value: unknown): number | null {
@@ -68,36 +80,42 @@ function extract_live_payload(data: TelemetryMessage['data']): Record<string, un
   return payload;
 }
 
-function apply_telemetry_message(
+function apply_telemetry_messages(
   state: BusinessRealtimeState,
-  message: TelemetryMessage
+  messages: TelemetryMessage['data'][]
 ): Pick<BusinessRealtimeState, 'telemetry_by_device' | 'devices_by_id'> {
-  const telemetry_by_device = {
-    ...state.telemetry_by_device,
-    [message.data.device_id]: [...(state.telemetry_by_device[message.data.device_id] ?? []), message.data].slice(-max_points)
-  };
-
-  const current_device = state.devices_by_id[message.data.device_id];
-  if (!current_device) {
+  if (messages.length === 0) {
     return {
-      telemetry_by_device,
+      telemetry_by_device: state.telemetry_by_device,
       devices_by_id: state.devices_by_id
     };
   }
 
-  const devices_by_id = {
-    ...state.devices_by_id,
-    [message.data.device_id]: {
+  const telemetry_by_device = { ...state.telemetry_by_device };
+  let devices_by_id = state.devices_by_id;
+
+  for (const data of messages) {
+    telemetry_by_device[data.device_id] = [...(telemetry_by_device[data.device_id] ?? []), data].slice(-max_points);
+
+    const current_device = devices_by_id[data.device_id];
+    if (!current_device) {
+      continue;
+    }
+
+    if (devices_by_id === state.devices_by_id) {
+      devices_by_id = { ...state.devices_by_id };
+    }
+    devices_by_id[data.device_id] = {
       ...current_device,
       online: true,
-      status: state.device_status[message.data.device_id]?.status ?? current_device.status,
-      last_seen_ts: to_unix_seconds(message.data.ts) ?? current_device.last_seen_ts,
+      status: state.device_status[data.device_id]?.status ?? current_device.status,
+      last_seen_ts: to_unix_seconds(data.ts) ?? current_device.last_seen_ts,
       last_payload: {
         ...current_device.last_payload,
-        ...extract_live_payload(message.data)
+        ...extract_live_payload(data)
       }
-    }
-  };
+    };
+  }
 
   return { telemetry_by_device, devices_by_id };
 }
@@ -112,11 +130,31 @@ function apply_alert_message(
 
   return {
     recent_alerts,
-    alerts_by_id: {
+    alerts_by_id: trim_alert_index({
       ...state.alerts_by_id,
       [alert.id]: alert
-    }
+    })
   };
+}
+
+function trim_alert_index(alerts_by_id: Record<number, BusinessAlertRecord>): Record<number, BusinessAlertRecord> {
+  const alerts = Object.values(alerts_by_id);
+  if (alerts.length <= max_alert_index) {
+    return alerts_by_id;
+  }
+  return Object.fromEntries(
+    alerts
+      .sort((left, right) => {
+        const left_ts = Date.parse(left.triggered_at);
+        const right_ts = Date.parse(right.triggered_at);
+        if (!Number.isNaN(left_ts) && !Number.isNaN(right_ts) && left_ts !== right_ts) {
+          return right_ts - left_ts;
+        }
+        return right.id - left.id;
+      })
+      .slice(0, max_alert_index)
+      .map((item) => [item.id, item])
+  );
 }
 
 function apply_status_message(
@@ -222,7 +260,7 @@ function apply_binding_remove_message(
 function handle_business_message(state: BusinessRealtimeState, message: BusinessWsMessage): Partial<BusinessRealtimeState> | null {
   switch (message.type) {
     case 'telemetry':
-      return apply_telemetry_message(state, message);
+      return null;
     case 'alert':
       return apply_alert_message(state, message.data);
     case 'device_status':
@@ -269,12 +307,14 @@ export const use_business_realtime_store = create<BusinessRealtimeState>((set, g
     if (!session?.access_token) {
       should_reconnect = false;
       clear_timers();
+      clear_pending_telemetry();
       set({ ws_state: 'idle' });
       return;
     }
 
     should_reconnect = true;
     clear_timers();
+    clear_pending_telemetry();
     set({ ws_state: 'connecting' });
     websocket = create_business_websocket();
 
@@ -290,6 +330,20 @@ export const use_business_realtime_store = create<BusinessRealtimeState>((set, g
 
     websocket.onmessage = (event) => {
       const message = parse_business_message(event.data);
+      if (message.type === 'telemetry') {
+        pending_telemetry_by_device[message.data.device_id] = message.data;
+        if (telemetry_flush_timer === null) {
+          telemetry_flush_timer = window.setTimeout(() => {
+            telemetry_flush_timer = null;
+            const pending_messages = Object.values(pending_telemetry_by_device);
+            clear_pending_telemetry();
+            if (pending_messages.length > 0) {
+              set((state) => apply_telemetry_messages(state, pending_messages));
+            }
+          }, telemetry_flush_interval_ms);
+        }
+        return;
+      }
       set((state) => handle_business_message(state, message) ?? {});
     };
 
@@ -309,6 +363,7 @@ export const use_business_realtime_store = create<BusinessRealtimeState>((set, g
   disconnect: () => {
     should_reconnect = false;
     clear_timers();
+    clear_pending_telemetry();
     if (websocket) {
       websocket.close();
       websocket = null;
@@ -318,11 +373,12 @@ export const use_business_realtime_store = create<BusinessRealtimeState>((set, g
   hydrate_snapshot: ({ devices, alerts }) => {
     set((state) => ({
       devices_by_id: Object.fromEntries(devices.map((item) => [item.device_id, item])),
-      alerts_by_id: Object.fromEntries(alerts.map((item) => [item.id, item])),
+      alerts_by_id: trim_alert_index(Object.fromEntries(alerts.map((item) => [item.id, item]))),
       recent_alerts: state.recent_alerts.filter((item) => !item.is_ack).slice(0, max_alerts)
     }));
   },
   clear_snapshot: () => {
+    clear_pending_telemetry();
     set({
       telemetry_by_device: {},
       recent_alerts: [],
