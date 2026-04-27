@@ -392,7 +392,7 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | 字段 | 类型 / 枚举 | 必填 | 来源 | 说明 |
 |---|---|---|---|---|
 | `ts` | `int` | 是 | 网关 | 见 Config 通用 Payload 字段 |
-| `target_reps` | `int` | 是 | 网关 | 目标重复次数，非负整数 |
+| `target_reps` | `int` | 是 | 网关 | 目标重复次数，正整数 |
 
 ### 7.4 Wristband Payload 字段
 

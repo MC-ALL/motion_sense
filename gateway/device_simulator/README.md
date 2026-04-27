@@ -63,6 +63,7 @@ gateway/device_simulator/
 │   └── unit/
 │       ├── test_device_profiles.py
 │       ├── test_runner.py
+│       ├── test_scenario_engine.py
 │       └── test_settings.py
 ├── pyproject.toml
 └── README.md
@@ -94,6 +95,8 @@ gateway/device_simulator/
 
 ## 5. MQTT 输出
 
+模拟器输出以 [docs/mqtt-schema.md](../../docs/mqtt-schema.md) 的 `v1.0.0-rc1` 为字段规范。设备身份只放在 topic 中，payload 不重复携带 `device_id`、`gym_id`、`wristband_id` 或 `node_id`。
+
 ### 5.1 主题规则
 
 模拟器生成的 topic 使用统一结构：
@@ -101,8 +104,6 @@ gateway/device_simulator/
 ```text
 gym/{gym_id}/{device_type}/{device_id}/{action}
 ```
-
-字段说明：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -122,39 +123,29 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 
 ### 5.2 发布清单
 
-实际代码生成的 topic 清单如下：
-
 | 主题 | 来源方法 | 说明 |
 | --- | --- | --- |
-| `gym/{gym_id}/equipment/{device_id}/telemetry` | `step_equipment` | 器材功率、次数、角度、电压电流等遥测。 |
-| `gym/{gym_id}/equipment/{device_id}/status` | `step_equipment` | 器材在线、离线、活跃、空闲状态。 |
+| `gym/{gym_id}/equipment/{device_id}/telemetry` | `step_equipment` | 器材功率、次数、额定功率、角度、电压电流等遥测。 |
+| `gym/{gym_id}/equipment/{device_id}/status` | `step_equipment` | 器材离线、工作、待机状态。 |
 | `gym/{gym_id}/wristband/{device_id}/telemetry` | `step_wristband` | 手环心率、步数、电量、IMU、当前绑定器材等遥测。 |
-| `gym/{gym_id}/wristband/{device_id}/status` | `step_wristband` | 手环在线/离线状态。 |
+| `gym/{gym_id}/wristband/{device_id}/status` | `step_wristband` | 手环离线/待机状态。 |
 | `gym/{gym_id}/wristband/{device_id}/binding` | `step_wristband` | 手环绑定或解绑器材事件。 |
 | `gym/{gym_id}/wristband/{device_id}/alert` | `step_wristband` | 手环 P0 告警和低电量告警。 |
-| `gym/{gym_id}/env/{device_id}/telemetry` | `step_env` | 环境温湿度、照度、CO2、颗粒物、Wi-Fi 信号。 |
-| `gym/{gym_id}/env/{device_id}/status` | `step_env` | 环境节点在线/离线状态。 |
+| `gym/{gym_id}/env/{device_id}/telemetry` | `step_env` | 环境温湿度、照度、CO2、PM2.5。 |
+| `gym/{gym_id}/env/{device_id}/status` | `step_env` | 环境节点离线/待机状态。 |
 
-注意：当前模拟器不会主动发布 `equipment/alert` 或 `env/alert`。器材过载和环境异常通过遥测字段体现，由 `edge_processor` 的规则引擎消费后生成对应告警。当前模拟器器材遥测不会输出 `rated_power_w`，因此只靠模拟器默认数据不会触发 `EQ_OVERLOAD`。
+注意：当前模拟器不会主动发布 `equipment/alert` 或 `env/alert`。器材过载和环境异常通过遥测字段体现，由 `edge_processor` 的规则引擎消费后生成对应告警。
 
 ### 5.3 器材消息
-
-器材状态 topic：
-
-```text
-gym/{gym_id}/equipment/{device_id}/status
-```
 
 状态 payload：
 
 ```json
 {
   "ts": 1712640000,
-  "device_id": "eq-001",
-  "online": true,
   "status": "active",
   "firmware_version": "sim-equipment-1.0.0",
-  "ip": "192.168.10.21"
+  "mac": "02:00:10:00:00:01"
 }
 ```
 
@@ -164,23 +155,16 @@ gym/{gym_id}/equipment/{device_id}/status
 | --- | --- |
 | `offline` | 模拟设备离线。 |
 | `active` | 模拟器材正在运动/工作。 |
-| `idle` | 模拟器材在线但空闲。 |
-
-器材遥测 topic：
-
-```text
-gym/{gym_id}/equipment/{device_id}/telemetry
-```
+| `standby` | 模拟器材在线但空闲。 |
 
 遥测 payload：
 
 ```json
 {
   "ts": 1712640000,
-  "device_id": "eq-001",
-  "status": "active",
   "rep_count": 8,
   "power_w": 320.5,
+  "rated_power_w": 500.0,
   "energy_wh": 0.382,
   "axis_angle": 48.2,
   "voltage_v": 220.8,
@@ -188,42 +172,17 @@ gym/{gym_id}/equipment/{device_id}/telemetry
 }
 ```
 
-字段来源：
-
-| 字段 | 说明 |
-| --- | --- |
-| `rep_count` | 模拟动作次数，设备活跃时递增。 |
-| `power_w` | 当前功率。过载场景下会高于额定功率。 |
-| `energy_wh` | 按功率和发送间隔累计的电量。 |
-| `axis_angle` | 模拟器材轴角度，活跃时范围更大。 |
-| `voltage_v` | 模拟电压。 |
-| `current_ma` | 由功率和电压推导的电流。 |
-
 ### 5.4 手环消息
-
-手环状态 topic：
-
-```text
-gym/{gym_id}/wristband/{device_id}/status
-```
 
 状态 payload：
 
 ```json
 {
   "ts": 1712640000,
-  "device_id": "wb-001",
-  "online": true,
-  "status": "online",
+  "status": "standby",
   "firmware_version": "sim-wristband-1.0.0",
-  "ip": "192.168.20.21"
+  "mac": "02:00:20:00:00:01"
 }
-```
-
-手环遥测 topic：
-
-```text
-gym/{gym_id}/wristband/{device_id}/telemetry
 ```
 
 遥测 payload：
@@ -231,23 +190,14 @@ gym/{gym_id}/wristband/{device_id}/telemetry
 ```json
 {
   "ts": 1712640000,
-  "device_id": "wb-001",
   "heart_rate": 118,
   "step_count": 1024,
   "battery_pct": 95,
-  "accel": {
-    "x": 12,
-    "y": -980,
-    "z": 43
-  },
-  "gyro": {
-    "x": 2,
-    "y": -1,
-    "z": 4
-  },
-  "flags": 1,
   "current_equipment_id": "eq-001",
-  "relayed_by": "eq-001"
+  "relayed_by": "eq-001",
+  "accel": [12, -980, 43],
+  "gyro": [2, -1, 4],
+  "flags": 0
 }
 ```
 
@@ -255,40 +205,23 @@ gym/{gym_id}/wristband/{device_id}/telemetry
 
 | 字段 | 说明 |
 | --- | --- |
-| `heart_rate` | 模拟心率。绑定器材活跃时基线更高。 |
-| `step_count` | 模拟步数。绑定活跃器材时增长更快。 |
-| `battery_pct` | 模拟电量，随时间缓慢降低。 |
-| `accel` | 三轴加速度整数采样。 |
-| `gyro` | 三轴陀螺仪整数采样。 |
-| `flags` | 模拟状态标志位，当前随机取 `0..3`。 |
 | `current_equipment_id` | 当前绑定器材 ID，未绑定时为 `null`。 |
-| `relayed_by` | 当前有绑定器材时才出现，值等于绑定器材 ID。 |
+| `relayed_by` | 当前转发手环数据的器材 ID，未转发时为 `null`。 |
+| `accel` | 三轴加速度数组，顺序固定为 `[x, y, z]`。 |
+| `gyro` | 三轴陀螺仪数组，顺序固定为 `[x, y, z]`。 |
+| `flags` | 保留字段，当前固定为 `0`。 |
 
 ### 5.5 环境消息
-
-环境状态 topic：
-
-```text
-gym/{gym_id}/env/{device_id}/status
-```
 
 状态 payload：
 
 ```json
 {
   "ts": 1712640000,
-  "device_id": "env-001",
-  "online": true,
-  "status": "online",
+  "status": "standby",
   "firmware_version": "sim-env-1.0.0",
-  "ip": "192.168.30.21"
+  "mac": "02:00:30:00:00:01"
 }
-```
-
-环境遥测 topic：
-
-```text
-gym/{gym_id}/env/{device_id}/telemetry
 ```
 
 遥测 payload：
@@ -296,54 +229,15 @@ gym/{gym_id}/env/{device_id}/telemetry
 ```json
 {
   "ts": 1712640000,
-  "node_id": "env-001",
   "temperature": 26.2,
   "humidity": 58.4,
-  "lux": 388.1,
   "co2_ppm": 960,
-  "pm1_0": 12,
   "pm2_5": 24,
-  "pm10": 39,
-  "wifi_rssi": -56
+  "lux": 388.1
 }
 ```
 
-字段说明：
-
-| 字段 | 说明 |
-| --- | --- |
-| `node_id` | 环境节点 ID。注意当前代码这里使用 `node_id`，不是 `device_id`。 |
-| `temperature` | 温度，环境异常时可能升高到 `35.5..39.5`。 |
-| `humidity` | 湿度。 |
-| `lux` | 照度。 |
-| `co2_ppm` | CO2 浓度，CO2 异常时可能升高到 `1100..1800`。 |
-| `pm1_0` | PM1.0。 |
-| `pm2_5` | PM2.5，颗粒物异常时可能升高到 `82..150`。 |
-| `pm10` | PM10。 |
-| `wifi_rssi` | Wi-Fi 信号强度。 |
-
-### 5.6 状态消息
-
-状态消息由三类设备共享 `_build_status_payload` 生成。
-
-共同字段：
-
-| 字段 | 说明 |
-| --- | --- |
-| `ts` | 当前 Unix 秒级时间戳。 |
-| `device_id` | 设备 ID。 |
-| `online` | 是否在线。 |
-| `status` | 状态文本。 |
-| `firmware_version` | 模拟固件版本。 |
-| `ip` | 模拟 IP 地址。 |
-
-发送时机：
-
-- 首次 step 一定发送。
-- `online` 或 `status` 文本变化时发送。
-- 距离上次状态发送达到 `intervals.status_interval_s` 时发送。
-
-### 5.7 告警消息
+### 5.6 告警消息
 
 当前只有手环会由模拟器直接发布 `alert`。
 
@@ -352,58 +246,34 @@ gym/{gym_id}/env/{device_id}/telemetry
 ```json
 {
   "ts": 1712640000,
-  "device_id": "wb-001",
-  "priority": "P1",
+  "priority": "P2",
   "level": "warning",
-  "code": "BATTERY_LOW",
+  "alert_type": "battery_low",
   "message": "手环电量过低：9%",
   "value": 9,
   "threshold": 10
 }
 ```
 
-P0 告警会按 `scenario.p0_alert_ratio` 随机生成，`code` 从以下值中选择：
+P0 告警会按 `scenario.p0_alert_ratio` 随机生成，`alert_type` 从以下值中选择：
 
-| code | 示例含义 |
+| alert_type | 示例含义 |
 | --- | --- |
-| `HR_HIGH` | 心率过高。 |
-| `HR_LOW` | 心率过低。 |
-| `FALL_DETECTED` | 检测到跌倒事件。 |
+| `heart_rate_high` | 心率过高。 |
+| `heart_rate_low` | 心率过低。 |
+| `fall_detected` | 检测到跌倒事件。 |
 
-P0 告警示例：
-
-```json
-{
-  "ts": 1712640000,
-  "device_id": "wb-001",
-  "priority": "P0",
-  "level": "critical",
-  "code": "HR_HIGH",
-  "message": "心率过高：182 bpm，持续 35 s",
-  "value": 182,
-  "threshold": 180
-}
-```
-
-### 5.8 绑定消息
+### 5.7 绑定消息
 
 绑定消息只由手环生成。
-
-Topic：
-
-```text
-gym/{gym_id}/wristband/{device_id}/binding
-```
 
 绑定示例：
 
 ```json
 {
   "ts": 1712640000,
-  "wristband_id": "wb-001",
   "equipment_id": "eq-001",
-  "gym_id": "gym-gz-01",
-  "action": "bind",
+  "bound": true,
   "reason": "ble_connected"
 }
 ```
@@ -413,23 +283,21 @@ gym/{gym_id}/wristband/{device_id}/binding
 ```json
 {
   "ts": 1712640060,
-  "wristband_id": "wb-001",
   "equipment_id": "eq-001",
-  "gym_id": "gym-gz-01",
-  "action": "unbind",
+  "bound": false,
   "reason": "idle_timeout"
 }
 ```
 
 实际 `reason`：
 
-| action | reason | 触发场景 |
+| bound | reason | 触发场景 |
 | --- | --- | --- |
-| `bind` | `ble_connected` | 手环选择到新的在线器材。 |
-| `unbind` | `idle_timeout` | 手环在线状态下切换或取消绑定。 |
-| `unbind` | `ble_disconnected` | 手环离线时解除原有绑定。 |
+| `true` | `ble_connected` | 手环选择到新的在线器材。 |
+| `false` | `idle_timeout` | 手环在线状态下切换或取消绑定。 |
+| `false` | `ble_disconnected` | 手环离线时解除原有绑定。 |
 
-### 5.9 示例载荷
+### 5.8 示例载荷
 
 一次典型启动后，单个设备可能先发送 retained 状态，再发送遥测：
 
@@ -653,6 +521,7 @@ gateway/device_simulator/tests/unit/
 | --- | --- |
 | `test_device_profiles.py` | 验证画像数量、设备 ID 格式和手环默认绑定关系。 |
 | `test_runner.py` | 验证 MQTT topic 根据设备类型路由到对应发布分组。 |
+| `test_scenario_engine.py` | 验证模拟器生成的 MQTT payload 符合 `v1.0.0-rc1` 字段规范。 |
 | `test_settings.py` | 验证 YAML 配置能正确加载到运行时配置。 |
 
 ### 8.3 运行方式
@@ -661,17 +530,17 @@ gateway/device_simulator/tests/unit/
 
 ```bash
 docker run --rm \
-  -v "$PWD:/workspace" \
-  -w /workspace/gateway/device_simulator \
+  -v "$PWD:/workspace:ro" \
+  -w /tmp \
   python:3.13-slim \
-  sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+  sh -lc "cp -a /workspace/gateway/device_simulator /tmp/src && cd /tmp/src && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && PYTHONDONTWRITEBYTECODE=1 pytest tests/unit -q -p no:cacheprovider"
 ```
 
 Apple `container` 环境可使用同等命令，把 `docker run --rm` 替换为 `container run --remove`。
 
 ### 8.4 覆盖边界
 
-当前单元测试覆盖配置、画像和发布路由。
+当前单元测试覆盖配置、画像、发布路由和 MQTT payload 字段规范。
 
 当前不在单元测试中覆盖：
 

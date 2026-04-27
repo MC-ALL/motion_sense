@@ -21,7 +21,9 @@
 
 ## 接口约束
 
-- MQTT topic、payload 字段、后台命令通道路径以 [design/07-通讯接口定义.md](../design/07-通讯接口定义.md) 为准。
+- MQTT topic 与 payload 字段以 [docs/mqtt-schema.md](../docs/mqtt-schema.md) 为准。
+- 后台命令通道路径以 [design/07-通讯接口定义.md](../design/07-通讯接口定义.md) 为准。
+- 网关自身配置不再通过 MQTT `gym/{gym_id}/gateway/{gateway_id}/config` 下发；仅通过后台命令通道进入 `edge_processor`。
 - `edge_processor` 对外只开放健康与运维接口；业务侧不直接暴露设备管理 REST。
 - 部署与镜像构建统一走 `deployment/gateway/`，不要在源码目录下新增独立部署脚本。
 
@@ -30,8 +32,8 @@
 ```bash
 # 从仓库根目录执行
 python3 -m compileall gateway/edge_processor/app
-docker run --rm -v "$PWD:/workspace" -w /workspace/gateway/edge_processor python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
-docker run --rm -v "$PWD:/workspace" -w /workspace/gateway/device_simulator python:3.13-slim sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+docker run --rm -v "$PWD:/workspace:ro" -w /tmp python:3.13-slim sh -lc 'cp -a /workspace/gateway/edge_processor /tmp/src && cd /tmp/src && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && PYTHONDONTWRITEBYTECODE=1 pytest tests/unit -q -p no:cacheprovider'
+docker run --rm -v "$PWD:/workspace:ro" -w /tmp python:3.13-slim sh -lc 'cp -a /workspace/gateway/device_simulator /tmp/src && cd /tmp/src && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && PYTHONDONTWRITEBYTECODE=1 pytest tests/unit -q -p no:cacheprovider'
 ```
 
 ## 部署流程

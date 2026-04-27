@@ -6,10 +6,10 @@
 
 核心作用：
 
-- 订阅手环、器械、环境设备和网关配置 MQTT 主题。
+- 订阅手环、器械和环境设备 MQTT 主题。
 - 给入站消息补充网关接收时间，并写入本地 InfluxDB 缓冲。
 - 按批量窗口、阈值和兜底定时策略上传后台。
-- 根据本地规则生成告警和设备在线状态。
+- 根据本地规则生成告警和设备离线状态。
 - 接收后台命令通知，将配置命令应用到网关或转发到设备。
 - 对外提供健康检查、运维状态和运维 WebSocket 推送。
 
@@ -106,7 +106,7 @@ gateway/edge_processor/
 | `app/services/backend_client.py` | 调用后台入库和命令结果接口。 |
 | `app/services/gateway_command_channel.py` | 连接后台命令 WebSocket，接收 `command_ready`。 |
 | `app/services/health_reporter.py` | 采集网关 API、MQTT、InfluxDB、Backend 等组件健康状态。 |
-| `app/services/runtime_config.py` | 应用网关动态配置并触发规则热重载。 |
+| `app/services/runtime_config.py` | 应用后台命令通道下发的网关动态配置并触发规则热重载。 |
 | `app/services/runner.py` | 编排所有后台任务、计数器、规则处理和命令执行。 |
 | `app/utils/topic_parser.py` | 解析 `gym/{gym_id}/{device_type}/{device_id}/{action}` 主题。 |
 
@@ -116,8 +116,8 @@ gateway/edge_processor/
 - 本地缓冲：事件先写入 InfluxDB，后台上传成功后再记录投递状态。
 - 批量上传：支持最小聚合窗口、触发阈值和定时兜底回放。
 - 规则告警：支持设备过载、CO2、PM2.5、温度和设备离线规则。
-- 动态配置：网关配置消息可更新规则文件并触发热重载。
-- 设备状态：设备离线时发布 retained `status`，恢复时发布在线状态。
+- 动态配置：后台命令通道可更新规则文件并触发热重载。
+- 设备状态：设备离线时发布 retained `status`；恢复在线状态由设备自身发布。
 - 后台命令：通过 WebSocket 低延迟唤醒，同时保留 pending 轮询兜底。
 - 运维观测：提供健康摘要、组件状态、运行计数器和 WebSocket 快照。
 
@@ -136,8 +136,8 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | 字段 | 说明 |
 | --- | --- |
 | `gym_id` | 场馆 ID，例如 `gym-gz-01`。 |
-| `device_type` | 设备类型，设备消息使用 `wristband`、`equipment`、`env`；网关本地配置使用 `gateway`。 |
-| `device_id` | 设备 ID 或网关 ID。 |
+| `device_type` | 设备类型，设备消息使用 `wristband`、`equipment`、`env`。 |
+| `device_id` | 设备 ID。 |
 | `action` | 消息动作，例如 `telemetry`、`binding`、`alert`、`status`、`config`。 |
 
 入站 payload 必须是 JSON object。服务接收后会追加：
@@ -158,13 +158,14 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | --- | --- | --- |
 | `gym/+/wristband/+/telemetry` | 手环遥测 | 写入本地缓冲并上传后台。 |
 | `gym/+/wristband/+/binding` | 手环绑定 | 写入本地缓冲并上传后台。 |
+| `gym/+/wristband/+/alert` | 手环告警 | 写入本地缓冲并上传后台。 |
+| `gym/+/wristband/+/status` | 手环状态 | 写入本地缓冲并上传后台。 |
 | `gym/+/equipment/+/telemetry` | 器械遥测 | 写入本地缓冲，参与规则判断和设备在线判断。 |
 | `gym/+/equipment/+/alert` | 器械告警 | 写入本地缓冲并上传后台。 |
 | `gym/+/equipment/+/status` | 器械状态 | 写入本地缓冲并上传后台。 |
 | `gym/+/env/+/telemetry` | 环境遥测 | 写入本地缓冲，参与规则判断和设备在线判断。 |
 | `gym/+/env/+/alert` | 环境告警 | 写入本地缓冲并上传后台。 |
 | `gym/+/env/+/status` | 环境状态 | 写入本地缓冲并上传后台。 |
-| `gym/+/gateway/+/config` | 网关配置 | 仅当 `device_id` 等于当前 `gateway_id` 时应用到本地运行配置，不作为普通事件入库。 |
 
 ### 5.3 遥测上报
 
@@ -301,48 +302,9 @@ gym/{gym_id}/env/{device_id}/status
 
 处理方式：作为 `kind="status"` 的入站事件写入本地缓冲并上传后台。若 `published_by` 为 `edge_processor`，该消息会被忽略。
 
-### 5.7 网关配置
+### 5.7 本地生成消息
 
-适用主题：
-
-```text
-gym/{gym_id}/gateway/{gateway_id}/config
-```
-
-示例：
-
-```json
-{
-  "alert_rules": {
-    "DEVICE_OFFLINE": {
-      "enabled": true,
-      "timeout_s": 45,
-      "level": "warning"
-    },
-    "CO2_HIGH": {
-      "enabled": true,
-      "threshold_ppm": 1000,
-      "window_s": 60,
-      "level": "warning"
-    }
-  },
-  "global": {
-    "check_interval_s": 1,
-    "time_source": "gateway_received_ts"
-  }
-}
-```
-
-处理方式：
-
-- 只有 `gateway_id` 与当前配置一致时才会应用。
-- `alert_rules` 会写入 `/runtime/config/edge_processor/rules.yaml`。
-- `global.check_interval_s` 和 `global.time_source` 会同步到规则文件。
-- `batch_interval_s`、`batch_min_window_s`、`batch_trigger_threshold` 属于需要重启才能完全生效的批上传字段，当前只记录告警日志。
-
-### 5.8 本地生成消息
-
-edge_processor 会根据规则和设备在线状态发布本地消息，并同时写入本地缓冲等待上传后台。
+edge_processor 会根据规则和设备离线状态发布本地消息，并同时写入本地缓冲等待上传后台。设备恢复在线状态由设备自身发布 retained `status`，网关不生成恢复在线状态。
 
 规则告警主题：
 
@@ -402,9 +364,9 @@ gym/{gym_id}/{device_type}/{device_id}/status
 | --- | --- | --- |
 | 规则告警 | `settings.mqtt.qos` | `false` |
 | 离线告警 | `settings.mqtt.qos` | `false` |
-| 在线/离线状态 | `settings.mqtt.qos` | `true` |
+| 离线状态 | `settings.mqtt.qos` | `true` |
 
-### 5.9 示例载荷
+### 5.8 示例载荷
 
 所有入站事件最终上传后台前会变成统一结构：
 
@@ -726,7 +688,9 @@ curl -fsS http://backend:8000/api/v1/gateway/gw-001/commands/pending
       "qos": 1,
       "retain": false,
       "payload": {
-        "telemetry_interval_s": 20
+        "telemetry_interval_s": 20,
+        "co2_threshold_ppm": 1200,
+        "pm25_threshold_ugm3": 75
       },
       "status": "pending",
       "attempt_count": 1,
@@ -827,9 +791,9 @@ flowchart LR
 flowchart LR
   Event[任意设备事件] --> Seen[mark_seen]
   Seen --> Recover{此前离线?}
-  Recover -- 是 --> Online[发布 active status]
+  Recover -- 是 --> Internal[仅更新内部在线状态]
   Timer[离线扫描] --> Timeout{超过 timeout_s?}
-  Timeout -- 是 --> OfflineAlert[发布 DEVICE_OFFLINE alert]
+  Timeout -- 是 --> OfflineAlert[发布 device_offline alert]
   Timeout -- 是 --> OfflineStatus[发布 offline status]
 ```
 
@@ -905,10 +869,10 @@ python3 -m compileall gateway/edge_processor/app
 
 ```bash
 docker run --rm \
-  -v "$PWD:/workspace" \
-  -w /workspace/gateway/edge_processor \
+  -v "$PWD:/workspace:ro" \
+  -w /tmp \
   python:3.13-slim \
-  sh -lc "pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && pytest tests/unit -q"
+  sh -lc "cp -a /workspace/gateway/edge_processor /tmp/src && cd /tmp/src && pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .[dev] >/tmp/pip.log && PYTHONDONTWRITEBYTECODE=1 pytest tests/unit -q -p no:cacheprovider"
 ```
 
 Apple `container` 环境可使用同等命令，把 `docker run --rm` 替换为 `container run --remove`。
