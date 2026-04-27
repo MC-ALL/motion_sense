@@ -26,7 +26,7 @@ def build_device_profiles(settings: RuntimeSettings) -> SimulatorProfiles:
                 idle_power_w=8.0 + index * 0.25,
                 nominal_power_w=180.0 + index * 6.0,
                 firmware_version="sim-equipment-1.0.0",
-                ip_address=f"192.168.10.{index + 20}",
+                mac=f"02:00:10:00:00:{index:02x}",
             )
         )
 
@@ -39,7 +39,7 @@ def build_device_profiles(settings: RuntimeSettings) -> SimulatorProfiles:
                 display_name=f"手环 {index:03d}",
                 relay_equipment_id=relay_equipment_id,
                 firmware_version="sim-wristband-1.0.0",
-                ip_address=f"192.168.20.{index + 20}",
+                mac=f"02:00:20:00:00:{index:02x}",
             )
         )
 
@@ -51,7 +51,7 @@ def build_device_profiles(settings: RuntimeSettings) -> SimulatorProfiles:
                 display_name=f"环境节点 {index:03d}",
                 location=f"区域 {index:02d}",
                 firmware_version="sim-env-1.0.0",
-                ip_address=f"192.168.30.{index + 20}",
+                mac=f"02:00:30:00:00:{index:02x}",
             )
         )
 

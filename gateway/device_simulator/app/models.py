@@ -26,7 +26,7 @@ class EquipmentProfile:
     idle_power_w: float
     nominal_power_w: float
     firmware_version: str
-    ip_address: str
+    mac: str
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ class WristbandProfile:
     display_name: str
     relay_equipment_id: str | None
     firmware_version: str
-    ip_address: str
+    mac: str
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ class EnvProfile:
     display_name: str
     location: str
     firmware_version: str
-    ip_address: str
+    mac: str
 
 
 @dataclass(frozen=True)

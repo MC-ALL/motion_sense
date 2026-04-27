@@ -132,12 +132,10 @@ class ScenarioEngine:
                 PublishedMessage(
                     topic=_topic(state.profile.identity.gym_id, "equipment", device_id, "status"),
                     payload=self._build_status_payload(
-                        device_id=device_id,
-                        online=state.online,
                         status=status_text,
                         ts=now_s,
                         firmware_version=state.profile.firmware_version,
-                        ip_address=state.profile.ip_address,
+                        mac=state.profile.mac,
                     ),
                     retain=True,
                 )
@@ -174,10 +172,9 @@ class ScenarioEngine:
                 topic=_topic(state.profile.identity.gym_id, "equipment", device_id, "telemetry"),
                 payload={
                     "ts": now_s,
-                    "device_id": device_id,
-                    "status": self._equipment_status_text(state),
                     "rep_count": state.rep_count,
                     "power_w": round(power_w, 2),
+                    "rated_power_w": round(state.profile.rated_power_w, 2),
                     "energy_wh": round(state.energy_wh, 3),
                     "axis_angle": round(axis_angle, 2),
                     "voltage_v": round(voltage_v, 2),
@@ -208,7 +205,7 @@ class ScenarioEngine:
                 state.online = True
 
         messages: list[PublishedMessage] = []
-        status_text = "online" if state.online else "offline"
+        status_text = "standby" if state.online else "offline"
         if self._should_emit_status(
             state.last_status_online,
             state.last_status_text,
@@ -221,12 +218,10 @@ class ScenarioEngine:
                 PublishedMessage(
                     topic=_topic(state.profile.identity.gym_id, "wristband", device_id, "status"),
                     payload=self._build_status_payload(
-                        device_id=device_id,
-                        online=state.online,
                         status=status_text,
                         ts=now_s,
                         firmware_version=state.profile.firmware_version,
-                        ip_address=state.profile.ip_address,
+                        mac=state.profile.mac,
                     ),
                     retain=True,
                 )
@@ -242,10 +237,8 @@ class ScenarioEngine:
                         topic=_topic(state.profile.identity.gym_id, "wristband", device_id, "binding"),
                         payload={
                             "ts": now_s,
-                            "wristband_id": device_id,
                             "equipment_id": previous_equipment_id,
-                            "gym_id": state.profile.identity.gym_id,
-                            "action": "unbind",
+                            "bound": False,
                             "reason": "ble_disconnected",
                         },
                     )
@@ -265,10 +258,8 @@ class ScenarioEngine:
                         topic=_topic(state.profile.identity.gym_id, "wristband", device_id, "binding"),
                         payload={
                             "ts": now_s,
-                            "wristband_id": device_id,
                             "equipment_id": previous_equipment_id,
-                            "gym_id": state.profile.identity.gym_id,
-                            "action": "unbind",
+                            "bound": False,
                             "reason": "idle_timeout",
                         },
                     )
@@ -279,10 +270,8 @@ class ScenarioEngine:
                         topic=_topic(state.profile.identity.gym_id, "wristband", device_id, "binding"),
                         payload={
                             "ts": now_s,
-                            "wristband_id": device_id,
                             "equipment_id": state.bound_equipment_id,
-                            "gym_id": state.profile.identity.gym_id,
-                            "action": "bind",
+                            "bound": True,
                             "reason": "ble_connected",
                         },
                     )
@@ -307,10 +296,9 @@ class ScenarioEngine:
                     topic=_topic(state.profile.identity.gym_id, "wristband", device_id, "alert"),
                     payload={
                         "ts": now_s,
-                        "device_id": device_id,
-                        "priority": "P1",
+                        "priority": "P2",
                         "level": "warning",
-                        "code": "BATTERY_LOW",
+                        "alert_type": "battery_low",
                         "message": f"手环电量过低：{int(state.battery_pct)}%",
                         "value": int(state.battery_pct),
                         "threshold": 10,
@@ -321,25 +309,23 @@ class ScenarioEngine:
 
         telemetry_payload: dict[str, object] = {
             "ts": now_s,
-            "device_id": device_id,
             "heart_rate": heart_rate,
             "step_count": state.step_count,
             "battery_pct": int(round(state.battery_pct)),
-            "accel": {
-                "x": state.rng.randint(-180, 180),
-                "y": state.rng.randint(-1050, -880),
-                "z": state.rng.randint(-180, 180),
-            },
-            "gyro": {
-                "x": state.rng.randint(-12, 12),
-                "y": state.rng.randint(-12, 12),
-                "z": state.rng.randint(-12, 12),
-            },
-            "flags": state.rng.randint(0, 3),
             "current_equipment_id": state.bound_equipment_id,
+            "relayed_by": state.bound_equipment_id,
+            "accel": [
+                state.rng.randint(-180, 180),
+                state.rng.randint(-1050, -880),
+                state.rng.randint(-180, 180),
+            ],
+            "gyro": [
+                state.rng.randint(-12, 12),
+                state.rng.randint(-12, 12),
+                state.rng.randint(-12, 12),
+            ],
+            "flags": 0,
         }
-        if state.bound_equipment_id is not None:
-            telemetry_payload["relayed_by"] = state.bound_equipment_id
         messages.append(
             PublishedMessage(
                 topic=_topic(state.profile.identity.gym_id, "wristband", device_id, "telemetry"),
@@ -364,7 +350,7 @@ class ScenarioEngine:
             state.online = True
 
         messages: list[PublishedMessage] = []
-        status_text = "online" if state.online else "offline"
+        status_text = "standby" if state.online else "offline"
         if self._should_emit_status(
             state.last_status_online,
             state.last_status_text,
@@ -377,12 +363,10 @@ class ScenarioEngine:
                 PublishedMessage(
                     topic=_topic(state.profile.identity.gym_id, "env", device_id, "status"),
                     payload=self._build_status_payload(
-                        device_id=device_id,
-                        online=state.online,
                         status=status_text,
                         ts=now_s,
                         firmware_version=state.profile.firmware_version,
-                        ip_address=state.profile.ip_address,
+                        mac=state.profile.mac,
                     ),
                     retain=True,
                 )
@@ -418,15 +402,11 @@ class ScenarioEngine:
                 topic=_topic(state.profile.identity.gym_id, "env", device_id, "telemetry"),
                 payload={
                     "ts": now_s,
-                    "node_id": device_id,
                     "temperature": round(temperature, 2),
                     "humidity": round(humidity, 2),
-                    "lux": round(320 + state.rng.uniform(-45, 120), 2),
                     "co2_ppm": co2_ppm,
-                    "pm1_0": max(1, pm2_5 - state.rng.randint(3, 9)),
                     "pm2_5": pm2_5,
-                    "pm10": pm2_5 + state.rng.randint(6, 20),
-                    "wifi_rssi": -45 - state.rng.randint(0, 20),
+                    "lux": round(320 + state.rng.uniform(-45, 120), 2),
                 },
             )
         )
@@ -462,41 +442,35 @@ class ScenarioEngine:
         """Resolve the public status text for equipment state.
 
         :param state: Equipment runtime state.
-        :return: ``offline``, ``active``, or ``idle``.
+        :return: ``offline``, ``active``, or ``standby``.
         """
         if not state.online:
             return "offline"
         if state.active:
             return "active"
-        return "idle"
+        return "standby"
 
     def _build_status_payload(
         self,
         *,
-        device_id: str,
-        online: bool,
         status: str,
         ts: int,
         firmware_version: str,
-        ip_address: str,
+        mac: str,
     ) -> dict[str, object]:
         """Build a status payload shared by simulated device types.
 
-        :param device_id: Device ID reported in the payload.
-        :param online: Current online flag.
         :param status: Human-readable status text.
         :param ts: Payload timestamp in Unix seconds.
         :param firmware_version: Simulated firmware version.
-        :param ip_address: Simulated device IP address.
+        :param mac: Simulated device MAC address.
         :return: JSON-compatible status payload.
         """
         return {
             "ts": ts,
-            "device_id": device_id,
-            "online": online,
             "status": status,
             "firmware_version": firmware_version,
-            "ip": ip_address,
+            "mac": mac,
         }
 
     def _pick_equipment_binding(self, *, current_equipment_id: str | None, rng: random.Random) -> str | None:
@@ -525,15 +499,14 @@ class ScenarioEngine:
         """
         if state.rng.random() >= self._settings.scenario.p0_alert_ratio:
             return []
-        code = state.rng.choice(["HR_HIGH", "HR_LOW", "FALL_DETECTED"])
+        alert_type = state.rng.choice(["heart_rate_high", "heart_rate_low", "fall_detected"])
         payload: dict[str, object] = {
             "ts": now_s,
-            "device_id": state.profile.identity.device_id,
             "priority": "P0",
             "level": "critical",
-            "code": code,
+            "alert_type": alert_type,
         }
-        if code == "HR_HIGH":
+        if alert_type == "heart_rate_high":
             payload.update(
                 {
                     "message": "心率过高：182 bpm，持续 35 s",
@@ -541,7 +514,7 @@ class ScenarioEngine:
                     "threshold": 180,
                 }
             )
-        elif code == "HR_LOW":
+        elif alert_type == "heart_rate_low":
             payload.update(
                 {
                     "message": "心率过低：38 bpm，持续 20 s",
@@ -553,8 +526,6 @@ class ScenarioEngine:
             payload.update(
                 {
                     "message": "检测到跌倒事件",
-                    "value": 1,
-                    "threshold": 1,
                 }
             )
         return [
