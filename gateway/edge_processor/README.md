@@ -136,7 +136,7 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | 字段 | 说明 |
 | --- | --- |
 | `gym_id` | 场馆 ID，例如 `gym-gz-01`。 |
-| `device_type` | 设备类型，当前使用 `wristband`、`equipment`、`env`、`gateway`。 |
+| `device_type` | 设备类型，设备消息使用 `wristband`、`equipment`、`env`；网关本地配置使用 `gateway`。 |
 | `device_id` | 设备 ID 或网关 ID。 |
 | `action` | 消息动作，例如 `telemetry`、`binding`、`alert`、`status`、`config`。 |
 
@@ -148,7 +148,7 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 }
 ```
 
-`alert` 和 `status` 消息如果带有 `"source":"edge_processor"`，会被识别为本服务生成的内部消息并跳过入站处理，避免重复回环。
+`alert` 和 `status` 消息如果带有 `"published_by":"edge_processor"`，会被识别为本服务生成的内部消息并跳过入站处理，避免重复回环。
 
 ### 5.2 订阅清单
 
@@ -181,11 +181,14 @@ gym/{gym_id}/env/{device_id}/telemetry
 ```json
 {
   "ts": 1712640000,
-  "device_id": "wb-001",
-  "student_id": "stu-001",
-  "heart_rate": 92,
-  "steps": 1280,
-  "battery": 87
+  "heart_rate": 118,
+  "step_count": 1024,
+  "battery_pct": 95,
+  "current_equipment_id": "eq-001",
+  "relayed_by": "eq-001",
+  "accel": [12, -980, 43],
+  "gyro": [2, -1, 4],
+  "flags": 0
 }
 ```
 
@@ -194,11 +197,13 @@ gym/{gym_id}/env/{device_id}/telemetry
 ```json
 {
   "ts": 1712640000,
-  "device_id": "eq-001",
-  "status": "active",
   "rep_count": 8,
   "power_w": 320.5,
-  "rated_power_w": 200.0
+  "rated_power_w": 500.0,
+  "energy_wh": 0.382,
+  "axis_angle": 48.2,
+  "voltage_v": 220.8,
+  "current_ma": 1451.54
 }
 ```
 
@@ -207,11 +212,11 @@ gym/{gym_id}/env/{device_id}/telemetry
 ```json
 {
   "ts": 1712640000,
-  "device_id": "env-zone-a",
-  "co2_ppm": 1120,
-  "pm25_ugm3": 82,
-  "temp_c": 31.2,
-  "humidity_percent": 58
+  "temperature": 26.2,
+  "humidity": 58.4,
+  "co2_ppm": 960,
+  "pm2_5": 24,
+  "lux": 388.1
 }
 ```
 
@@ -222,8 +227,8 @@ gym/{gym_id}/env/{device_id}/telemetry
 | `EQ_OVERLOAD` | `equipment` | `power_w`、`rated_power_w` |
 | `CO2_HIGH` | `env` | `co2_ppm` |
 | `CO2_CRITICAL` | `env` | `co2_ppm` |
-| `PM25_HIGH` | `env` | `pm25_ugm3` |
-| `TEMP_HIGH` | `env` | `temp_c` |
+| `PM25_HIGH` | `env` | `pm2_5` |
+| `TEMP_HIGH` | `env` | `temperature` |
 | `DEVICE_OFFLINE` | `wristband`、`equipment`、`env` | 通过网关接收时间判断静默超时。 |
 
 ### 5.4 绑定上报
@@ -239,9 +244,9 @@ gym/{gym_id}/wristband/{device_id}/binding
 ```json
 {
   "ts": 1712640000,
-  "device_id": "wb-001",
-  "student_id": "stu-001",
-  "binding_status": "bound"
+  "equipment_id": "eq-001",
+  "bound": true,
+  "reason": "ble_connected"
 }
 ```
 
@@ -252,6 +257,7 @@ gym/{gym_id}/wristband/{device_id}/binding
 适用主题：
 
 ```text
+gym/{gym_id}/wristband/{device_id}/alert
 gym/{gym_id}/equipment/{device_id}/alert
 gym/{gym_id}/env/{device_id}/alert
 ```
@@ -261,23 +267,23 @@ gym/{gym_id}/env/{device_id}/alert
 ```json
 {
   "ts": 1712640000,
-  "device_id": "eq-001",
+  "priority": "P1",
   "level": "warning",
-  "code": "MOTOR_TEMP_HIGH",
-  "message": "motor temperature is high",
-  "value": 82.5,
-  "threshold": 80.0,
-  "source": "device"
+  "alert_type": "overload",
+  "message": "equipment overload",
+  "value": 520.0,
+  "threshold": 500.0
 }
 ```
 
-处理方式：作为 `kind="alert"` 的入站事件写入本地缓冲并上传后台。若 `source` 为 `edge_processor`，该消息会被忽略。
+处理方式：作为 `kind="alert"` 的入站事件写入本地缓冲并上传后台。若 `published_by` 为 `edge_processor`，该消息会被忽略。
 
 ### 5.6 状态上报
 
 适用主题：
 
 ```text
+gym/{gym_id}/wristband/{device_id}/status
 gym/{gym_id}/equipment/{device_id}/status
 gym/{gym_id}/env/{device_id}/status
 ```
@@ -287,14 +293,13 @@ gym/{gym_id}/env/{device_id}/status
 ```json
 {
   "ts": 1712640000,
-  "device_id": "eq-001",
-  "online": true,
-  "status": "online",
-  "source": "device"
+  "status": "active",
+  "firmware_version": "eq-fw-1.2.0",
+  "mac": "02:00:00:00:00:01"
 }
 ```
 
-处理方式：作为 `kind="status"` 的入站事件写入本地缓冲并上传后台。若 `source` 为 `edge_processor`，该消息会被忽略。
+处理方式：作为 `kind="status"` 的入站事件写入本地缓冲并上传后台。若 `published_by` 为 `edge_processor`，该消息会被忽略。
 
 ### 5.7 网关配置
 
@@ -350,14 +355,13 @@ gym/{gym_id}/{device_type}/{device_id}/alert
 ```json
 {
   "ts": 1712640060,
-  "device_id": "env-zone-a",
   "priority": "P1",
   "level": "warning",
-  "code": "CO2_HIGH",
+  "alert_type": "co2_high",
   "message": "CO2_HIGH triggered: co2_ppm=1120.00, threshold=1000.00",
   "value": 1120,
   "threshold": 1000,
-  "source": "edge_processor"
+  "published_by": "edge_processor"
 }
 ```
 
@@ -366,14 +370,11 @@ gym/{gym_id}/{device_type}/{device_id}/alert
 ```json
 {
   "ts": 1712640090,
-  "device_id": "eq-001",
   "priority": "P1",
   "level": "warning",
-  "code": "DEVICE_OFFLINE",
+  "alert_type": "device_offline",
   "message": "device offline: no heartbeat for 30s",
-  "value": 30,
-  "threshold": 30,
-  "source": "edge_processor"
+  "published_by": "edge_processor"
 }
 ```
 
@@ -388,10 +389,10 @@ gym/{gym_id}/{device_type}/{device_id}/status
 ```json
 {
   "ts": 1712640090,
-  "device_id": "eq-001",
-  "online": false,
   "status": "offline",
-  "source": "edge_processor"
+  "firmware_version": "edge-generated",
+  "mac": "00:00:00:00:00:00",
+  "published_by": "edge_processor"
 }
 ```
 
@@ -413,9 +414,8 @@ gym/{gym_id}/{device_type}/{device_id}/status
   "topic": "gym/gym-gz-01/equipment/eq-001/telemetry",
   "payload": {
     "ts": 1712640000,
-    "device_id": "eq-001",
     "power_w": 320.5,
-    "rated_power_w": 200.0,
+    "rated_power_w": 500.0,
     "gateway_received_ts": 1712640009
   }
 }
@@ -433,8 +433,8 @@ gym/{gym_id}/{device_type}/{device_id}/status
       "topic": "gym/gym-gz-01/equipment/eq-001/telemetry",
       "payload": {
         "ts": 1712640000,
-        "device_id": "eq-001",
         "power_w": 320.5,
+        "rated_power_w": 500.0,
         "gateway_received_ts": 1712640009
       }
     }
@@ -698,7 +698,7 @@ curl -fsS -X POST http://backend:8000/api/v1/ingest/batch \
       {
         "kind":"telemetry",
         "topic":"gym/gym-gz-01/equipment/eq-001/telemetry",
-        "payload":{"ts":1712640000,"device_id":"eq-001","power_w":320.5}
+        "payload":{"ts":1712640000,"power_w":320.5,"rated_power_w":500.0,"gateway_received_ts":1712640009}
       }
     ]
   }'
@@ -827,7 +827,7 @@ flowchart LR
 flowchart LR
   Event[任意设备事件] --> Seen[mark_seen]
   Seen --> Recover{此前离线?}
-  Recover -- 是 --> Online[发布 online status]
+  Recover -- 是 --> Online[发布 active status]
   Timer[离线扫描] --> Timeout{超过 timeout_s?}
   Timeout -- 是 --> OfflineAlert[发布 DEVICE_OFFLINE alert]
   Timeout -- 是 --> OfflineStatus[发布 offline status]
