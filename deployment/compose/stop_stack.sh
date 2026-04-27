@@ -15,5 +15,5 @@ fi
 docker compose -f "${compose_file}" ${down_args}
 
 if [ "${purge_runtime}" = "true" ]; then
-  find deployment/runtime -mindepth 1 ! -name '.gitignore' -exec rm -rf {} +
+  find deployment/runtime -mindepth 1 ! -name '.gitignore' ! -name 'README.md' -exec rm -rf {} +
 fi
