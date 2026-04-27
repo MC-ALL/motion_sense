@@ -26,6 +26,39 @@ type BindingViewRecord = {
   last_seen_ts: number | null;
 };
 
+type DashboardDeviceView = {
+  devices: DeviceSummary[];
+  offline_devices: DeviceSummary[];
+  current_bindings: BindingViewRecord[];
+  totals: {
+    all: number;
+    offline: number;
+    bindings: number;
+  };
+  env_summary: {
+    avg_temperature: number | null;
+    avg_humidity: number | null;
+    avg_co2: number | null;
+    avg_pm25: number | null;
+  };
+  energy_summary: {
+    active_equipment_count: number;
+    total_power_w: number;
+    average_power_w: number | null;
+    total_energy_wh: number;
+  };
+  device_type_summary: {
+    equipment: number;
+    env: number;
+    wristband: number;
+  };
+  offline_type_summary: {
+    equipment: number;
+    env: number;
+    wristband: number;
+  };
+};
+
 function to_number(value: unknown): number | null {
   return typeof value === 'number' ? value : null;
 }
@@ -43,16 +76,11 @@ function get_device_type_label(device_type: string): string {
   return device_type;
 }
 
-function calculate_average(values: number[]): number | null {
-  if (values.length === 0) {
+function average_from_sum(sum: number, count: number): number | null {
+  if (count === 0) {
     return null;
   }
-  const total = values.reduce((sum, value) => sum + value, 0);
-  return total / values.length;
-}
-
-function calculate_sum(values: number[]): number {
-  return values.reduce((sum, value) => sum + value, 0);
+  return sum / count;
 }
 
 function compare_values(current: number | null, previous: number | null): TrendDirection {
@@ -76,6 +104,128 @@ function normalize_equipment_binding_id(value: unknown): string | null {
     return `eq-${String(value).padStart(3, '0')}`;
   }
   return null;
+}
+
+function create_empty_device_view(devices: DeviceSummary[]): DashboardDeviceView {
+  return {
+    devices,
+    offline_devices: [],
+    current_bindings: [],
+    totals: {
+      all: devices.length,
+      offline: 0,
+      bindings: 0
+    },
+    env_summary: {
+      avg_temperature: null,
+      avg_humidity: null,
+      avg_co2: null,
+      avg_pm25: null
+    },
+    energy_summary: {
+      active_equipment_count: 0,
+      total_power_w: 0,
+      average_power_w: null,
+      total_energy_wh: 0
+    },
+    device_type_summary: {
+      equipment: 0,
+      env: 0,
+      wristband: 0
+    },
+    offline_type_summary: {
+      equipment: 0,
+      env: 0,
+      wristband: 0
+    }
+  };
+}
+
+function build_device_view(devices: DeviceSummary[]): DashboardDeviceView {
+  const view = create_empty_device_view(devices);
+  let env_temperature_sum = 0;
+  let env_temperature_count = 0;
+  let env_humidity_sum = 0;
+  let env_humidity_count = 0;
+  let env_co2_sum = 0;
+  let env_co2_count = 0;
+  let env_pm25_sum = 0;
+  let env_pm25_count = 0;
+  let equipment_power_count = 0;
+
+  for (const device of devices) {
+    if (device.device_type === 'equipment' || device.device_type === 'env' || device.device_type === 'wristband') {
+      view.device_type_summary[device.device_type] += 1;
+    }
+
+    if (!device.online) {
+      view.offline_devices.push(device);
+      if (device.device_type === 'equipment' || device.device_type === 'env' || device.device_type === 'wristband') {
+        view.offline_type_summary[device.device_type] += 1;
+      }
+      continue;
+    }
+
+    if (device.device_type === 'env') {
+      const temperature = to_number(device.last_payload.temperature_c) ?? to_number(device.last_payload.temperature);
+      const humidity = to_number(device.last_payload.humidity);
+      const co2 = to_number(device.last_payload.co2_ppm);
+      const pm25 = to_number(device.last_payload.pm2_5);
+      if (temperature !== null) {
+        env_temperature_sum += temperature;
+        env_temperature_count += 1;
+      }
+      if (humidity !== null) {
+        env_humidity_sum += humidity;
+        env_humidity_count += 1;
+      }
+      if (co2 !== null) {
+        env_co2_sum += co2;
+        env_co2_count += 1;
+      }
+      if (pm25 !== null) {
+        env_pm25_sum += pm25;
+        env_pm25_count += 1;
+      }
+    }
+
+    if (device.device_type === 'equipment') {
+      const power = to_number(device.last_payload.power_w);
+      const energy = to_number(device.last_payload.energy_wh) ?? to_number(device.last_payload.energy_wh_x100);
+      if (power !== null) {
+        view.energy_summary.total_power_w += power;
+        equipment_power_count += 1;
+      }
+      if (energy !== null) {
+        view.energy_summary.total_energy_wh += energy;
+      }
+      if (is_device_runtime_active(device.status, String(device.last_payload.status ?? ''))) {
+        view.energy_summary.active_equipment_count += 1;
+      }
+    }
+
+    if (device.device_type === 'wristband') {
+      const equipment_id = normalize_equipment_binding_id(device.last_payload.current_equipment_id);
+      if (equipment_id !== null) {
+        view.current_bindings.push({
+          wristband_id: device.device_id,
+          equipment_id,
+          relayed_by: typeof device.last_payload.relayed_by === 'string' ? device.last_payload.relayed_by : null,
+          status: device.status,
+          last_seen_ts: device.last_seen_ts
+        });
+      }
+    }
+  }
+
+  view.totals.offline = view.offline_devices.length;
+  view.totals.bindings = view.current_bindings.length;
+  view.env_summary.avg_temperature = average_from_sum(env_temperature_sum, env_temperature_count);
+  view.env_summary.avg_humidity = average_from_sum(env_humidity_sum, env_humidity_count);
+  view.env_summary.avg_co2 = average_from_sum(env_co2_sum, env_co2_count);
+  view.env_summary.avg_pm25 = average_from_sum(env_pm25_sum, env_pm25_count);
+  view.energy_summary.average_power_w = average_from_sum(view.energy_summary.total_power_w, equipment_power_count);
+  return view;
 }
 
 function MetricGlyph({ kind }: { kind: 'temperature' | 'humidity' | 'co2' | 'pm25' }) {
@@ -149,7 +299,6 @@ export function RealtimeDashboardPage() {
   });
 
   const ws_state = use_business_realtime_store((state) => state.ws_state);
-  const device_status = use_business_realtime_store((state) => state.device_status);
   const devices_by_id = use_business_realtime_store((state) => state.devices_by_id);
   const alerts_by_id = use_business_realtime_store((state) => state.alerts_by_id);
   const connect = use_business_realtime_store((state) => state.connect);
@@ -243,106 +392,30 @@ export function RealtimeDashboardPage() {
   }, [load_snapshot, session, ws_state]);
 
   const devices = useMemo(() => Object.values(devices_by_id), [devices_by_id]);
-  const alerts = useMemo(
-    () =>
-      Object.values(alerts_by_id).sort((left, right) => {
-        const left_ts = Date.parse(left.triggered_at);
-        const right_ts = Date.parse(right.triggered_at);
-        if (!Number.isNaN(left_ts) && !Number.isNaN(right_ts) && left_ts !== right_ts) {
-          return right_ts - left_ts;
-        }
-        return right.id - left.id;
-      }),
-    [alerts_by_id]
-  );
-
-  const merged_devices = useMemo(
-    () =>
-      devices.map((device) => ({
-        ...device,
-        online: device_status[device.device_id]?.online ?? device.online,
-        status: device_status[device.device_id]?.status ?? device.status
-      })),
-    [device_status, devices]
-  );
-
-  const offline_devices = useMemo(() => merged_devices.filter((item) => !item.online), [merged_devices]);
-
-  const current_bindings = useMemo<BindingViewRecord[]>(
-    () =>
-      merged_devices
-        .filter((item) => item.device_type === 'wristband')
-        .map((item) => ({
-          wristband_id: item.device_id,
-          equipment_id: normalize_equipment_binding_id(item.last_payload.current_equipment_id),
-          relayed_by: typeof item.last_payload.relayed_by === 'string' ? item.last_payload.relayed_by : null,
-          status: item.status,
-          last_seen_ts: item.last_seen_ts
-        }))
-        .filter((item): item is BindingViewRecord => item.equipment_id !== null),
-    [merged_devices]
-  );
-
-  const online_env_devices = merged_devices.filter((item) => item.device_type === 'env' && item.online);
-  const online_equipment_devices = merged_devices.filter((item) => item.device_type === 'equipment' && item.online);
-
-  const env_temperature_values = online_env_devices
-    .map((item) => to_number(item.last_payload.temperature_c) ?? to_number(item.last_payload.temperature))
-    .filter((value): value is number => value !== null);
-  const env_humidity_values = online_env_devices
-    .map((item) => to_number(item.last_payload.humidity))
-    .filter((value): value is number => value !== null);
-  const env_co2_values = online_env_devices
-    .map((item) => to_number(item.last_payload.co2_ppm))
-    .filter((value): value is number => value !== null);
-  const env_pm25_values = online_env_devices
-    .map((item) => to_number(item.last_payload.pm2_5))
-    .filter((value): value is number => value !== null);
-
-  const equipment_power_values = online_equipment_devices
-    .map((item) => to_number(item.last_payload.power_w))
-    .filter((value): value is number => value !== null);
-  const equipment_energy_values = online_equipment_devices
-    .map((item) => to_number(item.last_payload.energy_wh) ?? to_number(item.last_payload.energy_wh_x100))
-    .filter((value): value is number => value !== null);
-  const active_equipment_count = online_equipment_devices.filter(
-    (item) => is_device_runtime_active(item.status, String(item.last_payload.status ?? ''))
-  ).length;
-
-  const totals = {
-    all: merged_devices.length,
-    offline: offline_devices.length,
-    alerts: alerts.filter((item) => !item.is_ack).length,
-    bindings: current_bindings.length
-  };
-
-  const env_summary = {
-    avg_temperature: calculate_average(env_temperature_values),
-    avg_humidity: calculate_average(env_humidity_values),
-    avg_co2: calculate_average(env_co2_values),
-    avg_pm25: calculate_average(env_pm25_values)
-  };
-
-  const energy_summary = {
-    active_equipment_count,
-    total_power_w: calculate_sum(equipment_power_values),
-    average_power_w: calculate_average(equipment_power_values),
-    total_energy_wh: calculate_sum(equipment_energy_values)
-  };
-
-  const device_type_summary = {
-    equipment: merged_devices.filter((item) => item.device_type === 'equipment').length,
-    env: merged_devices.filter((item) => item.device_type === 'env').length,
-    wristband: merged_devices.filter((item) => item.device_type === 'wristband').length
-  };
-
-  const offline_type_summary = {
-    equipment: offline_devices.filter((item) => item.device_type === 'equipment').length,
-    env: offline_devices.filter((item) => item.device_type === 'env').length,
-    wristband: offline_devices.filter((item) => item.device_type === 'wristband').length
-  };
-
-  const open_alerts = alerts.filter((item) => !item.is_ack);
+  const {
+    offline_devices,
+    current_bindings,
+    totals,
+    env_summary,
+    energy_summary,
+    device_type_summary,
+    offline_type_summary
+  } = useMemo(() => build_device_view(devices), [devices]);
+  const open_alerts = useMemo(() => Object.values(alerts_by_id).filter((item) => !item.is_ack), [alerts_by_id]);
+  const sorted_open_alerts = useMemo(() => {
+    if (drawer_mode !== 'business_alerts') {
+      return open_alerts.slice(0, 50);
+    }
+    return [...open_alerts].sort((left, right) => {
+      const left_ts = Date.parse(left.triggered_at);
+      const right_ts = Date.parse(right.triggered_at);
+      if (!Number.isNaN(left_ts) && !Number.isNaN(right_ts) && left_ts !== right_ts) {
+        return right_ts - left_ts;
+      }
+      return right.id - left.id;
+    });
+  }, [drawer_mode, open_alerts]);
+  const alert_count = open_alerts.length;
   const alert_level_summary = {
     critical: open_alerts.filter((item) => item.level === 'critical').length,
     warning: open_alerts.filter((item) => item.level === 'warning').length,
@@ -451,7 +524,7 @@ export function RealtimeDashboardPage() {
         <button type="button" className="panel_surface metric_card interactive_metric_card dashboard_summary_card" onClick={() => set_drawer_mode('business_alerts')}>
           <div className="dashboard_summary_header">
             <span className="dashboard_summary_title">未确认告警</span>
-            <strong className="dashboard_summary_value">{totals.alerts}</strong>
+            <strong className="dashboard_summary_value">{alert_count}</strong>
           </div>
           <div className="dashboard_summary_meta">
             <span>严重 {alert_level_summary.critical}</span>
@@ -605,7 +678,7 @@ export function RealtimeDashboardPage() {
         {drawer_mode === 'business_alerts' ? (
           <List
             locale={{ emptyText: '当前没有未确认业务告警' }}
-            dataSource={open_alerts}
+            dataSource={sorted_open_alerts}
             renderItem={(item) => (
               <List.Item>
                 <List.Item.Meta
@@ -625,7 +698,7 @@ export function RealtimeDashboardPage() {
         ) : (
           <Table
             rowKey="device_id"
-            dataSource={drawer_mode === 'offline_devices' ? offline_devices : merged_devices}
+            dataSource={drawer_mode === 'offline_devices' ? offline_devices : devices}
             columns={device_columns}
             pagination={{ defaultPageSize: 8 }}
           />

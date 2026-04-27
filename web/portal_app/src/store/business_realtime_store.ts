@@ -11,10 +11,10 @@ import type {
 } from '../types/backend';
 import { get_auth_session } from '../utils/auth_session';
 
-const max_points = 200;
+const max_points = 120;
 const max_alerts = 50;
 const max_alert_index = 1000;
-const telemetry_flush_interval_ms = 250;
+const telemetry_flush_interval_ms = 500;
 
 interface BusinessRealtimeState {
   ws_state: 'idle' | 'connecting' | 'open' | 'closed';
