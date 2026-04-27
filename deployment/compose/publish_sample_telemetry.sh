@@ -10,7 +10,7 @@ mosquitto_password="${MOSQUITTO_PASSWORD:-admin123}"
 if [ "$#" -ge 2 ]; then
   payload_input="$2"
 else
-  payload_input='{"ts":1712640000,"device_id":"eq-001","status":"active","rep_count":12,"power_w":350.5}'
+  payload_input='{"ts":1712640000,"rep_count":12,"power_w":350.5,"rated_power_w":500.0,"energy_wh":1.25}'
 fi
 
 publish_from_stdin() {

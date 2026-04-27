@@ -127,27 +127,27 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 cat > "${eq_payload_file}" <<EOF
-{"ts":${eq_ts},"device_id":"${eq_device_id}","status":"active","rep_count":18,"power_w":412.4,"energy_wh":3.125,"gateway_id":"${gateway_id}"}
+{"ts":${eq_ts},"rep_count":18,"power_w":412.4,"rated_power_w":500.0,"energy_wh":3.125}
 EOF
 
 cat > "${wb_payload_file}" <<EOF
-{"ts":${wb_ts},"device_id":"${wb_device_id}","heart_rate":92,"step_count":148,"battery_pct":87,"current_equipment_id":"${eq_device_id}","relayed_by":"${eq_device_id}"}
+{"ts":${wb_ts},"heart_rate":92,"step_count":148,"battery_pct":87,"current_equipment_id":"${eq_device_id}","relayed_by":"${eq_device_id}","accel":[0,-980,0],"gyro":[0,0,0],"flags":0}
 EOF
 
 cat > "${bind_payload_file}" <<EOF
-{"ts":${bind_ts},"wristband_id":"${wb_device_id}","equipment_id":"${eq_device_id}","gym_id":"${gym_id}","action":"bind","reason":"ble_connected"}
+{"ts":${bind_ts},"equipment_id":"${eq_device_id}","bound":true,"reason":"ble_connected"}
 EOF
 
 cat > "${unbind_payload_file}" <<EOF
-{"ts":${unbind_ts},"wristband_id":"${wb_device_id}","equipment_id":"${eq_device_id}","gym_id":"${gym_id}","action":"unbind","reason":"idle_timeout"}
+{"ts":${unbind_ts},"equipment_id":"${eq_device_id}","bound":false,"reason":"idle_timeout"}
 EOF
 
 cat > "${env_payload_file}" <<EOF
-{"ts":${env_ts},"node_id":"${env_device_id}","temperature":29.3,"humidity":61.2,"lux":412.5,"co2_ppm":1180,"pm1_0":24,"pm2_5":43,"pm10":62,"wifi_rssi":-58}
+{"ts":${env_ts},"temperature":29.3,"humidity":61.2,"co2_ppm":1180,"pm2_5":43,"lux":412.5}
 EOF
 
 cat > "${alert_payload_file}" <<EOF
-{"ts":${alert_ts},"device_id":"${env_device_id}","priority":"P1","level":"warning","code":"CO2_HIGH","message":"环境 CO2 超标","value":1180,"threshold":1000}
+{"ts":${alert_ts},"priority":"P1","level":"warning","alert_type":"co2_high","message":"环境 CO2 超标","value":1180,"threshold":1000}
 EOF
 
 sh deployment/compose/publish_sample_telemetry.sh \
@@ -312,7 +312,7 @@ wait_for_json(
 wait_for_json(
     "alerts",
     f"{BACKEND_BASE_URL}/api/v1/alerts?device_id={ENV_DEVICE_ID}",
-    lambda body: any(item["code"] == "CO2_HIGH" and item["priority"] == "P1" for item in body),
+    lambda body: any(item["code"] == "co2_high" and item["priority"] == "P1" for item in body),
     headers=auth_headers,
 )
 wait_for_json(
@@ -326,7 +326,16 @@ command_status, command_body = request(
     f"{BACKEND_BASE_URL}/api/v1/devices/{ENV_DEVICE_ID}/config",
     method="POST",
     headers=auth_headers,
-    data={"config": {"telemetry_interval_s": 25}, "gateway_id": GATEWAY_ID, "device_type": "env", "gym_id": GYM_ID},
+    data={
+        "config": {
+            "telemetry_interval_s": 25,
+            "co2_threshold_ppm": 1200,
+            "pm25_threshold_ugm3": 75,
+        },
+        "gateway_id": GATEWAY_ID,
+        "device_type": "env",
+        "gym_id": GYM_ID,
+    },
 )
 if command_status != 200:
     raise AssertionError(f"publish config failed: {command_status} {command_body}")
@@ -367,7 +376,7 @@ DEVICES_ROW="${devices_row}" python3 - <<'PY'
 import os
 rows = [line.strip() for line in os.environ["DEVICES_ROW"].splitlines() if line.strip()]
 assert any(row.startswith("env-db-") and row.endswith("|env|online|true") for row in rows)
-assert any(row.startswith("eq-db-") and row.endswith("|equipment|active|true") for row in rows)
+assert any(row.startswith("eq-db-") and row.endswith("|equipment|online|true") for row in rows)
 assert any(row.startswith("wb-db-") and row.endswith("|wristband|online|true") for row in rows)
 PY
 
@@ -385,7 +394,7 @@ env_row="$(query_timescaledb \
 
 alert_row="$(query_timescaledb \
   "SELECT code || '|' || priority || '|' || level FROM alerts WHERE device_id = '${env_device_id}' ORDER BY triggered_at DESC LIMIT 1;")"
-[ "$(printf '%s' "${alert_row}" | tr -d '[:space:]')" = "CO2_HIGH|P1|warning" ]
+[ "$(printf '%s' "${alert_row}" | tr -d '[:space:]')" = "co2_high|P1|warning" ]
 
 binding_row="$(query_timescaledb \
   "SELECT action || '|' || COALESCE(duration_s::text,'') FROM equipment_binding_events WHERE wristband_id = '${wb_device_id}' ORDER BY ts DESC LIMIT 1;")"

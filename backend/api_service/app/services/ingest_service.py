@@ -35,7 +35,7 @@ class IngestService:
                     device_type=parsed.device_type,
                     device_id=parsed.device_id,
                     level=str(item.payload.get("level", "warning")),
-                    code=str(item.payload.get("code", "UNKNOWN_ALERT")),
+                    code=_alert_code(item.payload),
                     message=str(item.payload.get("message", "alert received")),
                     priority=item.payload.get("priority"),
                     triggered_at=payload_triggered_at(item.payload),
@@ -52,7 +52,7 @@ class IngestService:
                 binding_wristband_id = None
                 binding_equipment_id = None
                 if item.kind == "binding":
-                    binding_action = str(item.payload.get("action", "bind")).lower()
+                    binding_action = _binding_action(item.payload)
                     binding_wristband_id = str(item.payload.get("wristband_id", parsed.device_id))
                     binding_equipment_id = str(item.payload.get("equipment_id", ""))
                     await self._store.record_binding_event(
@@ -65,6 +65,7 @@ class IngestService:
                     )
                     normalized_binding_payload = {
                         **item.payload,
+                        "action": binding_action,
                         "wristband_id": binding_wristband_id,
                         "current_equipment_id": (
                             binding_equipment_id if binding_action == "bind" and binding_equipment_id else None
@@ -158,10 +159,32 @@ def _derive_device_status(kind: str, payload: dict) -> str:
         return raw_status
 
     if kind == "binding":
-        action = str(payload.get("action", "bind")).lower()
+        action = _binding_action(payload)
         if action == "bind":
             return "bound"
         if action == "unbind":
             return "online"
 
     return "online"
+
+
+def _alert_code(payload: dict) -> str:
+    """Return the persisted alert code from schema rc1 or legacy payloads."""
+    raw = payload.get("alert_type")
+    if isinstance(raw, str) and raw:
+        return raw
+    raw = payload.get("code")
+    if isinstance(raw, str) and raw:
+        return raw
+    return "UNKNOWN_ALERT"
+
+
+def _binding_action(payload: dict) -> str:
+    """Return ``bind`` or ``unbind`` from schema rc1 or legacy payloads."""
+    raw_action = payload.get("action")
+    if isinstance(raw_action, str) and raw_action.lower() in {"bind", "unbind"}:
+        return raw_action.lower()
+    raw_bound = payload.get("bound")
+    if isinstance(raw_bound, bool):
+        return "bind" if raw_bound else "unbind"
+    return "bind"

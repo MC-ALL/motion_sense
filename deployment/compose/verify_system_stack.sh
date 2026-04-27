@@ -54,7 +54,7 @@ trap cleanup EXIT INT TERM
 current_ts="$(date +%s)"
 
 cat > "${sample_payload_file}" <<EOF
-{"ts":${current_ts},"device_id":"${eq_device_id}","status":"active","rep_count":12,"power_w":350.5,"gateway_id":"${gateway_id}"}
+{"ts":${current_ts},"rep_count":12,"power_w":350.5,"rated_power_w":500.0,"energy_wh":1.25}
 EOF
 
 sh deployment/compose/publish_sample_telemetry.sh \
@@ -217,7 +217,16 @@ command_status, command_body = request(
     f"{BACKEND_BASE_URL}/api/v1/devices/{ENV_DEVICE_ID}/config",
     method="POST",
     headers=auth_headers,
-    data={"config": {"telemetry_interval_s": 20}},
+    data={
+        "config": {
+            "telemetry_interval_s": 20,
+            "co2_threshold_ppm": 1200,
+            "pm25_threshold_ugm3": 75,
+        },
+        "gateway_id": GATEWAY_ID,
+        "device_type": "env",
+        "gym_id": GYM_ID,
+    },
 )
 if command_status != 200:
     raise AssertionError(f"publish config failed: {command_status} {command_body}")

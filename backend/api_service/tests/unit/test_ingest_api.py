@@ -226,3 +226,64 @@ def test_unbind_event_restores_wristband_online_status() -> None:
         assert bindings_response.status_code == 200
         assert bindings_response.json()[0]["action"] == "unbind"
         assert bindings_response.json()[0]["duration_s"] == 12
+
+
+def test_ingest_accepts_mqtt_schema_rc1_alert_and_binding_fields() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "2026-04-14T16:20:00Z",
+                "items": [
+                    {
+                        "kind": "alert",
+                        "topic": "gym/gym-gz-01/env/env-rc1/alert",
+                        "payload": {
+                            "ts": 1712348400,
+                            "priority": "P1",
+                            "level": "warning",
+                            "alert_type": "co2_high",
+                            "message": "环境 CO2 超标",
+                            "value": 1180,
+                            "threshold": 1000,
+                        },
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-rc1/binding",
+                        "payload": {
+                            "ts": 1712348401,
+                            "equipment_id": "eq-rc1",
+                            "bound": True,
+                            "reason": "ble_connected",
+                        },
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-rc1/binding",
+                        "payload": {
+                            "ts": 1712348411,
+                            "equipment_id": "eq-rc1",
+                            "bound": False,
+                            "reason": "idle_timeout",
+                        },
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"accepted": 3}
+
+        alerts_response = client.get("/api/v1/alerts", params={"device_id": "env-rc1"})
+        device_response = client.get("/api/v1/devices/wb-rc1")
+        bindings_response = client.get("/api/v1/wristband/wb-rc1/bindings")
+
+        assert alerts_response.status_code == 200
+        assert alerts_response.json()[0]["code"] == "co2_high"
+        assert device_response.status_code == 200
+        assert device_response.json()["status"] == "online"
+        assert device_response.json()["last_payload"]["action"] == "unbind"
+        assert bindings_response.status_code == 200
+        assert [item["action"] for item in bindings_response.json()] == ["unbind", "bind"]

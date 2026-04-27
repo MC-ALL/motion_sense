@@ -75,7 +75,7 @@ fi
       i=1
       while [ "$i" -le "$BURST_COUNT" ]; do
         topic="gym/${GYM_ID}/equipment/${BURST_PREFIX}-${i}/telemetry"
-        payload="$(printf "{\"ts\":%s,\"device_id\":\"%s-%s\",\"status\":\"active\",\"rep_count\":%s,\"power_w\":350.5,\"gateway_id\":\"%s\"}" "$((BURST_TS + i))" "${BURST_PREFIX}" "$i" "$i" "${GATEWAY_ID}")"
+        payload="$(printf "{\"ts\":%s,\"rep_count\":%s,\"power_w\":350.5,\"rated_power_w\":500.0,\"energy_wh\":1.0}" "$((BURST_TS + i))" "$i")"
         printf "%s" "${payload}" | /usr/bin/mosquitto_pub \
           -h 127.0.0.1 \
           -p 1883 \
@@ -211,7 +211,7 @@ for index in range(1, BURST_COUNT + 1):
         lambda body, expected=device_id: (
             body["device_id"] == expected
             and body["online"] is True
-            and body["last_payload"]["gateway_id"] == GATEWAY_ID
+            and body["last_payload"]["rated_power_w"] == 500.0
         ),
         headers=auth_headers,
         max_attempts=45,
