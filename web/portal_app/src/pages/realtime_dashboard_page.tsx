@@ -627,7 +627,7 @@ export function RealtimeDashboardPage() {
             rowKey="device_id"
             dataSource={drawer_mode === 'offline_devices' ? offline_devices : merged_devices}
             columns={device_columns}
-            pagination={{ pageSize: 8 }}
+            pagination={{ defaultPageSize: 8 }}
           />
         )}
       </Drawer>

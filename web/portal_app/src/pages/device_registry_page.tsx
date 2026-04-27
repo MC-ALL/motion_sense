@@ -67,13 +67,13 @@ const device_management_tabs = [
 type DeviceManagementTabKey = (typeof device_management_tabs)[number]['key'];
 
 type DeviceFormValues = {
-  gym_id: string;
-  device_type: DeviceRegistryType;
-  device_id: string;
+  gym_id?: string;
+  device_type?: DeviceRegistryType;
+  device_id?: string;
   gateway_id?: string;
   display_name?: string;
   location?: string;
-  metadata_json: string;
+  metadata_json?: string;
 };
 
 type BindingFormValues = {
@@ -82,8 +82,12 @@ type BindingFormValues = {
   note?: string;
 };
 
-function parse_metadata_json(raw: string): Record<string, unknown> {
-  const text = raw.trim();
+function trimmed(value: string | undefined): string {
+  return value?.trim() ?? '';
+}
+
+function parse_metadata_json(raw: string | undefined): Record<string, unknown> {
+  const text = trimmed(raw);
   if (!text) {
     return {};
   }
@@ -566,15 +570,15 @@ export function DeviceRegistryPage() {
     try {
       const metadata = parse_metadata_json(values.metadata_json);
       const payload: DeviceRegistrationRequest = {
-        gym_id: values.gym_id.trim(),
-        device_type: values.device_type,
-        device_id: values.device_id.trim(),
-        display_name: values.display_name?.trim() || null,
-        location: values.location?.trim() || null,
+        gym_id: trimmed(values.gym_id),
+        device_type: values.device_type ?? 'equipment',
+        device_id: trimmed(values.device_id),
+        display_name: trimmed(values.display_name) || null,
+        location: trimmed(values.location) || null,
         metadata
       };
       if (values.device_type !== 'gateway') {
-        payload.gateway_id = values.gateway_id?.trim() || null;
+        payload.gateway_id = trimmed(values.gateway_id) || null;
       }
       await create_device_registration(payload);
       set_create_open(false);
@@ -596,12 +600,12 @@ export function DeviceRegistryPage() {
     try {
       const metadata = parse_metadata_json(values.metadata_json);
       const payload: DeviceRegistrationUpdateRequest = {
-        display_name: values.display_name?.trim() || null,
-        location: values.location?.trim() || null,
+        display_name: trimmed(values.display_name) || null,
+        location: trimmed(values.location) || null,
         metadata
       };
       if (edit_target.device_type !== 'gateway') {
-        payload.gateway_id = values.gateway_id?.trim() || null;
+        payload.gateway_id = trimmed(values.gateway_id) || null;
       }
       await update_device_registration(edit_target.device_id, payload);
       set_edit_target(null);
@@ -768,7 +772,7 @@ export function DeviceRegistryPage() {
                 rowKey="device_id"
                 dataSource={filtered_devices}
                 columns={device_columns}
-                pagination={{ pageSize: 10 }}
+                pagination={{ defaultPageSize: 10 }}
                 scroll={{ x: 1240 }}
               />
             )}
@@ -848,7 +852,7 @@ export function DeviceRegistryPage() {
                 rowKey="id"
                 dataSource={filtered_active_bindings}
                 columns={current_binding_columns}
-                pagination={{ pageSize: 10 }}
+                pagination={{ defaultPageSize: 10 }}
                 locale={{ emptyText: '当前没有激活中的手环绑定' }}
                 scroll={{ x: 1180 }}
               />
@@ -900,7 +904,7 @@ export function DeviceRegistryPage() {
                 rowKey="id"
                 dataSource={filtered_binding_history}
                 columns={binding_history_columns}
-                pagination={{ pageSize: 12 }}
+                pagination={{ defaultPageSize: 12 }}
                 locale={{ emptyText: '当前没有符合条件的绑定历史' }}
                 scroll={{ x: 1180 }}
               />

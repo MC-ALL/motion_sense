@@ -23,7 +23,6 @@ def test_create_device_config_command_for_existing_device() -> None:
                         "payload": {
                             "ts": 1712355600,
                             "device_id": "eq-001",
-                            "gateway_id": "gw-001",
                         },
                     }
                 ],

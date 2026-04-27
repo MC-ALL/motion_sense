@@ -89,6 +89,10 @@ class IngestService:
                         payload=item.payload,
                     )
 
+                device_payload = {
+                    **normalized_binding_payload,
+                    "gateway_id": batch.gateway_id,
+                }
                 status = _derive_device_status(item.kind, item.payload)
                 device = await self._store.upsert_device(
                     gym_id=parsed.gym_id,
@@ -97,7 +101,7 @@ class IngestService:
                     status=status,
                     online=coerce_online(status),
                     last_seen_ts=payload_ts(item.payload),
-                    payload=normalized_binding_payload,
+                    payload=device_payload,
                 )
 
                 if item.kind == "telemetry":

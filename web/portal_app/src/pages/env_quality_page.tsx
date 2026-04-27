@@ -289,6 +289,7 @@ export function EnvQualityPage() {
     try {
       const result = await publish_device_config(selected_device.device_id, {
         gym_id: selected_device.gym_id,
+        gateway_id: selected_device.gateway_id,
         device_type: 'env',
         config: {
           ts: Math.floor(Date.now() / 1000),

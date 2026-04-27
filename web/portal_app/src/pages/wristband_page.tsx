@@ -312,6 +312,7 @@ export function WristbandPage() {
     try {
       const result = await publish_device_config(selected_device.device_id, {
         gym_id: selected_device.gym_id,
+        gateway_id: selected_device.gateway_id,
         device_type: 'wristband',
         config: {
           ts: Math.floor(Date.now() / 1000),
@@ -424,7 +425,7 @@ export function WristbandPage() {
                         <List
                           locale={{ emptyText: '当前没有可展示的绑定历史' }}
                           dataSource={bindings}
-                          pagination={{ pageSize: 6, size: 'small' }}
+                          pagination={{ defaultPageSize: 6, size: 'small' }}
                           renderItem={(item) => (
                             <List.Item>
                               <List.Item.Meta

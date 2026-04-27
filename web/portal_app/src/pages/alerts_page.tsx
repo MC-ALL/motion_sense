@@ -414,7 +414,7 @@ export function AlertsPage() {
                       onChange: (keys) => set_selected_ids(keys as number[]),
                       getCheckboxProps: (record) => ({ disabled: record.is_ack || !can_ack_business_alerts })
                     }}
-                    pagination={{ pageSize: 10 }}
+                    pagination={{ defaultPageSize: 10 }}
                   />
                 </div>
               </Space>
@@ -485,7 +485,7 @@ export function AlertsPage() {
                             onChange: (keys) => set_selected_ops_ids(keys as number[]),
                             getCheckboxProps: (record) => ({ disabled: record.status !== 'open' })
                           }}
-                          pagination={{ pageSize: 10 }}
+                          pagination={{ defaultPageSize: 10 }}
                         />
                       </div>
                     </Space>
