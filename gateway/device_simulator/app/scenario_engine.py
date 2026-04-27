@@ -19,6 +19,75 @@ def _topic(gym_id: str, device_type: str, device_id: str, action: str) -> str:
     return f"gym/{gym_id}/{device_type}/{device_id}/{action}"
 
 
+def _consume_scheduled_event(
+    *,
+    rng: random.Random,
+    now_s: int,
+    ratio: float,
+    interval_ms: int,
+    current_next_at_s: int | None,
+) -> tuple[bool, int | None]:
+    """Return whether a scheduled scenario event is due and its next timestamp.
+
+    ``ratio`` keeps the old per-tick probability meaning, but the simulator now
+    converts it into an expected interval and spreads each device's first event
+    across that interval. This avoids all devices drawing from the same
+    second-level Bernoulli buckets.
+
+    :param rng: Per-device random generator.
+    :param now_s: Current Unix timestamp in seconds.
+    :param ratio: Previous per-step event probability.
+    :param interval_ms: Step interval for this device type.
+    :param current_next_at_s: Previously scheduled event timestamp.
+    :return: Pair of ``event_due`` and updated next event timestamp.
+    """
+    if ratio <= 0:
+        return False, None
+    if current_next_at_s is None:
+        return False, _schedule_next_event_at(
+            rng=rng,
+            now_s=now_s,
+            ratio=ratio,
+            interval_ms=interval_ms,
+            initial=True,
+        )
+    if now_s < current_next_at_s:
+        return False, current_next_at_s
+    return True, _schedule_next_event_at(
+        rng=rng,
+        now_s=now_s,
+        ratio=ratio,
+        interval_ms=interval_ms,
+        initial=False,
+    )
+
+
+def _schedule_next_event_at(
+    *,
+    rng: random.Random,
+    now_s: int,
+    ratio: float,
+    interval_ms: int,
+    initial: bool,
+) -> int:
+    """Schedule the next scenario event while preserving expected frequency.
+
+    :param rng: Per-device random generator.
+    :param now_s: Current Unix timestamp in seconds.
+    :param ratio: Previous per-step event probability.
+    :param interval_ms: Step interval for this device type.
+    :param initial: Whether this is the first schedule for the device.
+    :return: Next due timestamp in Unix seconds.
+    """
+    step_s = max(interval_ms / 1000.0, 0.001)
+    expected_interval_s = max(step_s, step_s / max(ratio, 0.000001))
+    if initial:
+        offset_s = rng.uniform(0.0, expected_interval_s)
+    else:
+        offset_s = rng.uniform(expected_interval_s * 0.5, expected_interval_s * 1.5)
+    return now_s + max(1, int(round(offset_s)))
+
+
 @dataclass
 class EquipmentRuntimeState:
     """Mutable state for one simulated equipment device."""
@@ -30,6 +99,7 @@ class EquipmentRuntimeState:
     rep_count: int = 0
     energy_wh: float = 0.0
     overload_ticks: int = 0
+    next_overload_at_s: int | None = None
     last_status_online: bool | None = None
     last_status_text: str | None = None
     last_status_ts: int | None = None
@@ -50,6 +120,8 @@ class WristbandRuntimeState:
     last_status_text: str | None = None
     last_status_ts: int | None = None
     battery_low_sent: bool = False
+    next_p0_alert_at_s: int | None = None
+    next_battery_low_alert_at_s: int | None = None
 
 
 @dataclass
@@ -61,6 +133,7 @@ class EnvRuntimeState:
     online: bool = True
     anomaly_ticks: int = 0
     anomaly_kind: str | None = None
+    next_anomaly_at_s: int | None = None
     last_status_online: bool | None = None
     last_status_text: str | None = None
     last_status_ts: int | None = None
@@ -150,7 +223,14 @@ class ScenarioEngine:
         if state.rng.random() < 0.18:
             state.active = not state.active
 
-        if state.rng.random() < scenario.equipment_overload_ratio:
+        overload_triggered, state.next_overload_at_s = _consume_scheduled_event(
+            rng=state.rng,
+            now_s=now_s,
+            ratio=scenario.equipment_overload_ratio,
+            interval_ms=self._settings.intervals.equipment_telemetry_ms,
+            current_next_at_s=state.next_overload_at_s,
+        )
+        if overload_triggered:
             state.overload_ticks = state.rng.randint(8, 18)
         elif state.overload_ticks > 0:
             state.overload_ticks -= 1
@@ -288,9 +368,16 @@ class ScenarioEngine:
         state.battery_pct = max(0.0, state.battery_pct - state.rng.uniform(0.005, 0.035))
 
         messages.extend(self._maybe_emit_p0_alert(state, now_s, heart_rate))
-        if state.battery_pct < 10.0 and (
-            (not state.battery_low_sent) or state.rng.random() < scenario.battery_low_ratio
-        ):
+        battery_low_retry_due = False
+        if state.battery_low_sent:
+            battery_low_retry_due, state.next_battery_low_alert_at_s = _consume_scheduled_event(
+                rng=state.rng,
+                now_s=now_s,
+                ratio=scenario.battery_low_ratio,
+                interval_ms=self._settings.intervals.wristband_telemetry_ms,
+                current_next_at_s=state.next_battery_low_alert_at_s,
+            )
+        if state.battery_pct < 10.0 and ((not state.battery_low_sent) or battery_low_retry_due):
             messages.append(
                 PublishedMessage(
                     topic=_topic(state.profile.identity.gym_id, "wristband", device_id, "alert"),
@@ -378,7 +465,14 @@ class ScenarioEngine:
         if not state.online:
             return messages
 
-        if state.anomaly_ticks <= 0 and state.rng.random() < scenario.env_anomaly_ratio:
+        anomaly_triggered, state.next_anomaly_at_s = _consume_scheduled_event(
+            rng=state.rng,
+            now_s=now_s,
+            ratio=scenario.env_anomaly_ratio,
+            interval_ms=self._settings.intervals.env_telemetry_ms,
+            current_next_at_s=state.next_anomaly_at_s,
+        )
+        if state.anomaly_ticks <= 0 and anomaly_triggered:
             state.anomaly_ticks = state.rng.randint(3, 8)
             state.anomaly_kind = state.rng.choice(["co2", "pm2_5", "temperature"])
         elif state.anomaly_ticks > 0:
@@ -497,7 +591,14 @@ class ScenarioEngine:
         :param heart_rate: Heart rate value generated for this step.
         :return: Empty list or one P0 alert message.
         """
-        if state.rng.random() >= self._settings.scenario.p0_alert_ratio:
+        triggered, state.next_p0_alert_at_s = _consume_scheduled_event(
+            rng=state.rng,
+            now_s=now_s,
+            ratio=self._settings.scenario.p0_alert_ratio,
+            interval_ms=self._settings.intervals.wristband_telemetry_ms,
+            current_next_at_s=state.next_p0_alert_at_s,
+        )
+        if not triggered:
             return []
         alert_type = state.rng.choice(["heart_rate_high", "heart_rate_low", "fall_detected"])
         payload: dict[str, object] = {

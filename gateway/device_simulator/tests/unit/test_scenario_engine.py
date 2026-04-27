@@ -99,3 +99,43 @@ def test_wristband_binding_and_alerts_follow_mqtt_schema() -> None:
     assert alerts[0]["priority"] == "P2"
     assert "code" not in alerts[0]
     assert "device_id" not in alerts[0]
+
+
+def test_alert_schedules_are_spread_across_devices() -> None:
+    """Verify first alert due times are not concentrated in one timestamp."""
+    settings = RuntimeSettings.model_validate(
+        {
+            "intervals": {
+                "wristband_telemetry_ms": 700,
+                "equipment_telemetry_ms": 1000,
+                "env_telemetry_ms": 3000,
+            },
+            "scenario": {
+                "equipment_count": 20,
+                "wristband_count": 20,
+                "env_count": 20,
+                "random_seed": 20260427,
+                "offline_ratio": 0,
+                "p0_alert_ratio": 0.005,
+                "battery_low_ratio": 0,
+                "equipment_overload_ratio": 0.005,
+                "env_anomaly_ratio": 0.005,
+                "bind_change_ratio": 0,
+            },
+        }
+    )
+    engine = ScenarioEngine(settings, build_device_profiles(settings))
+    now_s = 1712640000
+
+    for index in range(1, 21):
+        engine.step_wristband(f"wb-{index:03d}", now_s)
+        engine.step_equipment(f"eq-{index:03d}", now_s)
+        engine.step_env(f"env-{index:03d}", now_s)
+
+    wristband_due_times = {state.next_p0_alert_at_s for state in engine._wristbands.values()}
+    equipment_due_times = {state.next_overload_at_s for state in engine._equipment.values()}
+    env_due_times = {state.next_anomaly_at_s for state in engine._env_nodes.values()}
+
+    assert len(wristband_due_times) > 10
+    assert len(equipment_due_times) > 10
+    assert len(env_due_times) > 10
