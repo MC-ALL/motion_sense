@@ -42,13 +42,14 @@ class MqttSettings(BaseModel):
         default_factory=lambda: [
             "gym/+/wristband/+/telemetry",
             "gym/+/wristband/+/binding",
+            "gym/+/wristband/+/alert",
+            "gym/+/wristband/+/status",
             "gym/+/equipment/+/telemetry",
             "gym/+/equipment/+/alert",
             "gym/+/equipment/+/status",
             "gym/+/env/+/telemetry",
             "gym/+/env/+/alert",
             "gym/+/env/+/status",
-            "gym/+/gateway/+/config",
         ]
     )
 

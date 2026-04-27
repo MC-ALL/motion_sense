@@ -29,13 +29,14 @@ mqtt:
   topic_patterns:
     - gym/+/wristband/+/telemetry
     - gym/+/wristband/+/binding
+    - gym/+/wristband/+/alert
+    - gym/+/wristband/+/status
     - gym/+/equipment/+/telemetry
     - gym/+/equipment/+/alert
     - gym/+/equipment/+/status
     - gym/+/env/+/telemetry
     - gym/+/env/+/alert
     - gym/+/env/+/status
-    - gym/+/gateway/+/config
 ops_auth:
   enforce_rest: false
   enforce_ws: false

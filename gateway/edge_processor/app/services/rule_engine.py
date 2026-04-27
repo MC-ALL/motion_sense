@@ -32,7 +32,7 @@ class EmittedAlert:
     gym_id: str
     device_type: str
     device_id: str
-    code: str
+    alert_type: str
     level: str
     value: float
     threshold: float
@@ -268,7 +268,7 @@ class RuleEngine:
                 gym_id=parsed_topic.gym_id,
                 device_type=parsed_topic.device_type,
                 device_id=parsed_topic.device_id,
-                code=rule_code,
+                alert_type=_alert_type_for_rule(rule_code),
                 level=level,
                 value=float(value),
                 threshold=float(threshold),
@@ -323,6 +323,19 @@ def _as_number(raw: Any, default: float | None = None) -> float | None:
     if isinstance(raw, (int, float)):
         return float(raw)
     return default
+
+
+def _alert_type_for_rule(rule_code: str) -> str:
+    """Map internal rule identifiers to MQTT schema alert types."""
+    mapping = {
+        "EQ_OVERLOAD": "overload",
+        "CO2_HIGH": "co2_high",
+        "CO2_CRITICAL": "co2_critical",
+        "PM25_HIGH": "pm25_high",
+        "TEMP_HIGH": "temperature_high",
+        "DEVICE_OFFLINE": "device_offline",
+    }
+    return mapping.get(rule_code, rule_code.lower())
 
 
 def _to_unix_seconds(raw: Any) -> int:

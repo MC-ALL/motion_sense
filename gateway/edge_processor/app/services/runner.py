@@ -25,6 +25,43 @@ from app.utils.topic_parser import ParsedTopic, parse_topic
 
 
 LOGGER = logging.getLogger(__name__)
+EDGE_INTERNAL_PUBLISHER = "edge_processor"
+EDGE_GENERATED_FIRMWARE_VERSION = "edge-generated"
+EDGE_GENERATED_MAC = "00:00:00:00:00:00"
+DEVICE_CONFIG_REQUIRED_FIELDS: dict[str, dict[str, type | tuple[type, ...]]] = {
+    "equipment": {
+        "target_reps": int,
+    },
+    "wristband": {
+        "hr_alert_threshold_high": int,
+        "hr_alert_threshold_low": int,
+        "notify_interval_ms": int,
+        "fall_detect_enabled": bool,
+    },
+    "env": {
+        "telemetry_interval_s": int,
+        "co2_threshold_ppm": (int, float),
+        "pm25_threshold_ugm3": (int, float),
+    },
+}
+
+ALERT_PRIORITY_BY_TYPE = {
+    "device_offline": "P1",
+    "overload": "P1",
+    "co2_high": "P1",
+    "co2_critical": "P0",
+    "pm25_high": "P1",
+    "temperature_high": "P1",
+}
+
+ALERT_LEVEL_BY_TYPE = {
+    "device_offline": "warning",
+    "overload": "critical",
+    "co2_high": "warning",
+    "co2_critical": "critical",
+    "pm25_high": "warning",
+    "temperature_high": "warning",
+}
 
 
 class EdgeProcessorRunner:
@@ -227,9 +264,7 @@ class EdgeProcessorRunner:
         elif parsed_topic.action == "status":
             self._status_events_total += 1
 
-        recovered = self._device_presence_tracker.mark_seen(parsed_topic, payload)
-        if recovered is not None:
-            await self._emit_status_event(recovered, online=True)
+        self._device_presence_tracker.mark_seen(parsed_topic, payload)
 
         if parsed_topic.action != "telemetry":
             return
@@ -244,16 +279,17 @@ class EdgeProcessorRunner:
         """
         self._generated_alerts_total += 1
         topic = f"gym/{alert.gym_id}/{alert.device_type}/{alert.device_id}/alert"
+        priority = ALERT_PRIORITY_BY_TYPE.get(alert.alert_type, "P1")
+        level = ALERT_LEVEL_BY_TYPE.get(alert.alert_type, alert.level)
         payload = {
             "ts": alert.observed_at_s,
-            "device_id": alert.device_id,
-            "priority": "P1",
-            "level": alert.level,
-            "code": alert.code,
+            "priority": priority,
+            "level": level,
+            "alert_type": alert.alert_type,
             "message": alert.message,
             "value": alert.value,
             "threshold": alert.threshold,
-            "source": "edge_processor",
+            "published_by": EDGE_INTERNAL_PUBLISHER,
         }
         await self._emit_generated_event(kind="alert", topic=topic, payload=payload, retain=False)
 
@@ -267,33 +303,29 @@ class EdgeProcessorRunner:
         alert_topic = f"gym/{identity.gym_id}/{identity.device_type}/{identity.device_id}/alert"
         alert_payload = {
             "ts": transition.observed_at_s,
-            "device_id": identity.device_id,
             "priority": "P1",
-            "level": rule.level,
-            "code": "DEVICE_OFFLINE",
+            "level": ALERT_LEVEL_BY_TYPE["device_offline"],
+            "alert_type": "device_offline",
             "message": f"device offline: no heartbeat for {rule.timeout_s}s",
-            "value": rule.timeout_s,
-            "threshold": rule.timeout_s,
-            "source": "edge_processor",
+            "published_by": EDGE_INTERNAL_PUBLISHER,
         }
         await self._emit_generated_event(kind="alert", topic=alert_topic, payload=alert_payload, retain=False)
-        await self._emit_status_event(transition, online=False)
+        await self._emit_offline_status_event(transition)
 
-    async def _emit_status_event(self, transition: DeviceTransition, online: bool) -> None:
-        """Publish and buffer a retained device status event.
+    async def _emit_offline_status_event(self, transition: DeviceTransition) -> None:
+        """Publish and buffer a retained edge-generated offline status event.
 
         :param transition: Device identity and transition timestamp.
-        :param online: Whether the generated status should represent recovery.
         """
         self._generated_status_total += 1
         identity = transition.identity
         status_topic = f"gym/{identity.gym_id}/{identity.device_type}/{identity.device_id}/status"
         status_payload = {
             "ts": transition.observed_at_s,
-            "device_id": identity.device_id,
-            "online": online,
-            "status": "online" if online else "offline",
-            "source": "edge_processor",
+            "status": "offline",
+            "firmware_version": EDGE_GENERATED_FIRMWARE_VERSION,
+            "mac": EDGE_GENERATED_MAC,
+            "published_by": EDGE_INTERNAL_PUBLISHER,
         }
         await self._emit_generated_event(kind="status", topic=status_topic, payload=status_payload, retain=True)
 
@@ -510,11 +542,46 @@ class EdgeProcessorRunner:
 
         await self._mqtt_publisher.publish_json(
             topic=command.topic,
-            payload=command.payload,
+            payload=self._build_device_config_payload(command),
             qos=command.qos,
-            retain=command.retain,
+            retain=False,
         )
         return "forwarded to local mqtt broker"
+
+    def _build_device_config_payload(self, command: DeviceConfigCommandRecord) -> dict[str, Any]:
+        """Build a schema-compliant device config MQTT payload."""
+        payload = dict(command.payload)
+        payload["ts"] = int(datetime.now(UTC).timestamp())
+        payload["published_by"] = EDGE_INTERNAL_PUBLISHER
+
+        self._validate_device_config_payload(command.device_type, payload)
+        if command.device_type == "wristband":
+            low = payload["hr_alert_threshold_low"]
+            high = payload["hr_alert_threshold_high"]
+            if low >= high:
+                raise ValueError("hr_alert_threshold_low must be less than hr_alert_threshold_high")
+        return payload
+
+    def _validate_device_config_payload(self, device_type: str, payload: dict[str, Any]) -> None:
+        """Validate device config commands before publishing them to MQTT.
+
+        :param device_type: Target device type from the backend command.
+        :param payload: Config payload after gateway outbound enrichment.
+        :return: None.
+        :raises ValueError: If required schema fields are missing or invalid.
+        """
+        required_fields = DEVICE_CONFIG_REQUIRED_FIELDS.get(device_type)
+        if required_fields is None:
+            raise ValueError(f"unsupported device config target type: {device_type}")
+
+        for field_name, expected_type in required_fields.items():
+            if field_name not in payload:
+                raise ValueError(f"{device_type} config requires field: {field_name}")
+            value = payload[field_name]
+            if isinstance(value, bool) and expected_type is not bool:
+                raise ValueError(f"{device_type} config field {field_name} has invalid type")
+            if not isinstance(value, expected_type):
+                raise ValueError(f"{device_type} config field {field_name} has invalid type")
 
     async def _flush_command_results(self) -> None:
         """Retry all cached command results that were not yet reported."""

@@ -3,7 +3,7 @@ alert_rules:
     enabled: true
     threshold_ratio: 1.5
     window_s: 5
-    level: warning
+    level: critical
   CO2_HIGH:
     enabled: true
     threshold_ppm: 1000

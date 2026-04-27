@@ -32,7 +32,7 @@ class RuntimeConfigManager:
         return self._rules_path
 
     def update_from_gateway_config(self, payload: dict[str, Any]) -> None:
-        """Apply gateway configuration published through MQTT.
+        """Apply gateway configuration received from the backend command channel.
 
         :param payload: Gateway config payload. Alert rules are written to the
             runtime rules file; restart-required settings are logged only.
