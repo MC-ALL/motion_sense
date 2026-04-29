@@ -7,14 +7,57 @@ from typing import Any
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 
+from app.models.ingest import AlertRecord, DeviceSummary, TelemetryRecord
 from app.models.ai import AiReportDetail
 from app.models.user import StoredUser
 from app.models.workout import WorkoutSessionSummary
 from app.services.realtime_service import RealtimeService
 from app.settings import RuntimeSettings
 from app.storage.store import Store
+
+
+MAX_CONTEXT_TELEMETRY_RECORDS = 5000
+MAX_TELEMETRY_SAMPLES = 12
+WRISTBAND_TELEMETRY_FIELDS = ("heart_rate", "step_count", "battery_pct")
+EQUIPMENT_TELEMETRY_FIELDS = (
+    "rep_count",
+    "power_w",
+    "energy_wh",
+    "axis_angle",
+    "voltage_v",
+    "current_ma",
+)
+ENV_TELEMETRY_FIELDS = ("temperature", "temperature_c", "humidity", "co2_ppm", "pm2_5", "pm10", "lux")
+COUNTER_FIELDS = {"step_count", "rep_count", "energy_wh"}
+
+
+class AiReportSegmentAssessment(BaseModel):
+    equipment_id: str
+    equipment_name: str | None = None
+    equipment_kind: str | None = None
+    summary: str = Field(min_length=1)
+    observations: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+
+class AiReportEvidenceItem(BaseModel):
+    source_type: str = Field(min_length=1)
+    reference_id: str | None = None
+    description: str = Field(min_length=1)
+
+
+class AiReportProviderOutput(BaseModel):
+    summary_title: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    insights: list[str] = Field(min_length=1)
+    recommendations: list[str] = Field(min_length=1)
+    segment_assessments: list[AiReportSegmentAssessment] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    evidence: list[AiReportEvidenceItem] = Field(default_factory=list)
+    raw_markdown: str = Field(min_length=1)
 
 
 class AiReportService:
@@ -220,6 +263,215 @@ class AiReportService:
             }
         )
 
+    async def _build_analysis_context(
+        self,
+        *,
+        target_user: StoredUser,
+        report: AiReportDetail,
+        sessions: list[WorkoutSessionSummary],
+    ) -> dict[str, Any]:
+        equipment_ids = _collect_equipment_ids(sessions)
+        equipment_profiles = await self._load_device_profiles(equipment_ids)
+        environment_profiles = await self._load_environment_profiles(target_user=target_user, sessions=sessions)
+        alert_device_ids = _dedupe(
+            [
+                target_user.device_ids,
+                [item.wristband_id for item in sessions],
+                equipment_ids,
+                list(environment_profiles),
+            ]
+        )
+        alert_summary = await self._build_alert_summary(
+            device_ids=alert_device_ids,
+            start=report.start,
+            end=report.end,
+        )
+
+        session_contexts: list[dict[str, Any]] = []
+        for session in sessions:
+            session_start = session.started_at
+            session_end = session.ended_at or report.end
+            wristband_records = await self._store.list_telemetry(
+                device_type="wristband",
+                device_id=session.wristband_id,
+                start=session_start,
+                end=session_end,
+                limit=MAX_CONTEXT_TELEMETRY_RECORDS,
+                offset=0,
+            )
+            segments: list[dict[str, Any]] = []
+            for segment in session.segments:
+                segment_start = segment.started_at
+                segment_end = segment.ended_at or session_end
+                equipment_records = await self._store.list_telemetry(
+                    device_type="equipment",
+                    device_id=segment.equipment_id,
+                    start=segment_start,
+                    end=segment_end,
+                    limit=MAX_CONTEXT_TELEMETRY_RECORDS,
+                    offset=0,
+                )
+                segment_wristband_records = await self._store.list_telemetry(
+                    device_type="wristband",
+                    device_id=session.wristband_id,
+                    start=segment_start,
+                    end=segment_end,
+                    limit=MAX_CONTEXT_TELEMETRY_RECORDS,
+                    offset=0,
+                )
+                equipment_profile = equipment_profiles.get(segment.equipment_id)
+                segments.append(
+                    {
+                        **segment.model_dump(exclude_none=True),
+                        "equipment_profile": _compact_device_profile(equipment_profile),
+                        "telemetry_summary": {
+                            "equipment": _summarize_telemetry_records(
+                                equipment_records,
+                                fields=EQUIPMENT_TELEMETRY_FIELDS,
+                                counter_fields=COUNTER_FIELDS,
+                            ),
+                            "wristband": _summarize_telemetry_records(
+                                segment_wristband_records,
+                                fields=WRISTBAND_TELEMETRY_FIELDS,
+                                counter_fields=COUNTER_FIELDS,
+                            ),
+                        },
+                    }
+                )
+
+            session_contexts.append(
+                {
+                    **session.model_dump(exclude_none=True),
+                    "wristband_telemetry_summary": _summarize_telemetry_records(
+                        wristband_records,
+                        fields=WRISTBAND_TELEMETRY_FIELDS,
+                        counter_fields=COUNTER_FIELDS,
+                    ),
+                    "segments": segments,
+                }
+            )
+
+        environment_summaries: list[dict[str, Any]] = []
+        for device_id, device in environment_profiles.items():
+            records = await self._store.list_telemetry(
+                device_type="env",
+                device_id=device_id,
+                start=report.start,
+                end=report.end,
+                limit=MAX_CONTEXT_TELEMETRY_RECORDS,
+                offset=0,
+            )
+            environment_summaries.append(
+                {
+                    "device_profile": _compact_device_profile(device),
+                    "telemetry_summary": _summarize_telemetry_records(
+                        records,
+                        fields=ENV_TELEMETRY_FIELDS,
+                        counter_fields=set(),
+                    ),
+                }
+            )
+
+        return {
+            "schema_version": "ai_training_context.v1",
+            "student": {
+                "username": target_user.username,
+                "role": target_user.role,
+                "gym_ids": target_user.gym_ids,
+                "device_ids": target_user.device_ids,
+                "health_profile": None,
+                "health_profile_note": "not_available_in_current_schema",
+            },
+            "report": {
+                "report_id": report.report_id,
+                "start": report.start,
+                "end": report.end,
+            },
+            "equipment_profiles": [
+                _compact_device_profile(equipment_profiles[device_id])
+                for device_id in equipment_ids
+                if device_id in equipment_profiles
+            ],
+            "environment_profiles": [
+                _compact_device_profile(device)
+                for _, device in sorted(environment_profiles.items())
+            ],
+            "sessions": session_contexts,
+            "environment_summary": environment_summaries,
+            "alert_summary": alert_summary,
+        }
+
+    async def _load_device_profiles(self, device_ids: list[str]) -> dict[str, DeviceSummary]:
+        profiles: dict[str, DeviceSummary] = {}
+        for device_id in device_ids:
+            device = await self._store.get_device(device_id=device_id)
+            if device is not None:
+                profiles[device_id] = device
+        return profiles
+
+    async def _load_environment_profiles(
+        self,
+        *,
+        target_user: StoredUser,
+        sessions: list[WorkoutSessionSummary],
+    ) -> dict[str, DeviceSummary]:
+        profiles: dict[str, DeviceSummary] = {}
+        for device_id in target_user.device_ids:
+            device = await self._store.get_device(device_id=device_id)
+            if device is not None and device.device_type == "env":
+                profiles[device_id] = device
+
+        scoped_gym_ids = set(target_user.gym_ids)
+        if not scoped_gym_ids:
+            scoped_gym_ids = {item.gym_id for item in sessions}
+        if scoped_gym_ids:
+            for device in await self._store.list_devices(device_type="env"):
+                if device.gym_id in scoped_gym_ids:
+                    profiles.setdefault(device.device_id, device)
+        return profiles
+
+    async def _build_alert_summary(
+        self,
+        *,
+        device_ids: list[str],
+        start: str,
+        end: str,
+    ) -> dict[str, Any]:
+        alerts: list[AlertRecord] = []
+        start_dt = _parse_iso_datetime(start)
+        end_dt = _parse_iso_datetime(end)
+        for device_id in device_ids:
+            for alert in await self._store.list_alerts(device_id=device_id):
+                triggered_at = _parse_iso_datetime(alert.triggered_at)
+                if start_dt <= triggered_at <= end_dt:
+                    alerts.append(alert)
+
+        by_level: dict[str, int] = {}
+        by_code: dict[str, int] = {}
+        for alert in alerts:
+            by_level[alert.level] = by_level.get(alert.level, 0) + 1
+            by_code[alert.code] = by_code.get(alert.code, 0) + 1
+
+        return {
+            "total": len(alerts),
+            "by_level": by_level,
+            "by_code": by_code,
+            "items": [
+                {
+                    "id": alert.id,
+                    "device_id": alert.device_id,
+                    "device_type": alert.device_type,
+                    "level": alert.level,
+                    "code": alert.code,
+                    "message": alert.message,
+                    "priority": alert.priority,
+                    "triggered_at": alert.triggered_at,
+                    "is_ack": alert.is_ack,
+                }
+                for alert in sorted(alerts, key=lambda item: (item.triggered_at, item.id), reverse=True)[:20]
+            ],
+        }
+
     async def _build_completed_payload(self, report: AiReportDetail) -> dict[str, Any]:
         target_user = await self._store.get_user(username=report.user_id)
         if target_user is None:
@@ -233,18 +485,28 @@ class AiReportService:
             offset=0,
         )
         normalized_session_ids = [item.session_id for item in sessions]
+        analysis_context = await self._build_analysis_context(
+            target_user=target_user,
+            report=report,
+            sessions=sessions,
+        )
 
         if self._settings.ai.provider == "openai_compatible":
             payload = await asyncio.to_thread(
                 self._generate_via_openai_compatible,
                 target_user,
                 report,
-                sessions,
+                analysis_context,
             )
             payload["evidence_session_ids"] = normalized_session_ids
             return payload
 
-        payload = _generate_builtin_report(target_user=target_user, report=report, sessions=sessions)
+        payload = _generate_builtin_report(
+            target_user=target_user,
+            report=report,
+            sessions=sessions,
+            analysis_context=analysis_context,
+        )
         payload["evidence_session_ids"] = normalized_session_ids
         return payload
 
@@ -252,7 +514,7 @@ class AiReportService:
         self,
         target_user: StoredUser,
         report: AiReportDetail,
-        sessions: list[WorkoutSessionSummary],
+        analysis_context: dict[str, Any],
     ) -> dict[str, Any]:
         if not self._settings.ai.api_key:
             raise RuntimeError("ai api_key is required when provider=openai_compatible")
@@ -273,6 +535,7 @@ class AiReportService:
             "model": model_name,
             "stream": False,
             "response_format": {"type": "json_object"},
+            "max_tokens": self._settings.ai.max_tokens,
             "messages": [
                 {
                     "role": "system",
@@ -280,10 +543,12 @@ class AiReportService:
                         "你是一名高校智慧体育系统的训练分析助手。"
                         "你必须只输出一个合法 JSON 对象，不要输出 Markdown 代码块，不要输出额外解释。"
                         "所有自然语言字段必须使用简体中文。"
-                        "JSON 必须包含 summary_title、summary、insights、recommendations、raw_markdown 五个字段。"
+                        "JSON 必须符合用户消息中的输出 schema。"
                         "其中 summary_title 和 summary 必须是字符串；"
                         "insights 和 recommendations 必须是非空字符串数组；"
-                        "raw_markdown 必须是中文 Markdown 文本，内容要与前述字段一致。"
+                        "segment_assessments 必须逐段说明器材类型、负荷表现和建议；"
+                        "raw_markdown 必须是中文 Markdown 文本，内容要与结构化字段一致。"
+                        "只能基于输入 JSON 中明确给出的事实分析；缺失的健康资料、器材信息或原始遥测必须说明缺失，不要编造。"
                         "如果训练样本不足，也要明确说明数据不足，并给出中文建议。"
                     ),
                 },
@@ -291,15 +556,34 @@ class AiReportService:
                     "role": "user",
                     "content": (
                         "请基于以下训练数据生成中文训练分析报告，并严格按要求返回 JSON。\n"
-                        "输出要求：\n"
-                        "1. `summary_title`：简短中文标题。\n"
-                        "2. `summary`：1 段中文总结，优先概括训练时长、动作量、心率、能耗、器材覆盖。\n"
-                        "3. `insights`：2 到 5 条中文观察结论。\n"
-                        "4. `recommendations`：2 到 5 条中文训练建议。\n"
-                        "5. `raw_markdown`：完整中文 Markdown 报告。\n"
-                        "6. 不要输出英文标题或英文建议，除非设备 ID、用户名等原始标识本身就是英文。\n\n"
-                        "训练数据如下：\n"
-                        f"{json.dumps({'user': {'username': target_user.username, 'role': target_user.role, 'gym_ids': target_user.gym_ids, 'device_ids': target_user.device_ids}, 'report': {'report_id': report.report_id, 'start': report.start, 'end': report.end}, 'sessions': [item.model_dump(exclude_none=True) for item in sessions]}, ensure_ascii=False)}"
+                        "输出 schema 示例：\n"
+                        "{\n"
+                        '  "summary_title": "中文标题",\n'
+                        '  "summary": "一段中文总结",\n'
+                        '  "insights": ["2 到 5 条中文观察"],\n'
+                        '  "recommendations": ["2 到 5 条中文建议"],\n'
+                        '  "segment_assessments": [\n'
+                        "    {\n"
+                        '      "equipment_id": "器材 ID",\n'
+                        '      "equipment_name": "器材名称，可为空",\n'
+                        '      "equipment_kind": "器材类型，可为空",\n'
+                        '      "summary": "本段训练中文总结",\n'
+                        '      "observations": ["本段观察"],\n'
+                        '      "recommendations": ["本段建议"]\n'
+                        "    }\n"
+                        "  ],\n"
+                        '  "risk_flags": ["风险或数据质量提示；没有则为空数组"],\n'
+                        '  "evidence": [{"source_type": "session|segment|telemetry|device|alert", "reference_id": "引用 ID", "description": "证据说明"}],\n'
+                        '  "raw_markdown": "完整中文 Markdown 报告"\n'
+                        "}\n\n"
+                        "分析要求：\n"
+                        "1. 优先使用 equipment_profiles 和 segment.telemetry_summary 中的器材名称、器材类型、位置与 metadata，不要只写设备 ID。\n"
+                        "2. 除总量、平均值、最大值外，要结合分位数、起止值、趋势、计数器增量和采样点分析训练过程。\n"
+                        "3. 对环境数据和告警摘要做简短判断；没有告警时明确说明本窗口未见告警。\n"
+                        "4. 如果 student.health_profile 为空，不要给出基于身高体重体脂的结论，只说明缺少个体健康资料。\n"
+                        "5. 不要输出英文标题或英文建议，除非设备 ID、字段名等原始标识本身就是英文。\n\n"
+                        "analysis_context JSON 如下：\n"
+                        f"{json.dumps(analysis_context, ensure_ascii=False, separators=(',', ':'))}"
                     ),
                 },
             ],
@@ -324,22 +608,247 @@ class AiReportService:
         choices = raw_response.get("choices") or []
         if not choices:
             raise RuntimeError("ai provider returned empty choices")
-        message = choices[0].get("message") or {}
+        choice = choices[0]
+        if choice.get("finish_reason") == "length":
+            raise RuntimeError("ai provider response was truncated")
+        message = choice.get("message") or {}
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("ai provider returned empty content")
         parsed = json.loads(content)
-        insights = [str(item).strip() for item in parsed.get("insights", []) if str(item).strip()]
-        recommendations = [
-            str(item).strip() for item in parsed.get("recommendations", []) if str(item).strip()
-        ]
+        output = AiReportProviderOutput.model_validate(parsed)
+        insights = _normalize_string_list(output.insights)
+        recommendations = _normalize_string_list(output.recommendations)
+        if not insights:
+            raise RuntimeError("ai provider returned empty insights")
+        if not recommendations:
+            raise RuntimeError("ai provider returned empty recommendations")
         return {
-            "summary_title": str(parsed.get("summary_title") or f"{target_user.username} 训练分析报告"),
-            "summary": str(parsed.get("summary") or ""),
+            "summary_title": output.summary_title.strip() or f"{target_user.username} 训练分析报告",
+            "summary": output.summary.strip(),
             "insights": insights,
             "recommendations": recommendations,
-            "raw_markdown": str(parsed.get("raw_markdown") or ""),
+            "raw_markdown": output.raw_markdown.strip(),
         }
+
+
+def _collect_equipment_ids(sessions: list[WorkoutSessionSummary]) -> list[str]:
+    groups: list[list[str]] = []
+    for session in sessions:
+        groups.append(session.equipment_ids)
+        groups.append([segment.equipment_id for segment in session.segments])
+    return _dedupe(groups)
+
+
+def _dedupe(groups: list[list[str]]) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for item in group:
+            if not item or item in seen:
+                continue
+            seen.add(item)
+            values.append(item)
+    return values
+
+
+def _compact_device_profile(device: DeviceSummary | None) -> dict[str, Any] | None:
+    if device is None:
+        return None
+    metadata = device.metadata or {}
+    equipment_kind = _first_string(metadata, ["equipment_kind", "kind", "type", "category"])
+    training_category = _first_string(metadata, ["training_category", "training_type", "sport_category"])
+    return {
+        "gym_id": device.gym_id,
+        "device_type": device.device_type,
+        "device_id": device.device_id,
+        "display_name": device.display_name,
+        "location": device.location,
+        "equipment_kind": equipment_kind,
+        "training_category": training_category,
+        "metadata": metadata,
+    }
+
+
+def _first_string(values: dict[str, Any], keys: list[str]) -> str | None:
+    for key in keys:
+        value = values.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _summarize_telemetry_records(
+    records: list[TelemetryRecord],
+    *,
+    fields: tuple[str, ...],
+    counter_fields: set[str],
+) -> dict[str, Any]:
+    ordered = sorted(records, key=lambda item: _parse_iso_datetime(item.ts))
+    metrics: dict[str, Any] = {}
+    for field in fields:
+        points = [
+            (_parse_iso_datetime(record.ts), _coerce_float(record.payload.get(field)))
+            for record in ordered
+        ]
+        numeric_points = [(ts, value) for ts, value in points if value is not None]
+        if not numeric_points:
+            continue
+        metrics[field] = _summarize_numeric_points(
+            numeric_points,
+            include_counter_delta=field in counter_fields,
+        )
+
+    return {
+        "record_count": len(ordered),
+        "start_ts": ordered[0].ts if ordered else None,
+        "end_ts": ordered[-1].ts if ordered else None,
+        "metrics": metrics,
+        "samples": _sample_telemetry_records(ordered, fields=fields),
+    }
+
+
+def _summarize_numeric_points(
+    points: list[tuple[datetime, float]],
+    *,
+    include_counter_delta: bool,
+) -> dict[str, Any]:
+    values = [value for _, value in points]
+    first = values[0]
+    last = values[-1]
+    result: dict[str, Any] = {
+        "count": len(values),
+        "first": _round_float(first),
+        "last": _round_float(last),
+        "min": _round_float(min(values)),
+        "max": _round_float(max(values)),
+        "avg": _round_float(sum(values) / len(values)),
+        "p25": _round_float(_percentile(values, 0.25)),
+        "p50": _round_float(_percentile(values, 0.50)),
+        "p75": _round_float(_percentile(values, 0.75)),
+        "trend": _trend(first, last),
+    }
+    if include_counter_delta:
+        result["delta"] = _round_float(_counter_delta_float(values))
+    else:
+        result["delta"] = _round_float(last - first)
+    return result
+
+
+def _sample_telemetry_records(records: list[TelemetryRecord], *, fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    if not records:
+        return []
+    if len(records) <= MAX_TELEMETRY_SAMPLES:
+        selected = records
+    else:
+        indexes = {
+            round(index * (len(records) - 1) / (MAX_TELEMETRY_SAMPLES - 1))
+            for index in range(MAX_TELEMETRY_SAMPLES)
+        }
+        selected = [records[index] for index in sorted(indexes)]
+    samples: list[dict[str, Any]] = []
+    for record in selected:
+        payload = {
+            field: record.payload[field]
+            for field in fields
+            if field in record.payload and _coerce_float(record.payload.get(field)) is not None
+        }
+        if payload:
+            samples.append({"ts": record.ts, "payload": payload})
+    return samples
+
+
+def _percentile(values: list[float], ratio: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = (len(ordered) - 1) * ratio
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(ordered) - 1)
+    fraction = position - lower_index
+    return ordered[lower_index] * (1 - fraction) + ordered[upper_index] * fraction
+
+
+def _trend(first: float, last: float) -> str:
+    delta = last - first
+    if abs(delta) < max(abs(first), 1.0) * 0.05:
+        return "stable"
+    return "increasing" if delta > 0 else "decreasing"
+
+
+def _counter_delta_float(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    total = 0.0
+    previous = values[0]
+    for value in values[1:]:
+        if value >= previous:
+            total += value - previous
+        else:
+            total += value
+        previous = value
+    return total
+
+
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _round_float(value: float) -> int | float:
+    rounded = round(value, 3)
+    if rounded.is_integer():
+        return int(rounded)
+    return rounded
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _normalize_string_list(values: list[str]) -> list[str]:
+    return [item.strip() for item in values if item.strip()]
+
+
+def _format_equipment_label(equipment_ids: list[str], analysis_context: dict[str, Any] | None) -> str:
+    labels: list[str] = []
+    profiles = {}
+    if analysis_context is not None:
+        profiles = {
+            item.get("device_id"): item
+            for item in analysis_context.get("equipment_profiles", [])
+            if isinstance(item, dict)
+        }
+    for equipment_id in equipment_ids[:4]:
+        profile = profiles.get(equipment_id)
+        if not isinstance(profile, dict):
+            labels.append(equipment_id)
+            continue
+        display_name = profile.get("display_name")
+        equipment_kind = profile.get("equipment_kind")
+        if isinstance(display_name, str) and display_name.strip():
+            label = display_name.strip()
+            if isinstance(equipment_kind, str) and equipment_kind.strip() and equipment_kind.strip() != label:
+                label = f"{label}({equipment_kind.strip()})"
+            labels.append(label)
+        elif isinstance(equipment_kind, str) and equipment_kind.strip():
+            labels.append(f"{equipment_kind.strip()}[{equipment_id}]")
+        else:
+            labels.append(equipment_id)
+    return "、".join(labels) or "无器材"
 
 
 def _generate_builtin_report(
@@ -347,6 +856,7 @@ def _generate_builtin_report(
     target_user: StoredUser,
     report: AiReportDetail,
     sessions: list[WorkoutSessionSummary],
+    analysis_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     title = f"{target_user.username} 训练分析报告"
     if not sessions:
@@ -389,7 +899,7 @@ def _generate_builtin_report(
     avg_rep_count = round(aggregate["total_rep_count"] / max(len(sessions), 1))
     duration_label = _format_duration(aggregate["total_duration_s"])
     avg_duration_label = _format_duration(avg_duration_s)
-    equipment_label = "、".join(aggregate["equipment_ids"][:4]) or "无器材"
+    equipment_label = _format_equipment_label(aggregate["equipment_ids"], analysis_context)
     summary = (
         f"在 {report.start} 至 {report.end} 的窗口内，共记录 {aggregate['completed_sessions']} 次已完成训练，"
         f"累计时长 {duration_label}，覆盖 {len(aggregate['equipment_ids'])} 台器材。"

@@ -438,6 +438,39 @@ def test_ai_report_service_uses_chat_completions_for_reasoner_without_temperatur
             gym_ids=["gym-gz-01"],
             device_ids=["wb-003", "eq-003"],
         )
+        await store.register_device(
+            gym_id="gym-gz-01",
+            device_type="equipment",
+            device_id="eq-003",
+            gateway_id="gw-001",
+            display_name="跑步机 3",
+            location="有氧区",
+            metadata={"equipment_kind": "treadmill", "training_category": "cardio"},
+        )
+        await store.record_telemetry(
+            gym_id="gym-gz-01",
+            device_type="wristband",
+            device_id="wb-003",
+            payload={"ts": 1776672000, "heart_rate": 118, "step_count": 1000},
+        )
+        await store.record_telemetry(
+            gym_id="gym-gz-01",
+            device_type="wristband",
+            device_id="wb-003",
+            payload={"ts": 1776673200, "heart_rate": 148, "step_count": 3100},
+        )
+        await store.record_telemetry(
+            gym_id="gym-gz-01",
+            device_type="equipment",
+            device_id="eq-003",
+            payload={"ts": 1776672000, "rep_count": 0, "power_w": 180, "energy_wh": 0},
+        )
+        await store.record_telemetry(
+            gym_id="gym-gz-01",
+            device_type="equipment",
+            device_id="eq-003",
+            payload={"ts": 1776673200, "rep_count": 24, "power_w": 260, "energy_wh": 10.5},
+        )
         await store.create_workout_session(
             username="student_ai_provider_ok",
             wristband_id="wb-003",
@@ -539,11 +572,15 @@ def test_ai_report_service_uses_chat_completions_for_reasoner_without_temperatur
         assert isinstance(request_body, dict)
         assert request_body["model"] == "deepseek-reasoner"
         assert "temperature" not in request_body
+        assert request_body["max_tokens"] == 4096
         assert request_body["response_format"] == {"type": "json_object"}
         messages = request_body["messages"]
         assert isinstance(messages, list)
         assert "所有自然语言字段必须使用简体中文" in messages[0]["content"]
         assert "请基于以下训练数据生成中文训练分析报告" in messages[1]["content"]
+        assert "analysis_context JSON" in messages[1]["content"]
+        assert "跑步机 3" in messages[1]["content"]
+        assert "telemetry_summary" in messages[1]["content"]
 
         await store.close()
 

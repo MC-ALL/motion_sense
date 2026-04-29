@@ -55,3 +55,4 @@ ai:
   model: null
   api_key: null
   request_timeout_s: 60
+  max_tokens: 4096

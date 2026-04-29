@@ -90,6 +90,7 @@ class AiSettings(BaseModel):
     api_key: str | None = None
     api_key_file: str | None = None
     request_timeout_s: int = 60
+    max_tokens: int = 4096
 
 
 class RuntimeSettings(BaseModel):
@@ -233,6 +234,8 @@ def _apply_env_overrides(raw: dict[str, Any]) -> None:
         ai["api_key_file"] = value
     if value := os.environ.get("BACKEND_AI_REQUEST_TIMEOUT_S"):
         ai["request_timeout_s"] = int(value)
+    if value := os.environ.get("BACKEND_AI_MAX_TOKENS"):
+        ai["max_tokens"] = int(value)
 
     _apply_ai_model_variant(ai)
     _apply_ai_secret_file(ai)

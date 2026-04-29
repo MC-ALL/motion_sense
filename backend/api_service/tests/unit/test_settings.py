@@ -91,3 +91,21 @@ def test_load_settings_reads_ai_wakeup_settings(tmp_path: Path) -> None:
 
     assert settings.ai.wakeup_backend == "redis"
     assert settings.ai.wakeup_channel == "motion_sense:test_ai_report_wakeup"
+
+
+def test_load_settings_reads_ai_max_tokens(tmp_path: Path) -> None:
+    config_path = tmp_path / "app_settings.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "app_name: motion-sense-backend-api-service",
+                "ai:",
+                "  max_tokens: 8192",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.ai.max_tokens == 8192
