@@ -64,7 +64,6 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | 存储位置 | 写入网关本地可靠投递队列 |
 | 后续流向 | 由网关批量上报后台 |
 | 是否真实 MQTT 发布 | 否；除非后续另行设计本地广播需求 |
-| `published_by` | 不使用；网关生成事件不经 MQTT 回环，因此不需要发布方标记 |
 
 ### 1.5 QoS / Retain 约定
 
@@ -76,7 +75,7 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | `binding` | `1` | `false` | 绑定 / 解绑是事件流，不保留 |
 | `config` | `1` | `false` | 配置下发是命令式消息，不保留，避免设备重连后重复执行旧命令 |
 
-说明：如后续需要设备重连后获取最新配置，应单独设计 `desired_config` 或 `config_snapshot`，不复用命令式 `config`。
+说明：本节 QoS / Retain 只适用于真实 MQTT 发布消息。网关本地生成的告警 / 状态事件写入本地可靠投递队列，不适用 retain 语义。如后续需要设备重连后获取最新配置，应单独设计 `desired_config` 或 `config_snapshot`，不复用命令式 `config`。
 
 ### 1.6 数值范围
 
