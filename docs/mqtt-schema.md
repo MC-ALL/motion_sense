@@ -4,22 +4,23 @@
 
 | 项目 | 内容 |
 |---|---|
-| 版本 | `v1.0.0-rc1` |
+| 版本 | `v1.0.0-rc2` |
 | 作者 | `CircuitX` |
-| 日期 | `2026/04/27` |
+| 日期 | `2026/05/07` |
 | 状态 | 发布候选版 |
 
 ## 修改历史
 
 | 版本 | 日期 | 作者 | 说明 |
 |---|---|---|---|
+| `v1.0.0-rc2` | `2026/05/07` | `CircuitX` | 明确网关生成告警 / 状态事件使用 MQTT 兼容 Payload 写入本地可靠投递队列，不要求真实发布到 MQTT Broker；移除 `published_by` 回环标记语义 |
 | `v1.0.0-rc1` | `2026/04/27` | `CircuitX` | 首个发布候选版；定义通用字段、状态消息、告警消息、`equipment`、`wristband`、`env` 与设备 `config` 字段 |
 
 ## 文档说明
 
 本文定义运动感知系统的 MQTT 字段规范，覆盖通用字段、状态消息、告警消息、`equipment`、`wristband`、`env` 与设备 `config` 字段。该版本作为 `v1.0.0` 发布前的候选契约，用于后续设备模拟器、网关、后台入库与前端展示的实现对齐。
 
-本文各设备 Payload 表只列 MQTT 业务字段，不列网关入站 / 出站预处理字段。`gateway_received_ts`、`published_by` 等网关补充字段在独立章节说明。
+本文各设备 Payload 表只列 MQTT 业务字段，不列网关入站预处理字段。网关本地生成的告警 / 状态事件可复用本文定义的 MQTT 兼容 Payload 形状写入网关本地可靠投递队列，但不代表这些事件一定真实发布到 MQTT Broker。
 
 ## 1. 通用约定
 
@@ -53,11 +54,17 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 |---|---|---|---|---|
 | `gateway_received_ts` | `int` | 网关入站消息 | 网关 | 网关接收 MQTT 消息的 Unix 秒级时间戳；由网关入站预处理阶段补充，不属于设备原始 MQTT Payload，不出现在设备 Payload 表中 |
 
-### 1.4 网关出站预处理字段
+### 1.4 网关生成事件 Payload
 
-| 字段 | 类型 / 枚举 | 适用消息 | 来源 | 说明 |
-|---|---|---|---|---|
-| `published_by` | 固定值：`edge_processor` | 网关出站消息 | 网关 | 网关出站预处理阶段补充；用于标记网关代发或生成的 MQTT 消息；设备原始上报消息不得设置；不出现在设备 Payload 表中 |
+网关本地规则或连通性判定可生成 `alert` / `status` 事件。该类事件用于写入网关本地可靠投递队列并上传后台，Payload 复用本文对应 `alert` / `status` 字段约束，但不要求通过 MQTT Broker 发布。
+
+| 项目 | 说明 |
+|---|---|
+| 表达形式 | 使用 MQTT topic 形状和 MQTT 兼容 Payload 表达事件身份与内容 |
+| 存储位置 | 写入网关本地可靠投递队列 |
+| 后续流向 | 由网关批量上报后台 |
+| 是否真实 MQTT 发布 | 否；除非后续另行设计本地广播需求 |
+| `published_by` | 不使用；网关生成事件不经 MQTT 回环，因此不需要发布方标记 |
 
 ### 1.5 QoS / Retain 约定
 
@@ -123,8 +130,8 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | 来源 | `status` | `firmware_version` | `mac` | 说明 |
 |---|---|---|---|---|
 | 设备原始上报 | 按对应设备 Status Payload 表枚举 | 真实固件版本 | 真实 MAC 地址 | 设备原始 `status` 必须携带真实设备信息，不得使用网关 magic value |
-| 网关生成离线状态 | `offline` | 固定值：`edge-generated` | 固定值：`00:00:00:00:00:00` | 网关判断设备不可达时生成 |
-| 网关生成故障状态 | `fault` | 固定值：`edge-generated` | 固定值：`00:00:00:00:00:00` | 网关判断设备协议异常或本地处理异常时生成 |
+| 网关生成离线状态 | `offline` | 固定值：`edge-generated` | 固定值：`00:00:00:00:00:00` | 网关判断设备不可达时生成；作为 MQTT 兼容事件写入本地可靠投递队列，不要求发布到 MQTT Broker |
+| 网关生成故障状态 | `fault` | 固定值：`edge-generated` | 固定值：`00:00:00:00:00:00` | 网关判断设备协议异常或本地处理异常时生成；作为 MQTT 兼容事件写入本地可靠投递队列，不要求发布到 MQTT Broker |
 
 ## 3. 告警消息
 
@@ -383,7 +390,6 @@ gym/{gym_id}/{device_type}/{device_id}/{action}
 | 项目 | 适用 | 说明 |
 |---|---|---|
 | `gateway_received_ts` | 否 | 不适用于 `config`，因为 `config` 是网关出站消息，不是网关入站消息 |
-| `published_by` | 保留 | 由网关出站预处理阶段统一补充；不在各设备 `config` Payload 表中重复列出 |
 
 说明：`config` 是全量配置消息，设备收到后按完整配置覆盖相关配置项；不定义局部 PATCH。
 
