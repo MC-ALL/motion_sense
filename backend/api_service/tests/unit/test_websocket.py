@@ -253,7 +253,7 @@ def test_websocket_receives_ai_report_updates_in_local_realtime_mode() -> None:
             assert completed_message["data"]["summary_title"] == "student_ai_ws 训练分析报告"
 
 
-def test_websocket_receives_binding_events_and_updates_device_snapshot() -> None:
+def test_websocket_receives_binding_events_without_marking_device_online() -> None:
     settings = RuntimeSettings(realtime_backend="local")
 
     with TestClient(create_app(settings)) as client:
@@ -284,10 +284,12 @@ def test_websocket_receives_binding_events_and_updates_device_snapshot() -> None
             assert bind_message["type"] == "binding_upsert"
             assert bind_message["data"]["wristband_id"] == "wb-020"
             assert bind_message["data"]["equipment_id"] == "eq-020"
-            assert bind_message["data"]["status"] == "bound"
+            assert bind_message["data"]["status"] == "registered"
 
             wristband_detail = client.get("/api/v1/devices/wb-020")
             assert wristband_detail.status_code == 200
+            assert wristband_detail.json()["online"] is False
+            assert wristband_detail.json().get("last_seen_ts") is None
             assert wristband_detail.json()["last_payload"]["current_equipment_id"] == "eq-020"
 
             unbind_response = client.post(
@@ -316,10 +318,12 @@ def test_websocket_receives_binding_events_and_updates_device_snapshot() -> None
             assert unbind_message["type"] == "binding_remove"
             assert unbind_message["data"]["wristband_id"] == "wb-020"
             assert unbind_message["data"]["equipment_id"] == "eq-020"
-            assert unbind_message["data"]["status"] == "online"
+            assert unbind_message["data"]["status"] == "registered"
 
             wristband_detail_after_unbind = client.get("/api/v1/devices/wb-020")
             assert wristband_detail_after_unbind.status_code == 200
+            assert wristband_detail_after_unbind.json()["online"] is False
+            assert wristband_detail_after_unbind.json().get("last_seen_ts") is None
             assert wristband_detail_after_unbind.json()["last_payload"]["current_equipment_id"] is None
 
 

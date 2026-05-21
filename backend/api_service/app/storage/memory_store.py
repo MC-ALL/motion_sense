@@ -536,6 +536,9 @@ class EventStore:
         async with self._lock:
             key = _device_key(gym_id, device_type, device_id)
             existing = self._devices.get(key)
+            if existing is not None and _is_stale_device_update(existing.last_seen_ts, last_seen_ts):
+                return existing
+
             device = DeviceSummary(
                 gym_id=gym_id,
                 device_type=device_type,
@@ -554,6 +557,41 @@ class EventStore:
                 last_payload=payload,
                 registered_at=existing.registered_at if existing is not None else None,
                 updated_at=existing.updated_at if existing is not None else None,
+            )
+            self._devices[key] = device
+            return device
+
+    async def update_wristband_equipment_binding(
+        self,
+        *,
+        gym_id: str,
+        wristband_id: str,
+        equipment_id: str | None,
+        payload: dict,
+    ) -> DeviceSummary:
+        async with self._lock:
+            key = _device_key(gym_id, "wristband", wristband_id)
+            existing = self._devices.get(key)
+            now = _now_iso()
+            binding_payload = {
+                **(existing.last_payload if existing is not None else {}),
+                **payload,
+                "current_equipment_id": equipment_id,
+            }
+            device = DeviceSummary(
+                gym_id=gym_id,
+                device_type="wristband",
+                device_id=wristband_id,
+                gateway_id=existing.gateway_id if existing is not None else None,
+                display_name=existing.display_name if existing is not None else None,
+                location=existing.location if existing is not None else None,
+                metadata=existing.metadata if existing is not None else None,
+                status=existing.status if existing is not None else "registered",
+                online=existing.online if existing is not None else False,
+                last_seen_ts=existing.last_seen_ts if existing is not None else None,
+                last_payload=binding_payload,
+                registered_at=existing.registered_at if existing is not None else now,
+                updated_at=now,
             )
             self._devices[key] = device
             return device
@@ -648,6 +686,17 @@ class EventStore:
         payload: dict,
     ) -> AlertRecord:
         async with self._lock:
+            for existing in self._alerts:
+                if (
+                    existing.gym_id == gym_id
+                    and existing.device_type == device_type
+                    and existing.device_id == device_id
+                    and existing.code == code
+                    and existing.triggered_at == triggered_at
+                    and existing.message == message
+                ):
+                    return existing
+
             alert = AlertRecord(
                 id=self._next_alert_id,
                 gym_id=gym_id,
@@ -673,10 +722,20 @@ class EventStore:
         action: str,
         reason: str | None,
         ts: int | None,
-    ) -> None:
+    ) -> bool:
         async with self._lock:
             duration_s = None
             event_time = _isoformat_from_ts(ts)
+            for existing in self._bindings:
+                if (
+                    existing.gym_id == gym_id
+                    and existing.wristband_id == wristband_id
+                    and existing.equipment_id == equipment_id
+                    and existing.action == action
+                    and existing.reason == reason
+                    and existing.ts == event_time
+                ):
+                    return False
 
             if action == "unbind":
                 for existing in self._bindings:
@@ -706,6 +765,7 @@ class EventStore:
             )
             self._next_binding_id += 1
             self._bindings.insert(0, event)
+            return True
 
     async def record_telemetry(
         self,
@@ -1023,6 +1083,14 @@ class EventStore:
 
 def coerce_online(status: str) -> bool:
     return status not in {"offline", "disconnected"}
+
+
+def _is_stale_device_update(existing_ts: int | None, incoming_ts: int | None) -> bool:
+    if existing_ts is None:
+        return False
+    if incoming_ts is None:
+        return True
+    return incoming_ts < existing_ts
 
 
 def payload_ts(payload: dict) -> int | None:

@@ -12,6 +12,7 @@ import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceConfigPublishResult, DeviceSummary, TelemetryRecord } from '../types/backend';
 import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { describe_device_runtime_status, is_device_runtime_active } from '../utils/device_status';
+import { normalize_equipment_binding_id } from '../utils/equipment_binding';
 
 const empty_realtime_points: Array<Record<string, unknown>> = [];
 const chart_window_options = [
@@ -193,7 +194,9 @@ export function EquipmentPage() {
   }
 
   const selected_device = devices.find((item) => item.device_id === selected_device_id) ?? null;
-  const bound_wristbands = wristbands.filter((item) => item.last_payload.current_equipment_id === selected_device_id);
+  const bound_wristbands = wristbands.filter(
+    (item) => normalize_equipment_binding_id(item.last_payload.current_equipment_id, item.last_payload.relayed_by) === selected_device_id
+  );
   const chart_window_start = build_window_start(selected_window);
   const chart_window_end = Date.now();
   const chart_rows: ChartRow[] =
@@ -248,7 +251,7 @@ export function EquipmentPage() {
     total: devices.length,
     online: devices.filter((item) => item.online).length,
     active: devices.filter((item) => is_device_runtime_active(item.status, String(item.last_payload.status ?? ''))).length,
-    bound: wristbands.filter((item) => typeof item.last_payload.current_equipment_id === 'string' && item.last_payload.current_equipment_id !== '').length
+    bound: wristbands.filter((item) => normalize_equipment_binding_id(item.last_payload.current_equipment_id, item.last_payload.relayed_by) !== null).length
   };
 
   async function submit_command(values: { target_reps: number }) {
@@ -315,7 +318,9 @@ export function EquipmentPage() {
             <section className="overview_card_grid">
               {devices.map((device) => {
                 const payload = device.last_payload ?? {};
-                const current_bound_wristbands = wristbands.filter((item) => item.last_payload.current_equipment_id === device.device_id).length;
+                const current_bound_wristbands = wristbands.filter(
+                  (item) => normalize_equipment_binding_id(item.last_payload.current_equipment_id, item.last_payload.relayed_by) === device.device_id
+                ).length;
                 return (
                   <button
                     key={device.device_id}

@@ -13,6 +13,7 @@ import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { DeviceSummary } from '../types/backend';
 import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
 import { is_device_runtime_active } from '../utils/device_status';
+import { normalize_equipment_binding_id } from '../utils/equipment_binding';
 import { format_time } from '../utils/time';
 
 type DrawerMode = 'all_devices' | 'offline_devices' | 'business_alerts' | null;
@@ -88,22 +89,6 @@ function compare_values(current: number | null, previous: number | null): TrendD
     return 'flat';
   }
   return current > previous ? 'up' : 'down';
-}
-
-function normalize_equipment_binding_id(value: unknown): string | null {
-  if (typeof value === 'string') {
-    if (value === '' || value === '255' || value.toLowerCase() === 'none') {
-      return null;
-    }
-    return value;
-  }
-  if (typeof value === 'number') {
-    if (value === 255) {
-      return null;
-    }
-    return `eq-${String(value).padStart(3, '0')}`;
-  }
-  return null;
 }
 
 function create_empty_device_view(devices: DeviceSummary[]): DashboardDeviceView {
@@ -205,7 +190,7 @@ function build_device_view(devices: DeviceSummary[]): DashboardDeviceView {
     }
 
     if (device.device_type === 'wristband') {
-      const equipment_id = normalize_equipment_binding_id(device.last_payload.current_equipment_id);
+      const equipment_id = normalize_equipment_binding_id(device.last_payload.current_equipment_id, device.last_payload.relayed_by);
       if (equipment_id !== null) {
         view.current_bindings.push({
           wristband_id: device.device_id,

@@ -61,7 +61,7 @@ class DevicePresenceTracker:
         :return: A ``DeviceTransition`` when a previously-offline device reports
             again; otherwise ``None``.
         """
-        if parsed_topic.device_type == "gateway":
+        if parsed_topic.device_type == "gateway" or parsed_topic.action == "binding":
             return None
 
         identity = DeviceIdentity(

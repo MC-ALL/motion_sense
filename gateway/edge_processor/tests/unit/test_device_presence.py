@@ -40,3 +40,16 @@ def test_device_presence_uses_gateway_receive_time_instead_of_device_ts() -> Non
 
     assert tracker.mark_seen(topic, {"ts": 1712640000, "power_w": 120.0}, now_s=200) is None
     assert tracker.collect_new_offline(timeout_s=30, now_s=220) == []
+
+
+def test_device_presence_ignores_binding_events() -> None:
+    """Verify binding events do not imply wristband connectivity.
+
+    :return: None. Assertions confirm binding messages alone never create a
+        tracked device that can later time out.
+    """
+    tracker = DevicePresenceTracker()
+    topic = parse_topic("gym/gym-gz-01/wristband/wb-001/binding")
+
+    assert tracker.mark_seen(topic, {"ts": 100, "equipment_id": "eq-001", "bound": True}, now_s=100) is None
+    assert tracker.collect_new_offline(timeout_s=30, now_s=131) == []

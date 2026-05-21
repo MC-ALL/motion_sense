@@ -849,6 +849,8 @@ class PostgresStore:
                         last_seen_ts = EXCLUDED.last_seen_ts,
                         last_payload = EXCLUDED.last_payload,
                         updated_at = NOW()
+                    WHERE devices.last_seen_ts IS NULL
+                       OR (EXCLUDED.last_seen_ts IS NOT NULL AND EXCLUDED.last_seen_ts >= devices.last_seen_ts)
                     RETURNING gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
                               status, online, last_seen_ts, last_payload, registered_at, updated_at
                     """,
@@ -860,6 +862,62 @@ class PostgresStore:
                         status,
                         online,
                         last_seen_ts,
+                        Jsonb(payload),
+                    ),
+                )
+                row = await cursor.fetchone()
+                if row is None:
+                    await cursor.execute(
+                        """
+                        SELECT gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                               status, online, last_seen_ts, last_payload, registered_at, updated_at
+                        FROM devices
+                        WHERE gym_id = %s
+                          AND device_type = %s
+                          AND device_id = %s
+                        """,
+                        (gym_id, device_type, device_id),
+                    )
+                    row = await cursor.fetchone()
+            await connection.commit()
+
+        return _device_summary_from_row(row)
+
+    async def update_wristband_equipment_binding(
+        self,
+        *,
+        gym_id: str,
+        wristband_id: str,
+        equipment_id: str | None,
+        payload: dict,
+    ) -> DeviceSummary:
+        payload = {**payload, "current_equipment_id": equipment_id}
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO devices (
+                        gym_id,
+                        device_type,
+                        device_id,
+                        status,
+                        online,
+                        last_seen_ts,
+                        last_payload,
+                        registered_at,
+                        updated_at
+                    )
+                    VALUES (%s, 'wristband', %s, 'registered', FALSE, NULL, %s, NOW(), NOW())
+                    ON CONFLICT (gym_id, device_type, device_id)
+                    DO UPDATE SET
+                        last_payload = devices.last_payload || EXCLUDED.last_payload,
+                        updated_at = NOW()
+                    RETURNING gym_id, device_type, device_id, gateway_id, display_name, location, metadata,
+                              status, online, last_seen_ts, last_payload, registered_at, updated_at
+                    """,
+                    (
+                        gym_id,
+                        wristband_id,
                         Jsonb(payload),
                     ),
                 )
@@ -1021,8 +1079,28 @@ class PostgresStore:
         triggered_at: str,
         payload: dict,
     ) -> AlertRecord:
+        alert_time = _coerce_timestamptz(triggered_at)
         async with self._pool.connection() as connection:
             async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT id, gym_id, device_type, device_id, level, code, message, priority, is_ack, triggered_at, payload
+                    FROM alerts
+                    WHERE gym_id = %s
+                      AND device_type = %s
+                      AND device_id = %s
+                      AND code = %s
+                      AND message = %s
+                      AND triggered_at = %s
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """,
+                    (gym_id, device_type, device_id, code, message, alert_time),
+                )
+                row = await cursor.fetchone()
+                if row is not None:
+                    return _alert_record_from_row(row)
+
                 await cursor.execute(
                     """
                     INSERT INTO alerts (
@@ -1047,7 +1125,7 @@ class PostgresStore:
                         code,
                         message,
                         priority,
-                        _coerce_timestamptz(triggered_at),
+                        alert_time,
                         Jsonb(payload),
                     ),
                 )
@@ -1065,13 +1143,30 @@ class PostgresStore:
         action: str,
         reason: str | None,
         ts: int | None,
-    ) -> None:
+    ) -> bool:
         event_time = _coerce_timestamptz(ts)
         duration_s = None
 
-        if action == "unbind":
-            async with self._pool.connection() as connection:
-                async with connection.cursor() as cursor:
+        async with self._pool.connection() as connection:
+            async with connection.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT 1
+                    FROM equipment_binding_events
+                    WHERE gym_id = %s
+                      AND wristband_id = %s
+                      AND equipment_id = %s
+                      AND action = %s
+                      AND reason IS NOT DISTINCT FROM %s
+                      AND ts = %s
+                    LIMIT 1
+                    """,
+                    (gym_id, wristband_id, equipment_id, action, reason, event_time),
+                )
+                if await cursor.fetchone() is not None:
+                    return False
+
+                if action == "unbind":
                     await cursor.execute(
                         """
                         SELECT ts
@@ -1089,34 +1184,6 @@ class PostgresStore:
                     if row is not None:
                         duration_s = int((event_time - row["ts"]).total_seconds())
 
-                    await cursor.execute(
-                        """
-                        INSERT INTO equipment_binding_events (
-                            wristband_id,
-                            equipment_id,
-                            gym_id,
-                            action,
-                            reason,
-                            ts,
-                            duration_s
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            wristband_id,
-                            equipment_id,
-                            gym_id,
-                            action,
-                            reason,
-                            event_time,
-                            duration_s,
-                        ),
-                    )
-                await connection.commit()
-            return
-
-        async with self._pool.connection() as connection:
-            async with connection.cursor() as cursor:
                 await cursor.execute(
                     """
                     INSERT INTO equipment_binding_events (
@@ -1141,6 +1208,7 @@ class PostgresStore:
                     ),
                 )
             await connection.commit()
+        return True
 
     async def record_telemetry(
         self,

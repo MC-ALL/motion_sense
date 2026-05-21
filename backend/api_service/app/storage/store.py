@@ -243,6 +243,15 @@ class Store(Protocol):
         payload: dict,
     ) -> DeviceSummary: ...
 
+    async def update_wristband_equipment_binding(
+        self,
+        *,
+        gym_id: str,
+        wristband_id: str,
+        equipment_id: str | None,
+        payload: dict,
+    ) -> DeviceSummary: ...
+
     async def register_device(
         self,
         *,
@@ -291,7 +300,7 @@ class Store(Protocol):
         action: str,
         reason: str | None,
         ts: int | None,
-    ) -> None: ...
+    ) -> bool: ...
 
     async def record_telemetry(
         self,

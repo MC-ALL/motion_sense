@@ -264,7 +264,8 @@ class EdgeProcessorRunner:
         elif parsed_topic.action == "status":
             self._status_events_total += 1
 
-        self._device_presence_tracker.mark_seen(parsed_topic, payload)
+        if parsed_topic.action != "binding":
+            self._device_presence_tracker.mark_seen(parsed_topic, payload)
 
         if parsed_topic.action != "telemetry":
             return

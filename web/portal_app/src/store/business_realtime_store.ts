@@ -105,11 +105,15 @@ function apply_telemetry_messages(
     if (devices_by_id === state.devices_by_id) {
       devices_by_id = { ...state.devices_by_id };
     }
+    const incoming_ts = to_unix_seconds(data.ts);
+    if (incoming_ts !== null && current_device.last_seen_ts !== null && incoming_ts < current_device.last_seen_ts) {
+      continue;
+    }
     devices_by_id[data.device_id] = {
       ...current_device,
       online: true,
       status: state.device_status[data.device_id]?.status ?? current_device.status,
-      last_seen_ts: to_unix_seconds(data.ts) ?? current_device.last_seen_ts,
+      last_seen_ts: incoming_ts ?? current_device.last_seen_ts,
       last_payload: {
         ...current_device.last_payload,
         ...extract_live_payload(data)
@@ -220,9 +224,7 @@ function apply_binding_upsert_message(
       ...state.devices_by_id,
       [message.data.wristband_id]: {
         ...current_device,
-        online: true,
         status: message.data.status ?? current_device.status,
-        last_seen_ts: to_unix_seconds(message.data.ts) ?? current_device.last_seen_ts,
         last_payload: {
           ...current_device.last_payload,
           current_equipment_id: message.data.equipment_id
@@ -245,9 +247,7 @@ function apply_binding_remove_message(
       ...state.devices_by_id,
       [message.data.wristband_id]: {
         ...current_device,
-        online: true,
         status: message.data.status ?? current_device.status,
-        last_seen_ts: to_unix_seconds(message.data.ts) ?? current_device.last_seen_ts,
         last_payload: {
           ...current_device.last_payload,
           current_equipment_id: null

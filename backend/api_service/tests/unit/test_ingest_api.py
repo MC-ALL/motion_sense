@@ -61,37 +61,23 @@ def test_ingest_batch_updates_devices_and_alerts() -> None:
         )
 
         assert devices_response.status_code == 200
-        assert devices_response.json() == [
-            {
-                "gym_id": "gym-gz-01",
-                "device_type": "equipment",
-                "device_id": "eq-001",
-                "status": "online",
-                "online": True,
-                "last_seen_ts": 1712345678,
-                "last_payload": {
-                    "ts": 1712345678,
-                    "device_id": "eq-001",
-                    "power_w": 350.5,
-                },
-            },
-            {
-                "gym_id": "gym-gz-01",
-                "device_type": "wristband",
-                "device_id": "wb-001",
-                "status": "bound",
-                "online": True,
-                "last_seen_ts": 1712345680,
-                "last_payload": {
-                    "ts": 1712345680,
-                    "wristband_id": "wb-001",
-                    "equipment_id": "eq-001",
-                    "current_equipment_id": "eq-001",
-                    "action": "bind",
-                    "reason": "ble_connected",
-                },
-            },
-        ]
+        devices = {item["device_id"]: item for item in devices_response.json()}
+        assert devices["eq-001"]["status"] == "online"
+        assert devices["eq-001"]["online"] is True
+        assert devices["eq-001"]["last_seen_ts"] == 1712345678
+        assert devices["eq-001"]["last_payload"]["power_w"] == 350.5
+        assert devices["wb-001"]["status"] == "registered"
+        assert devices["wb-001"]["online"] is False
+        assert devices["wb-001"].get("last_seen_ts") is None
+        assert devices["wb-001"]["last_payload"] == {
+            "ts": 1712345680,
+            "wristband_id": "wb-001",
+            "equipment_id": "eq-001",
+            "current_equipment_id": "eq-001",
+            "action": "bind",
+            "reason": "ble_connected",
+            "gateway_id": "gw-001",
+        }
 
         assert alerts_response.status_code == 200
         assert alerts_response.json()[0]["device_id"] == "wb-001"
@@ -176,7 +162,7 @@ def test_env_telemetry_aggregate() -> None:
         assert payload[0]["metrics"]["co2_ppm"]["avg"] == 900.0
 
 
-def test_unbind_event_restores_wristband_online_status() -> None:
+def test_binding_event_updates_equipment_binding_without_marking_online() -> None:
     with TestClient(create_app()) as client:
         response = client.post(
             "/api/v1/ingest/batch",
@@ -218,10 +204,11 @@ def test_unbind_event_restores_wristband_online_status() -> None:
 
         assert detail_response.status_code == 200
         assert detail_response.json()["device_id"] == "wb-010"
-        assert detail_response.json()["status"] == "online"
-        assert detail_response.json()["online"] is True
-        assert detail_response.json()["last_seen_ts"] == 1712347812
+        assert detail_response.json()["status"] == "registered"
+        assert detail_response.json()["online"] is False
+        assert detail_response.json().get("last_seen_ts") is None
         assert detail_response.json()["last_payload"]["action"] == "unbind"
+        assert detail_response.json()["last_payload"]["current_equipment_id"] is None
 
         assert bindings_response.status_code == 200
         assert bindings_response.json()[0]["action"] == "unbind"
@@ -283,7 +270,162 @@ def test_ingest_accepts_mqtt_schema_rc1_alert_and_binding_fields() -> None:
         assert alerts_response.status_code == 200
         assert alerts_response.json()[0]["code"] == "co2_high"
         assert device_response.status_code == 200
-        assert device_response.json()["status"] == "online"
+        assert device_response.json()["status"] == "registered"
         assert device_response.json()["last_payload"]["action"] == "unbind"
         assert bindings_response.status_code == 200
         assert [item["action"] for item in bindings_response.json()] == ["unbind", "bind"]
+
+
+def test_binding_events_are_idempotent() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "2026-05-21T15:00:00Z",
+                "items": [
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-dup/binding",
+                        "payload": {
+                            "ts": 1779378000,
+                            "wristband_id": "wb-dup",
+                            "equipment_id": "eq-001",
+                            "action": "bind",
+                            "reason": "ble_connected",
+                        },
+                    },
+                    {
+                        "kind": "binding",
+                        "topic": "gym/gym-gz-01/wristband/wb-dup/binding",
+                        "payload": {
+                            "ts": 1779378000,
+                            "wristband_id": "wb-dup",
+                            "equipment_id": "eq-001",
+                            "action": "bind",
+                            "reason": "ble_connected",
+                        },
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        bindings_response = client.get("/api/v1/wristband/wb-dup/bindings")
+
+        assert bindings_response.status_code == 200
+        assert len(bindings_response.json()) == 1
+        assert bindings_response.json()[0]["equipment_id"] == "eq-001"
+
+
+def test_alert_events_are_idempotent() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "2026-05-21T15:00:00Z",
+                "items": [
+                    {
+                        "kind": "alert",
+                        "topic": "gym/gym-gz-01/wristband/wb-alert/alert",
+                        "payload": {
+                            "ts": 1779378064,
+                            "priority": "P1",
+                            "level": "warning",
+                            "alert_type": "device_offline",
+                            "message": "device offline: no heartbeat for 30s",
+                        },
+                    },
+                    {
+                        "kind": "alert",
+                        "topic": "gym/gym-gz-01/wristband/wb-alert/alert",
+                        "payload": {
+                            "ts": 1779378064,
+                            "priority": "P1",
+                            "level": "warning",
+                            "alert_type": "device_offline",
+                            "message": "device offline: no heartbeat for 30s",
+                        },
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        alerts_response = client.get("/api/v1/alerts", params={"device_id": "wb-alert"})
+
+        assert alerts_response.status_code == 200
+        assert len(alerts_response.json()) == 1
+        assert alerts_response.json()[0]["code"] == "device_offline"
+
+
+def test_stale_device_events_do_not_overwrite_newer_current_state() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "2026-05-21T15:00:00Z",
+                "items": [
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/wristband/wb-order/telemetry",
+                        "payload": {"ts": 100, "heart_rate": 90},
+                    },
+                    {
+                        "kind": "status",
+                        "topic": "gym/gym-gz-01/wristband/wb-order/status",
+                        "payload": {"ts": 130, "status": "offline"},
+                    },
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/wristband/wb-order/telemetry",
+                        "payload": {"ts": 110, "heart_rate": 95},
+                    },
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        device_response = client.get("/api/v1/devices/wb-order")
+
+        assert device_response.status_code == 200
+        payload = device_response.json()
+        assert payload["status"] == "offline"
+        assert payload["online"] is False
+        assert payload["last_seen_ts"] == 130
+
+
+def test_wristband_telemetry_uses_relayed_by_as_display_binding() -> None:
+    with TestClient(create_app()) as client:
+        response = client.post(
+            "/api/v1/ingest/batch",
+            json={
+                "gateway_id": "gw-001",
+                "sent_at": "2026-05-21T15:00:00Z",
+                "items": [
+                    {
+                        "kind": "telemetry",
+                        "topic": "gym/gym-gz-01/wristband/wb-relayed/telemetry",
+                        "payload": {
+                            "ts": 1779378000,
+                            "heart_rate": 80,
+                            "current_equipment_id": 1,
+                            "relayed_by": "eq-001",
+                        },
+                    }
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        device_response = client.get("/api/v1/devices/wb-relayed")
+        telemetry_response = client.get("/api/v1/telemetry/wristband/wb-relayed")
+
+        assert device_response.status_code == 200
+        last_payload = device_response.json()["last_payload"]
+        assert last_payload["current_equipment_id"] == "eq-001"
+        assert last_payload["raw_current_equipment_id"] == 1
+        assert telemetry_response.status_code == 200
+        assert telemetry_response.json()[0]["payload"]["current_equipment_id"] == "eq-001"

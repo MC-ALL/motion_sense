@@ -47,62 +47,68 @@ class IngestService:
                 continue
 
             if item.kind in {"telemetry", "status", "binding"}:
-                normalized_binding_payload = item.payload
+                normalized_payload = _normalize_payload(parsed.device_type, item.payload)
                 binding_action = None
                 binding_wristband_id = None
                 binding_equipment_id = None
                 if item.kind == "binding":
-                    binding_action = _binding_action(item.payload)
-                    binding_wristband_id = str(item.payload.get("wristband_id", parsed.device_id))
-                    binding_equipment_id = str(item.payload.get("equipment_id", ""))
-                    await self._store.record_binding_event(
+                    binding_action = _binding_action(normalized_payload)
+                    binding_wristband_id = str(normalized_payload.get("wristband_id", parsed.device_id))
+                    binding_equipment_id = str(normalized_payload.get("equipment_id", ""))
+                    inserted = await self._store.record_binding_event(
                         gym_id=parsed.gym_id,
                         wristband_id=binding_wristband_id,
                         equipment_id=binding_equipment_id,
                         action=binding_action,
-                        reason=item.payload.get("reason"),
-                        ts=payload_ts(item.payload),
+                        reason=normalized_payload.get("reason"),
+                        ts=payload_ts(normalized_payload),
                     )
-                    normalized_binding_payload = {
-                        **item.payload,
+                    binding_payload = {
+                        **normalized_payload,
                         "action": binding_action,
                         "wristband_id": binding_wristband_id,
                         "current_equipment_id": (
                             binding_equipment_id if binding_action == "bind" and binding_equipment_id else None
                         ),
+                        "gateway_id": batch.gateway_id,
                     }
-                    if (
-                        self._workout_aggregation_service is not None
-                        and binding_action == "unbind"
-                    ):
+                    device = await self._store.update_wristband_equipment_binding(
+                        gym_id=parsed.gym_id,
+                        wristband_id=binding_wristband_id,
+                        equipment_id=binding_payload["current_equipment_id"],
+                        payload=binding_payload,
+                    )
+                    if inserted and self._workout_aggregation_service is not None and binding_action == "unbind":
                         await self._workout_aggregation_service.aggregate_recent_wristband_activity(
                             wristband_id=binding_wristband_id,
                             gym_id=parsed.gym_id,
-                            end=payload_triggered_at(item.payload),
+                            end=payload_triggered_at(normalized_payload),
+                        )
+                    if not inserted:
+                        continue
+                else:
+                    if item.kind == "telemetry":
+                        await self._store.record_telemetry(
+                            gym_id=parsed.gym_id,
+                            device_type=parsed.device_type,
+                            device_id=parsed.device_id,
+                            payload=normalized_payload,
                         )
 
-                if item.kind == "telemetry":
-                    await self._store.record_telemetry(
+                    device_payload = {
+                        **normalized_payload,
+                        "gateway_id": batch.gateway_id,
+                    }
+                    status = _derive_device_status(item.kind, normalized_payload)
+                    device = await self._store.upsert_device(
                         gym_id=parsed.gym_id,
                         device_type=parsed.device_type,
                         device_id=parsed.device_id,
-                        payload=item.payload,
+                        status=status,
+                        online=coerce_online(status),
+                        last_seen_ts=payload_ts(normalized_payload),
+                        payload=device_payload,
                     )
-
-                device_payload = {
-                    **normalized_binding_payload,
-                    "gateway_id": batch.gateway_id,
-                }
-                status = _derive_device_status(item.kind, item.payload)
-                device = await self._store.upsert_device(
-                    gym_id=parsed.gym_id,
-                    device_type=parsed.device_type,
-                    device_id=parsed.device_id,
-                    status=status,
-                    online=coerce_online(status),
-                    last_seen_ts=payload_ts(item.payload),
-                    payload=device_payload,
-                )
 
                 if item.kind == "telemetry":
                     await self._realtime_service.publish(
@@ -112,7 +118,7 @@ class IngestService:
                                 "gym_id": parsed.gym_id,
                                 "device_type": parsed.device_type,
                                 "device_id": parsed.device_id,
-                                **item.payload,
+                                **normalized_payload,
                             },
                         }
                     )
@@ -145,9 +151,9 @@ class IngestService:
                                 "device_id": binding_wristband_id,
                                 "wristband_id": binding_wristband_id,
                                 "equipment_id": binding_equipment_id or None,
-                                "ts": device.last_seen_ts,
+                                "ts": payload_ts(normalized_payload),
                                 "status": device.status,
-                                "reason": item.payload.get("reason"),
+                                "reason": normalized_payload.get("reason"),
                             },
                         }
                     )
@@ -162,14 +168,39 @@ def _derive_device_status(kind: str, payload: dict) -> str:
     if isinstance(raw_status, str) and raw_status:
         return raw_status
 
-    if kind == "binding":
-        action = _binding_action(payload)
-        if action == "bind":
-            return "bound"
-        if action == "unbind":
-            return "online"
-
     return "online"
+
+
+def _normalize_payload(device_type: str, payload: dict) -> dict:
+    """Normalize backend display fields without losing raw device values."""
+    if device_type != "wristband":
+        return payload
+
+    relayed_by = payload.get("relayed_by")
+    current_equipment_id = payload.get("current_equipment_id")
+    if not _is_unstable_equipment_id(current_equipment_id) or not _is_valid_equipment_id(relayed_by):
+        return payload
+
+    return {
+        **payload,
+        "raw_current_equipment_id": current_equipment_id,
+        "current_equipment_id": relayed_by,
+    }
+
+
+def _is_unstable_equipment_id(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, int):
+        return True
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped == "" or stripped == "255" or stripped.isdigit() or stripped.lower() == "none"
+    return False
+
+
+def _is_valid_equipment_id(value: object) -> bool:
+    return isinstance(value, str) and value.startswith("eq-") and len(value) > 3
 
 
 def _alert_code(payload: dict) -> str:

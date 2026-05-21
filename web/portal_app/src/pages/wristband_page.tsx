@@ -17,6 +17,7 @@ import { use_auth_store } from '../store/auth_store';
 import { use_business_realtime_store } from '../store/business_realtime_store';
 import type { BindingEventRecord, DeviceConfigPublishResult, DeviceSummary, TelemetryRecord } from '../types/backend';
 import { page_error_fallbacks, page_notice_titles } from '../ui/message_catalog';
+import { format_equipment_binding_id } from '../utils/equipment_binding';
 import { format_time } from '../utils/time';
 
 const empty_realtime_points: Array<Record<string, unknown>> = [];
@@ -87,22 +88,6 @@ function build_window_start(window_value: ChartWindow): number {
     return now - 6 * 60 * 60 * 1000;
   }
   return now - 24 * 60 * 60 * 1000;
-}
-
-function normalize_equipment_binding_id(value: unknown): string {
-  if (typeof value === 'string') {
-    if (value === '' || value === '255' || value.toLowerCase() === 'none') {
-      return '未绑定';
-    }
-    return value;
-  }
-  if (typeof value === 'number') {
-    if (value === 255) {
-      return '未绑定';
-    }
-    return `eq-${String(value).padStart(3, '0')}`;
-  }
-  return '未绑定';
 }
 
 export function WristbandPage() {
@@ -280,7 +265,7 @@ export function WristbandPage() {
     total: devices.length,
     online: devices.filter((item) => item.online).length,
     active: devices.filter((item) => (to_number(item.last_payload.heart_rate) ?? 0) > 0).length,
-    bound: devices.filter((item) => normalize_equipment_binding_id(item.last_payload.current_equipment_id) !== '未绑定').length
+    bound: devices.filter((item) => format_equipment_binding_id(item.last_payload.current_equipment_id, item.last_payload.relayed_by) !== '未绑定').length
   };
 
   useEffect(() => {
@@ -389,7 +374,7 @@ export function WristbandPage() {
                       <span>电量 {to_number(payload.battery_pct) ?? '--'} %</span>
                     </div>
                     <div className="device_overview_footer">
-                      绑定器材：{normalize_equipment_binding_id(payload.current_equipment_id)} · 最后时间：{format_last_seen(device.last_seen_ts)}
+                      绑定器材：{format_equipment_binding_id(payload.current_equipment_id, payload.relayed_by)} · 最后时间：{format_last_seen(device.last_seen_ts)}
                     </div>
                   </button>
                 );
@@ -480,7 +465,7 @@ export function WristbandPage() {
                   dataSource={[
                     {
                       label: '当前绑定器材',
-                      value: normalize_equipment_binding_id(latest_payload.current_equipment_id)
+                      value: format_equipment_binding_id(latest_payload.current_equipment_id, latest_payload.relayed_by)
                     },
                     {
                       label: '当前转发器材',
